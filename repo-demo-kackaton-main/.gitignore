@@ -1,0 +1,8 @@
+.DS_Store
+.env
+training/dataset/*
+!training/dataset/.gitkeep
+training/annotations/*
+!training/annotations/.gitkeep
+models/exported/*.pt
+models/exported/*.onnx

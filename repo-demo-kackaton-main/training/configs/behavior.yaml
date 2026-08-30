@@ -1,0 +1,17 @@
+classes:
+  - PASS
+  - APPROACH
+  - ENGAGED
+  - INTERACTION
+  - PICK_UP
+  - PUT_BACK
+splits:
+  train: 0.70
+  val: 0.15
+  test: 0.15
+acceptance:
+  macro_f1: 0.80
+  min_class_recall: 0.70
+privacy:
+  temporary_track_ids_only: true
+  prohibited_attributes: [identity, face, emotion, age, gender, biometrics]

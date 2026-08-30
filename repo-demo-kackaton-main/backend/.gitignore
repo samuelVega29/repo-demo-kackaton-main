@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+data/uploads/*
+data/results/*
+data/*.db
+!data/uploads/.gitkeep
+!data/results/.gitkeep
+yolo*.pt
