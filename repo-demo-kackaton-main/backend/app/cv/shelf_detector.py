@@ -135,7 +135,13 @@ def suggest_gondolas(
     if not candidates:
         return []
 
-    forward, _ = SpatialEngine.normalized_pair(configuration["camera"])
+    camera = configuration.get("camera") or {}
+    if not camera.get("source_normalized") or not camera.get("target_meters"):
+        return []
+    try:
+        forward, _ = SpatialEngine.normalized_pair(camera)
+    except cv2.error:
+        return []
     floor = configuration["floor"]
     normalized = np.float32([[[c["x1"] / width, c["y1"] / height] for _ in range(4)] for c in candidates])
     for index, candidate in enumerate(candidates):

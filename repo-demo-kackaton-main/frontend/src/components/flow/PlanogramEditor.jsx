@@ -7,6 +7,7 @@ const emptyProducts = () => Array.from({ length: 3 }, () => ['', '', ''])
 export default function PlanogramEditor({ configuration, onChange, onSave, frameCapture, onSuggest }) {
   const [selectedId, setSelectedId] = useState(configuration.gondolas[0]?.id || null)
   const [saving, setSaving] = useState(false)
+  const [saveState, setSaveState] = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [detecting, setDetecting] = useState(false)
   const [suggestError, setSuggestError] = useState('')
@@ -68,8 +69,15 @@ export default function PlanogramEditor({ configuration, onChange, onSave, frame
     updateGondola(selected.id, { products })
   }
   const save = async () => {
-    setSaving(true)
-    try { await onSave() } finally { setSaving(false) }
+    setSaving(true); setSaveState('')
+    try {
+      await onSave(configuration)
+      setSaveState('Plano guardado')
+    } catch (error) {
+      setSaveState(error.message || 'No se pudo guardar el plano')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const detect = async () => {
@@ -103,6 +111,7 @@ export default function PlanogramEditor({ configuration, onChange, onSave, frame
         <div className="editor-actions"><button onClick={detect} disabled={detecting}>{detecting ? 'Detectando…' : '◎ Detectar góndolas'}</button><button onClick={addGondola}>＋ Añadir góndola</button><button className="save-layout" onClick={save} disabled={saving}>{saving ? 'Guardando…' : 'Guardar plano'}</button></div>
       </div>
       {suggestError && <div className="suggest-error">{suggestError}</div>}
+      {saveState && <div className="suggest-error ok">{saveState}</div>}
       {suggestions.length > 0 && <div className="suggest-bar">Encontré <b>{suggestions.length}</b> góndola{suggestions.length === 1 ? '' : 's'} candidata{suggestions.length === 1 ? '' : 's'} en el frame. Revisa los contornos punteados y decídete.<button onClick={acceptSuggestions}>＋ Aceptar todas</button><button className="dismiss" onClick={() => setSuggestions([])}>Descartar</button></div>}
       <div className="editor-content">
         <div

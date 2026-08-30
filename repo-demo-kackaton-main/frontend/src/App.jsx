@@ -198,8 +198,10 @@ export default function App() {
     } catch (error) { setJob({ status: 'failed', stage: 'failed', progress: 100, message: error.message }) }
   }
   const updateConfiguration = (configuration) => setSite((current) => ({ ...current, configuration }))
-  const saveConfiguration = async () => {
-    const saved = await api(`/api/sites/${siteRef.current.id}/configuration`, { method: 'PUT', body: JSON.stringify({ configuration: siteRef.current.configuration }) })
+  const handleFrameCapture = (dataUrl, width, height) => setFrameCapture({ dataUrl, width, height })
+  const saveConfiguration = async (configuration) => {
+    const payload = configuration ?? siteRef.current.configuration
+    const saved = await api(`/api/sites/${siteRef.current.id}/configuration`, { method: 'PUT', body: JSON.stringify({ configuration: payload }) })
     setSite(saved)
     return saved
   }
@@ -210,6 +212,7 @@ export default function App() {
     setSite(created)
   }
   const suggestGondolas = async (capture) => {
+    if (!capture?.dataUrl || !capture.width || !capture.height) throw new Error('Captura primero un frame en “Calibrar cámara”')
     const response = await api(`/api/sites/${siteRef.current.id}/suggest-gondolas`, {
       method: 'POST',
       body: JSON.stringify({ configuration: siteRef.current.configuration, image: capture.dataUrl, image_width: capture.width, image_height: capture.height }),
@@ -221,7 +224,7 @@ export default function App() {
       <Header user={user} logout={logout} retailer={retailer} site={site} goHome={goHome} />
       {!retailer && <RetailerPicker retailers={retailers} onSelect={setRetailer} />}
       {retailer && !site && <SitePicker retailer={retailer} sites={sites} onSelect={setSite} onBack={() => setRetailer(null)} onCreate={createSite} />}
-      {site && !job?.result && <UploadView site={site} file={file} preview={preview} chooseFile={chooseFile} inputRef={inputRef} analyze={analyze} job={job} updateConfiguration={updateConfiguration} saveConfiguration={saveConfiguration} frameCapture={frameCapture} onFrameCapture={setFrameCapture} onSuggestGondolas={suggestGondolas} />}
+      {site && !job?.result && <UploadView site={site} file={file} preview={preview} chooseFile={chooseFile} inputRef={inputRef} analyze={analyze} job={job} updateConfiguration={updateConfiguration} saveConfiguration={saveConfiguration} frameCapture={frameCapture} onFrameCapture={handleFrameCapture} onSuggestGondolas={suggestGondolas} />}
       {job?.result && <ResultsView analysis={job} mode={mode} setMode={setMode} selectedId={selectedId} setSelectedId={setSelectedId} closeDetail={() => setSelectedId(null)} />}
     </main>
   )
