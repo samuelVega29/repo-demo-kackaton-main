@@ -73,6 +73,9 @@ def run_analysis(analysis_id: str) -> None:
         traffic_points: list[dict] = []
         dwell_points: list[dict] = []
         interaction_points: list[dict] = []
+        interaction_events: list[dict] = []
+        last_interaction: dict[int, bool] = defaultdict(bool)
+        gondola_names = {item["id"]: item.get("name", item["id"]) for item in configuration.get("gondolas", [])}
         frame_samples: list[dict] = []
         evidence: list[str] = []
         evidence_frames: list = []
@@ -125,8 +128,20 @@ def run_analysis(analysis_id: str) -> None:
                         "state": behavior["state"], "gondola_id": behavior["gondola_id"],
                     })
                 if behavior["interaction"]:
-                    interaction_points.append({"x": floor_point[0], "z": floor_point[1], "weight": 1})
+                    interaction_points.append({"x": floor_point[0], "z": floor_point[1], "weight": 1, "t": round(timestamp, 2)})
+                    if not last_interaction[detection["track_id"]]:
+                        interaction_events.append({
+                            "t": round(timestamp, 2),
+                            "track_id": detection["track_id"],
+                            "x": floor_point[0],
+                            "z": floor_point[1],
+                            "gondola_id": behavior["gondola_id"],
+                            "gondola_name": gondola_names.get(behavior["gondola_id"], behavior["gondola_id"]),
+                        })
+                    last_interaction[detection["track_id"]] = True
                     slice_buckets["interaction"][min(slice_count - 1, int(frame_index / slice_size))].append({"x": floor_point[0], "z": floor_point[1], "weight": 1})
+                else:
+                    last_interaction[detection["track_id"]] = False
 
             peak_presence = max(peak_presence, len(active_this_frame))
             if sample_detections:
@@ -186,6 +201,24 @@ def run_analysis(analysis_id: str) -> None:
         ]
         interaction_count = sum(item["interactions"] for item in gondolas)
 
+        duration_seconds = total_frames / fps
+        histogram = None
+        if interaction_events:
+            bucket_s = max(10, round(duration_seconds / 12))
+            bucket_count = max(1, math.ceil(duration_seconds / bucket_s))
+            counts = [0] * bucket_count
+            for event in interaction_events:
+                counts[min(bucket_count - 1, int(event["t"] // bucket_s))] += 1
+            histogram = {
+                "bucket_seconds": bucket_s,
+                "buckets": [
+                    {"index": index, "start": index * bucket_s, "end": min((index + 1) * bucket_s, duration_seconds), "count": count}
+                    for index, count in enumerate(counts)
+                ],
+            }
+        interaction_events.sort(key=lambda event: event["t"])
+        interaction_events_log = interaction_events[:400]
+
         sample_dt = payload_every / fps
         track_speeds = []
         for points in trajectories.values():
@@ -216,6 +249,8 @@ def run_analysis(analysis_id: str) -> None:
             },
             "trajectories": trajectory_payload,
             "frame_detections": frame_samples,
+            "interaction_events_log": interaction_events_log,
+            "interaction_histogram": histogram,
             "gondolas": gondolas,
             "zones": zones,
             "heatmaps": {

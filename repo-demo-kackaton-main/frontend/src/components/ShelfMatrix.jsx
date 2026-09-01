@@ -1,7 +1,7 @@
 const rows = ['Superior', 'Media', 'Inferior']
 const columns = ['Izquierda', 'Centro', 'Derecha']
 
-export default function ShelfMatrix({ gondola, mode }) {
+export default function ShelfMatrix({ gondola, mode, events = [] }) {
   if (!gondola) {
     return <div className="matrix-empty">Selecciona una góndola en el planograma para inspeccionar su actividad.</div>
   }
@@ -12,6 +12,10 @@ export default function ShelfMatrix({ gondola, mode }) {
     interaction: `${gondola.interactions} eventos`,
   }
   const peak = Math.max(...matrix.flat(), 1)
+  const cellTotal = (gondola.products || []).flat().length || 9
+  const tagged = (gondola.products || []).flat().filter(Boolean).length
+  const completeness = Math.round(tagged / cellTotal * 100)
+  const gondolaEvents = events.filter((event) => event.gondola_id === gondola.id)
   return (
     <section className="shelf-analysis">
       <div className="section-heading compact">
@@ -45,6 +49,12 @@ export default function ShelfMatrix({ gondola, mode }) {
         <span><b>{gondola.conversion_percent ?? 0}%</b>conversión</span>
         <span><b>{gondola.dwell_avg_seconds ?? 0}s</b>perman. media</span>
         <span><b>{gondola.engagement_avg_seconds ?? 0}s</b>atención media</span>
+        <span><b>{gondolaEvents.length}</b>interacciones</span>
+      </div>
+      <div className="tagging-progress">
+        <span>Etiquetado de productos</span>
+        <div className="tagging-bar"><i style={{ width: `${completeness}%` }} /></div>
+        <b>{tagged}/{cellTotal}</b>
       </div>
       <p className="matrix-note">Valores absolutos del video. El nivel vertical es una inferencia de baja confianza hasta disponer del modelo de interacción propio.</p>
     </section>

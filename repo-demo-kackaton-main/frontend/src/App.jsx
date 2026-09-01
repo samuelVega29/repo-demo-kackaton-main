@@ -7,6 +7,7 @@ import StoreScene from './components/StoreScene'
 import PlanogramEditor from './components/flow/PlanogramEditor'
 import CameraCalibration from './components/flow/CameraCalibration'
 import VideoOverlay from './components/VideoOverlay'
+import AnalysisVideo from './components/AnalysisVideo'
 
 const modes = [['traffic', 'Tráfico'], ['dwell', 'Permanencia'], ['interaction', 'Interacción']]
 
@@ -140,7 +141,7 @@ function ResultsView({ analysis, mode, setMode, selectedId, setSelectedId, close
         </div>
         <aside className={`detail-panel ${selected ? 'open' : ''}`}>
           <button className="sheet-close" onClick={closeDetail}>×</button>
-          <ShelfMatrix gondola={selected} mode={mode} />
+          <ShelfMatrix gondola={selected} mode={mode} events={result.interaction_events_log || []} />
           {selected && <div className="gondola-stats"><span><b>{selected.visitors}</b>visitantes</span><span><b>{selected.dwell_seconds}s</b>permanencia</span><span><b>{selected.interactions}</b>eventos inferidos</span><span><b>{selected.conversion_percent ?? 0}%</b>conversión</span></div>}
         </aside>
       </div>
@@ -148,6 +149,7 @@ function ResultsView({ analysis, mode, setMode, selectedId, setSelectedId, close
         <section><div className="section-title"><span className="eyebrow">EVIDENCIA VISUAL</span><h2>Frames + detecciones</h2></div><div className="frame-strip">{result.annotated_frames.map((filename, index) => <figure key={filename}><img src={artifactUrl(analysis.id, filename)} alt={`Frame procesado ${index + 1}`} /><figcaption>YOLO · FRAME {index + 1}</figcaption></figure>)}</div></section>
         <section className="findings"><div className="section-title"><span className="eyebrow">HALLAZGOS CALCULADOS</span><h2>Qué indican los datos</h2></div>{result.findings.map((finding, index) => <article key={`${finding.title}-${index}`}><span>{String(index + 1).padStart(2, '0')}</span><div><h3>{finding.title}</h3><p>{finding.detail}</p></div></article>)}<div className="quality-note"><b>Calidad del análisis</b><span>Homografía: {result.quality.calibration}</span><span>Interacción: {result.quality.interaction}</span><span>Sin rostros, biometría ni atributos personales.</span></div></section>
       </div>
+      <AnalysisVideo analysis={analysis} selectedId={selectedId} onSelect={setSelectedId} />
       <OverlayViewer analysis={analysis} />
     </section>
   )

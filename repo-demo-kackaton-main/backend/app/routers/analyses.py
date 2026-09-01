@@ -129,3 +129,19 @@ def artifact(
     if not path.exists():
         raise HTTPException(status_code=404, detail="Artefacto no encontrado")
     return FileResponse(path)
+
+
+@router.get("/{analysis_id}/video")
+def analysis_video(
+    analysis_id: str,
+    user: User = Depends(user_from_query_token),
+    database: Session = Depends(get_db),
+):
+    analysis = database.get(Analysis, analysis_id)
+    site = database.get(Site, analysis.site_id) if analysis else None
+    if not analysis or not can_access(user, site):
+        raise HTTPException(status_code=404, detail="Análisis no encontrado")
+    path = Path(analysis.video_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Video no encontrado")
+    return FileResponse(path, media_type="video/mp4")

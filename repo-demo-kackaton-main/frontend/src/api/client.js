@@ -18,3 +18,8 @@ export async function api(path, options = {}) {
 export function artifactUrl(analysisId, filename) {
   return `/api/analyses/${analysisId}/artifacts/${filename}`
 }
+
+export function videoUrl(analysisId) {
+  const token = getToken()
+  return `/api/analyses/${analysisId}/video${token ? `?token=${token}` : ''}`
+}

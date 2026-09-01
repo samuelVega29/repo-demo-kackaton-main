@@ -1,8 +1,114 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { forwardHomography, inverseHomography, projectFloor } from '../../lib/homography'
 
 const rows = ['Superior', 'Media', 'Inferior']
 const columns = ['Izquierda', 'Centro', 'Derecha']
 const emptyProducts = () => Array.from({ length: 3 }, () => ['', '', ''])
+
+let drawId = 0
+
+function DrawOnVideo({ frameCapture, configuration, onCandidate }) {
+  const canvasRef = useRef(null)
+  const dragStart = useRef(null)
+  const forward = forwardHomography(configuration.camera)
+  const inverse = inverseHomography(configuration.camera)
+  const [marquee, setMarquee] = useState(null)
+  const width = frameCapture.width
+  const height = frameCapture.height
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !frameCapture) return
+    const ctx = canvas.getContext('2d')
+    canvas.width = width
+    canvas.height = height
+    const image = new Image()
+    image.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+      ctx.fillStyle = 'rgba(4, 10, 8, .30)'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      const toPx = (x, z) => {
+        const normalized = projectFloor(inverse, x, z)
+        if (!normalized) return null
+        return [normalized[0] * canvas.width, normalized[1] * canvas.height]
+      }
+      ;(configuration.gondolas || []).forEach((gondola) => {
+        const corners = [[gondola.x, gondola.z], [gondola.x + gondola.width, gondola.z], [gondola.x + gondola.width, gondola.z + gondola.depth], [gondola.x, gondola.z + gondola.depth]]
+        const pixels = corners.map(([x, z]) => toPx(x, z)).filter(Boolean)
+        if (pixels.length < 4) return
+        ctx.beginPath()
+        ctx.moveTo(...pixels[0])
+        pixels.slice(1).forEach((point) => ctx.lineTo(...point))
+        ctx.closePath()
+        ctx.strokeStyle = 'rgba(97, 222, 192, .7)'
+        ctx.lineWidth = 3
+        ctx.stroke()
+      })
+      if (marquee) {
+        ctx.strokeStyle = 'rgba(212, 255, 112, .95)'
+        ctx.lineWidth = 3
+        ctx.strokeRect(marquee[0], marquee[1], marquee[2] - marquee[0], marquee[3] - marquee[1])
+        ctx.fillStyle = 'rgba(212, 255, 112, .12)'
+        ctx.fillRect(marquee[0], marquee[1], marquee[2] - marquee[0], marquee[3] - marquee[1])
+      }
+    }
+    image.src = frameCapture.dataUrl
+  }, [frameCapture, width, height, marquee, configuration.gondolas, inverse])
+
+  const toPoint = (event) => {
+    const rect = canvasRef.current.getBoundingClientRect()
+    return [Math.max(0, Math.min(width, (event.clientX - rect.left) / rect.width * width)), Math.max(0, Math.min(height, (event.clientY - rect.top) / rect.height * height))]
+  }
+
+  const pointerDown = (event) => {
+    dragStart.current = toPoint(event)
+    setMarquee(dragStart.current)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const pointerMove = (event) => {
+    if (!dragStart.current) return
+    const point = toPoint(event)
+    setMarquee([dragStart.current[0], dragStart.current[1], point[0], point[1]])
+  }
+  const pointerUp = (event) => {
+    if (!dragStart.current || !forward) return
+    const start = dragStart.current
+    const point = toPoint(event)
+    dragStart.current = null
+    const x1 = Math.min(start[0], point[0])
+    const y1 = Math.min(start[1], point[1])
+    const x2 = Math.max(start[0], point[0])
+    const y2 = Math.max(start[1], point[1])
+    if (x2 - x1 < 18 || y2 - y1 < 18) { setMarquee(null); return }
+    const a = projectFloor(forward, x1 / width, y1 / height)
+    const b = projectFloor(forward, x2 / width, y2 / height)
+    setMarquee(null)
+    if (!a || !b) return
+    const x = Math.min(a[0], b[0])
+    const z = Math.min(a[1], b[1])
+    const candidateWidth = Math.abs(b[0] - a[0])
+    const candidateDepth = Math.abs(b[1] - a[1])
+    const floor = configuration.floor || {}
+    if (candidateWidth < 0.5 || candidateDepth < 0.4) return
+    if (x < -0.5 || z < -0.5 || x + candidateWidth > floor.width + 0.5 || z + candidateDepth > floor.depth + 0.5) return
+    onCandidate({ id: `d-${Date.now()}-${drawId++}`, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, width: Math.round(candidateWidth * 100) / 100, depth: Math.round(candidateDepth * 100) / 100, confidence: 1 })
+  }
+
+  return (
+    <div className="draw-video">
+      <canvas
+        ref={canvasRef}
+        onPointerDown={pointerDown}
+        onPointerMove={pointerMove}
+        onPointerUp={pointerUp}
+        onPointerCancel={() => { dragStart.current = null; setMarquee(null) }}
+      />
+      {!forward && <div className="draw-hint">Calibra la cámara (4 puntos) para habilitar el trazo y su proyección en metros.</div>}
+      <p>Arrastra sobre el frame para dibujar el rectángulo de una góndola. Al soltar se proyecta a metros con tu calibración actual y aparece como candidato.</p>
+    </div>
+  )
+}
 
 export default function PlanogramEditor({ configuration, onChange, onSave, frameCapture, onSuggest }) {
   const [selectedId, setSelectedId] = useState(configuration.gondolas[0]?.id || null)
@@ -10,6 +116,7 @@ export default function PlanogramEditor({ configuration, onChange, onSave, frame
   const [saveState, setSaveState] = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [detecting, setDetecting] = useState(false)
+  const [drawMode, setDrawMode] = useState(false)
   const [suggestError, setSuggestError] = useState('')
   const canvasRef = useRef(null)
   const pointer = useRef(null)
@@ -103,13 +210,18 @@ export default function PlanogramEditor({ configuration, onChange, onSave, frame
     setSelectedId(items[0]?.id || null)
   }
 
+  const addDrawnCandidate = (candidate) => setSuggestions((current) => [...current, candidate])
+
   return (
     <section className="planogram-editor">
       <div className="editor-toolbar">
         <div><span className="eyebrow">CONFIGURACIÓN FÍSICA DE LA SEDE</span><h2>Dibuja tu planograma</h2><p>Añade, arrastra y cambia el tamaño de cada góndola. Esta geometría se reutiliza en futuros videos.</p></div>
         <div className="floor-fields"><label>Ancho<input type="number" min="2" step="0.5" value={floor.width} onChange={(event) => changeFloor('width', event.target.value)} /><small>m</small></label><label>Fondo<input type="number" min="2" step="0.5" value={floor.depth} onChange={(event) => changeFloor('depth', event.target.value)} /><small>m</small></label></div>
-        <div className="editor-actions"><button onClick={detect} disabled={detecting}>{detecting ? 'Detectando…' : '◎ Detectar góndolas'}</button><button onClick={addGondola}>＋ Añadir góndola</button><button className="save-layout" onClick={save} disabled={saving}>{saving ? 'Guardando…' : 'Guardar plano'}</button></div>
+        <div className="editor-actions"><button onClick={detect} disabled={detecting}>{detecting ? 'Detectando…' : '◎ Detectar góndolas'}</button><button className={drawMode ? 'active' : ''} onClick={() => setDrawMode((value) => !value)}>✎ Dibujar en el frame</button><button onClick={addGondola}>＋ Añadir góndola</button><button className="save-layout" onClick={save} disabled={saving}>{saving ? 'Guardando…' : 'Guardar plano'}</button></div>
       </div>
+      {drawMode && (frameCapture
+        ? <DrawOnVideo frameCapture={frameCapture} configuration={configuration} onCandidate={addDrawnCandidate} />
+        : <div className="suggest-error">Captura primero un frame en “Calibrar cámara” para poder dibujar sobre él.</div>)}
       {suggestError && <div className="suggest-error">{suggestError}</div>}
       {saveState && <div className="suggest-error ok">{saveState}</div>}
       {suggestions.length > 0 && <div className="suggest-bar">Encontré <b>{suggestions.length}</b> góndola{suggestions.length === 1 ? '' : 's'} candidata{suggestions.length === 1 ? '' : 's'} en el frame. Revisa los contornos punteados y decídete.<button onClick={acceptSuggestions}>＋ Aceptar todas</button><button className="dismiss" onClick={() => setSuggestions([])}>Descartar</button></div>}
