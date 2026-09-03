@@ -15,7 +15,12 @@ def with_homographies(configuration: dict) -> dict:
     camera = configuration.get("camera") or {}
     source = camera.get("source_normalized")
     target = camera.get("target_meters")
-    if source and target and len(source) == 4 and len(target) == 4:
+    if (
+        source
+        and target
+        and len(source) >= 4
+        and len(target) == len(source)
+    ):
         forward, inverse = SpatialEngine.normalized_pair(camera)
         camera = {
             **camera,
@@ -39,15 +44,15 @@ class SpatialEngine:
             [[x * frame_width, y * frame_height] for x, y in camera["source_normalized"]]
         )
         target = np.float32(camera["target_meters"])
-        self.homography = cv2.getPerspectiveTransform(source, target)
+        self.homography = cv2.findHomography(source, target, method=0)[0]
 
     @staticmethod
     def normalized_pair(camera: dict) -> tuple[np.ndarray, np.ndarray]:
         """Builds (normalized image -> floor) and (floor -> normalized image) homographies."""
         source = np.float32(camera["source_normalized"])
         target = np.float32(camera["target_meters"])
-        forward = cv2.getPerspectiveTransform(source, target)
-        inverse = cv2.getPerspectiveTransform(target, source)
+        forward = cv2.findHomography(source, target, method=0)[0]
+        inverse = cv2.findHomography(target, source, method=0)[0]
         return forward, inverse
 
     def project(self, point: list[float]) -> list[float] | None:

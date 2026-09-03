@@ -1,4 +1,25 @@
+function solveLS(a, b, n) {
+  for (let col = 0; col < n; col++) {
+    let pivot = col
+    for (let row = col + 1; row < n; row++) if (Math.abs(a[row][col]) > Math.abs(a[pivot][col])) pivot = row
+    if (Math.abs(a[pivot][col]) < 1e-10) return null
+    ;[a[col], a[pivot]] = [a[pivot], a[col]]
+    ;[b[col], b[pivot]] = [b[pivot], b[col]]
+    const divisor = a[col][col]
+    for (let j = col; j < n; j++) a[col][j] /= divisor
+    b[col] /= divisor
+    for (let row = 0; row < n; row++) {
+      if (row === col) continue
+      const factor = a[row][col]
+      for (let j = col; j < n; j++) a[row][j] -= factor * a[col][j]
+      b[row] -= factor * b[col]
+    }
+  }
+  return [...b, 1]
+}
+
 export function solveHomography(pairs) {
+  if (!pairs || pairs.length < 4) return null
   const a = []
   const b = []
   pairs.forEach(([sx, sy, tx, ty]) => {
@@ -8,6 +29,20 @@ export function solveHomography(pairs) {
     b.push(-ty)
   })
   const n = 8
+  if (pairs.length === 4) return solveLS(a.map((row) => [...row]), [...b], n)
+  const ata = Array.from({ length: n }, () => Array(n).fill(0))
+  const atb = Array(n).fill(0)
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      let sum = 0
+      for (let r = 0; r < a.length; r++) sum += a[r][i] * a[r][j]
+      ata[i][j] = sum
+    }
+    let sum = 0
+    for (let r = 0; r < a.length; r++) sum += a[r][i] * b[r]
+    atb[i] = sum
+  }
+  return solveLS(ata, atb, n)
   for (let col = 0; col < n; col++) {
     let pivot = col
     for (let row = col + 1; row < n; row++) if (Math.abs(a[row][col]) > Math.abs(a[pivot][col])) pivot = row
@@ -37,13 +72,13 @@ export function projectFloor(matrix, x, z) {
 export const forwardHomography = (camera) => {
   const source = camera?.source_normalized
   const target = camera?.target_meters
-  if (!source || !target || source.length !== 4 || target.length !== 4) return null
+  if (!source || !target || source.length < 4 || target.length !== source.length) return null
   return solveHomography(source.map(([sx, sy], index) => [sx, sy, target[index][0], target[index][1]]))
 }
 
 export const inverseHomography = (camera) => {
   const source = camera?.source_normalized
   const target = camera?.target_meters
-  if (!source || !target || source.length !== 4 || target.length !== 4) return null
+  if (!source || !target || source.length < 4 || target.length !== source.length) return null
   return solveHomography(target.map(([tx, tz], index) => [tx, tz, source[index][0], source[index][1]]))
 }

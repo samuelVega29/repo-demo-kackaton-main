@@ -9,6 +9,14 @@ const project = (configuration, x, z) => {
   return [(flat[0] * x + flat[1] * z + flat[2]) / denominator, (flat[3] * x + flat[4] * z + flat[5]) / denominator]
 }
 
+const hexToRgba = (hex, alpha) => {
+  const normalized = hex.replace('#', '')
+  const full = normalized.length === 3 ? normalized.split('').map((c) => c + c).join('') : normalized
+  const num = parseInt(full, 16)
+  if (Number.isNaN(num)) return `rgba(212, 255, 112, ${alpha})`
+  return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`
+}
+
 export default function VideoOverlay({ preview, configuration, onClose }) {
   const canvasRef = useRef(null)
   const videoRef = useRef(null)
@@ -54,6 +62,7 @@ export default function VideoOverlay({ preview, configuration, onClose }) {
       }
 
       ;(config.gondolas || []).forEach((gondola) => {
+        const color = gondola.color || '#d4ff70'
         const corners = [[gondola.x, gondola.z], [gondola.x + gondola.width, gondola.z], [gondola.x + gondola.width, gondola.z + gondola.depth], [gondola.x, gondola.z + gondola.depth]]
         const pixels = corners.map(([x, z]) => pointPx(x, z)).filter(Boolean)
         if (pixels.length < 4) return
@@ -61,9 +70,9 @@ export default function VideoOverlay({ preview, configuration, onClose }) {
         ctx.moveTo(...pixels[0])
         pixels.slice(1).forEach((point) => ctx.lineTo(...point))
         ctx.closePath()
-        ctx.fillStyle = 'rgba(212, 255, 112, .16)'
+        ctx.fillStyle = hexToRgba(color, .16)
         ctx.fill()
-        ctx.strokeStyle = '#d4ff70'
+        ctx.strokeStyle = color
         ctx.lineWidth = 4
         ctx.stroke()
         ctx.fillStyle = 'rgba(6, 14, 12, .82)'

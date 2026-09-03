@@ -1,58 +1,45 @@
 import { useEffect, useRef, useState } from 'react'
+import { solveHomography, projectFloor } from '../../lib/homography'
+import LiveAlignment, { MiniMap } from './LiveAlignment'
 
-const solveHomography = (pairs) => {
-  const a = []
-  const b = []
-  pairs.forEach(([sx, sy, tx, ty]) => {
-    a.push([-sx, -sy, -1, 0, 0, 0, tx * sx, tx * sy])
-    b.push(-tx)
-    a.push([0, 0, 0, -sx, -sy, -1, ty * sx, ty * sy])
-    b.push(-ty)
-  })
-  const n = 8
-  for (let col = 0; col < n; col++) {
-    let pivot = col
-    for (let row = col + 1; row < n; row++) {
-      if (Math.abs(a[row][col]) > Math.abs(a[pivot][col])) pivot = row
-    }
-    if (Math.abs(a[pivot][col]) < 1e-10) return null
-    ;[a[col], a[pivot]] = [a[pivot], a[col]]
-    ;[b[col], b[pivot]] = [b[pivot], b[col]]
-    const divisor = a[col][col]
-    for (let j = col; j < n; j++) a[col][j] /= divisor
-    b[col] /= divisor
-    for (let row = 0; row < n; row++) {
-      if (row === col) continue
-      const factor = a[row][col]
-      for (let j = col; j < n; j++) a[row][j] -= factor * a[col][j]
-      b[row] -= factor * b[col]
-    }
-  }
-  return [...b, 1]
+const CORNERS = (floor) => [[0, 0], [floor.width ?? 1, 0], [floor.width ?? 1, floor.depth ?? 1], [0, floor.depth ?? 1]]
+
+function snapToSide([x, z], width, depth) {
+  const candidates = [
+    { dim: 'x', value: 0, norm: x / width },
+    { dim: 'x', value: width, norm: (width - x) / width },
+    { dim: 'z', value: 0, norm: z / depth },
+    { dim: 'z', value: depth, norm: (depth - z) / depth },
+  ]
+  const best = candidates.reduce((a, b) => (b.norm < a.norm ? b : a))
+  if (best.dim === 'z') return [Math.min(width, Math.max(0, x)), best.value]
+  return [best.value, Math.min(depth, Math.max(0, z))]
 }
 
-const projectFloor = (matrix, x, z) => {
-  if (!matrix) return null
-  const denominator = matrix[6] * x + matrix[7] * z + matrix[8]
-  if (!denominator) return null
-  return [(matrix[0] * x + matrix[1] * z + matrix[2]) / denominator, (matrix[3] * x + matrix[4] * z + matrix[5]) / denominator]
-}
-
-export default function CameraCalibration({ preview, configuration, onChange, onSave, onCapture, onClose }) {
+export default function CameraCalibration({ preview, frameCapture, configuration, onChange, onSave, onCapture, onClose }) {
   const floor = configuration.floor || {}
   const camera = configuration.camera || {}
-  const targets = camera.target_meters || [[0, 0], [floor.width ?? 1, 0], [floor.width ?? 1, floor.depth ?? 1], [0, floor.depth ?? 1]]
+  const cornerTargets = CORNERS(floor)
   const [points, setPoints] = useState((camera.source_normalized || [[0, 0], [1, 0], [1, 1], [0, 1]]).map((point) => [...point]))
+  const hasExtra = points.length >= 5
+  const forward4 = points.length >= 4
+    ? solveHomography(points.slice(0, 4).map(([nx, ny], index) => [nx, ny, cornerTargets[index][0], cornerTargets[index][1]]))
+    : null
+  const rawExtraFloor = (hasExtra && forward4) ? projectFloor(forward4, points[4][0], points[4][1]) : null
+  const extraFloor = rawExtraFloor ? snapToSide(rawExtraFloor, floor.width, floor.depth) : null
+  const targets = hasExtra && extraFloor ? [...cornerTargets, [extraFloor[0], extraFloor[1]]] : cornerTargets
   const [captured, setCaptured] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saveState, setSaveState] = useState({ kind: 'idle', text: '' })
+  const [selectedId, setSelectedId] = useState(null)
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const drag = useRef(-1)
 
-  const homography = (targets.length === 4 && points.length === 4)
-    ? solveHomography(targets.map(([tx, tz], index) => [tx, tz, points[index][0], points[index][1]]))
-    : null
+  const pairsForHomography = (hasExtra && extraFloor)
+    ? targets.map(([tx, tz], index) => [tx, tz, points[index][0], points[index][1]])
+    : cornerTargets.map(([tx, tz], index) => [tx, tz, points[index][0], points[index][1]])
+  const homography = points.length >= 4 ? solveHomography(pairsForHomography) : null
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -92,6 +79,7 @@ export default function CameraCalibration({ preview, configuration, onChange, on
       }
 
       ;(configuration.gondolas || []).forEach((gondola) => {
+        const color = gondola.color || '#61dec0'
         const corners = [[gondola.x, gondola.z], [gondola.x + gondola.width, gondola.z], [gondola.x + gondola.width, gondola.z + gondola.depth], [gondola.x, gondola.z + gondola.depth]]
         const pixels = corners.map(([x, z]) => toPx(x, z)).filter(Boolean)
         if (pixels.length < 4) return
@@ -99,9 +87,9 @@ export default function CameraCalibration({ preview, configuration, onChange, on
         ctx.moveTo(...pixels[0])
         pixels.slice(1).forEach((point) => ctx.lineTo(...point))
         ctx.closePath()
-        ctx.fillStyle = 'rgba(97, 222, 192, .18)'
+        ctx.fillStyle = hexToRgba(color, .18)
         ctx.fill()
-        ctx.strokeStyle = '#61dec0'
+        ctx.strokeStyle = color
         ctx.lineWidth = 3
         ctx.stroke()
         if (gondola.name) {
@@ -129,16 +117,22 @@ export default function CameraCalibration({ preview, configuration, onChange, on
         }
       }
 
-      const projected = points.map(([nx, ny]) => [nx * canvas.width, ny * canvas.height])
-      projected.forEach(([px, py], index) => {
+      const projected = targets.map(([tx, tz]) => {
+        const normalized = projectFloor(homography, tx, tz)
+        return normalized ? [normalized[0] * canvas.width, normalized[1] * canvas.height] : null
+      })
+      projected.forEach((point, index) => {
+        if (!point) return
+        const [px, py] = point
+        const isExtra = index >= 4
         ctx.beginPath()
-        ctx.arc(px, py, 16, 0, 2 * Math.PI)
+        ctx.arc(px, py, isExtra ? 13 : 16, 0, 2 * Math.PI)
         ctx.fillStyle = '#0c1714'
         ctx.fill()
-        ctx.strokeStyle = '#d4ff70'
+        ctx.strokeStyle = isExtra ? '#ff9ecb' : '#d4ff70'
         ctx.lineWidth = 3
         ctx.stroke()
-        ctx.fillStyle = '#d4ff70'
+        ctx.fillStyle = isExtra ? '#ff9ecb' : '#d4ff70'
         ctx.font = 'bold 16px ui-monospace, monospace'
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
@@ -146,7 +140,7 @@ export default function CameraCalibration({ preview, configuration, onChange, on
       })
     }
     image.src = captured.dataUrl
-  }, [captured, points, configuration, homography])
+  }, [captured, points, configuration, homography, floor.width, floor.depth])
 
   const capture = () => {
     const video = videoRef.current
@@ -193,8 +187,21 @@ export default function CameraCalibration({ preview, configuration, onChange, on
 
   const release = () => { drag.current = -1 }
 
+  const addExtraPoint = () => {
+    if (hasExtra) return
+    const floorPoint = [floor.width ?? 1, (floor.depth ?? 1) / 2]
+    const fallbackNormalized = projectFloor(homography, floorPoint[0], floorPoint[1]) || [0.9, 0.5]
+    setPoints((current) => [...current, [Math.min(1, Math.max(0, fallbackNormalized[0])), Math.min(1, Math.max(0, fallbackNormalized[1]))]])
+  }
+
+  const removeExtraPoint = () => {
+    if (!hasExtra) return
+    setPoints((current) => current.slice(0, 4))
+  }
+
   const save = async () => {
-    const next = { ...configuration, camera: { ...camera, source_normalized: points, calibration_status: 'calibrated' } }
+    const targetMeters = hasExtra && extraFloor ? [...cornerTargets, [extraFloor[0], extraFloor[1]]] : cornerTargets
+    const next = { ...configuration, camera: { ...camera, source_normalized: points, target_meters: targetMeters, calibration_status: 'calibrated' } }
     onChange(next)
     setSaving(true)
     setSaveState({ kind: 'idle', text: '' })
@@ -210,16 +217,23 @@ export default function CameraCalibration({ preview, configuration, onChange, on
 
   const restore = () => setPoints((camera.source_normalized || [[0, 0], [1, 0], [1, 1], [0, 1]]).map((point) => [...point]))
 
+  const updateGondola = (id, values) => {
+    onChange({
+      ...configuration,
+      gondolas: (configuration.gondolas || []).map((gondola) => (gondola.id === id ? { ...gondola, ...values } : gondola)),
+    })
+  }
+
   return (
     <section className="calibration-panel">
       <div className="calibration-heading">
-        <div><span className="eyebrow">CALIBRACIÓN DE CÁMARA · 4 PUNTOS</span><h3>Alinea el piso del video con el plano en metros</h3></div>
+        <div><span className="eyebrow">CALIBRACIÓN DE CÁMARA · {points.length} PUNTOS</span><h3>Alinea el piso del video con el plano en metros</h3></div>
         <button className="sheet-close-static" onClick={onClose}>×</button>
       </div>
-      <p className="calibration-help">Pausa el video donde se vea el pasillo completo y captura el frame. Luego arrastra P1…·P4 a las esquinas del piso real en el video:<b> P1</b> esquina superior-izquierda · <b>P2</b> superior-derecha · <b>P3</b> fondo-derecha · <b>P4</b> fondo-izquierda. Cuanto más separados queden los puntos, mejor se ajusta la perspectiva; la rejilla y las góndolas proyectadas confirman el mapeo en vivo.</p>
+      <p className="calibration-help">Pausa el video donde se vea el pasillo completo y captura el frame. Luego arrastra P1…·P{Math.max(4, points.length)} a las esquinas del piso real en el video:<b> P1</b> esquina superior-izquierda · <b>P2</b> superior-derecha · <b>P3</b> fondo-derecha · <b>P4</b> fondo-izquierda. Si la cámara necesita un punto extra, añade P5 y arrástralo <b>hacia un lado</b> del piso: se fija automáticamente a ese borde y te deja deslizarlo a lo largo de él para afinar la homografía en tiempo real.</p>
       {!preview
         ? <div className="calib-empty">Primero selecciona un video MP4 para capturar un frame y calibrar la cámara.</div>
-        : <><div className="calibration-grid">
+        : <>      <div className="calibration-grid">
         <div className="calibration-stage">
           <video ref={videoRef} src={preview} controls muted playsInline />
           <button className="capture-frame" onClick={capture}>＋ Capturar frame</button>
@@ -230,7 +244,21 @@ export default function CameraCalibration({ preview, configuration, onChange, on
             : <div className="calib-empty">Captura un frame para comenzar</div>}
         </div>
       </div>
+      <div className="live-alignment">
+        <div className="live-col">
+          <span className="live-label">PLANO 2D · VIDEO REAL</span>
+          <LiveAlignment frameCapture={frameCapture} configuration={configuration} interactive onMoveGondola={updateGondola} selectedId={selectedId} onSelect={setSelectedId} />
+        </div>
+        <div className="live-col">
+          <span className="live-label">MAPA · VISTA SUPERIOR</span>
+          <MiniMap configuration={configuration} interactive onMoveGondola={updateGondola} selectedId={selectedId} onSelect={setSelectedId} />
+        </div>
+      </div>
       <div className="corner-labels">{targets.map(([x, z], index) => <span key={index}>P{index + 1} → ({x}, {z}) m</span>)}</div>
+      <div className="calibration-points-control">
+        <button onClick={addExtraPoint} disabled={hasExtra}>＋ Añadir punto extra (P{points.length + 1})</button>
+        {hasExtra && <button onClick={removeExtraPoint}>－ Quitar punto extra</button>}
+      </div>
       {saveState.kind === 'ok' && <div className="calib-status ok">{saveState.text}</div>}
       {saveState.kind === 'error' && <div className="calib-status error">{saveState.text}</div>}
       <div className="calibration-actions">
@@ -240,4 +268,12 @@ export default function CameraCalibration({ preview, configuration, onChange, on
       </>}
     </section>
   )
+}
+
+function hexToRgba(hex, alpha) {
+  const normalized = hex.replace('#', '')
+  const full = normalized.length === 3 ? normalized.split('').map((c) => c + c).join('') : normalized
+  const num = parseInt(full, 16)
+  if (Number.isNaN(num)) return `rgba(97, 222, 192, ${alpha})`
+  return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`
 }
