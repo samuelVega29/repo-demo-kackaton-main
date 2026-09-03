@@ -5,7 +5,6 @@ import ProcessRail from './components/ProcessRail'
 import ShelfMatrix from './components/ShelfMatrix'
 import StoreScene from './components/StoreScene'
 import PlanogramEditor from './components/flow/PlanogramEditor'
-import PlanogramPreview3D from './components/flow/PlanogramPreview3D'
 import CameraCalibration from './components/flow/CameraCalibration'
 import VideoOverlay from './components/VideoOverlay'
 import AnalysisVideo from './components/AnalysisVideo'
@@ -98,73 +97,29 @@ function OverlayViewer({ analysis }) {
   )
 }
 
-function UploadView({ site, file, preview, chooseFile, inputRef, analyze, job, updateConfiguration, saveConfiguration, frameCapture, onFrameCapture, onSuggestGondolas }) {
+function UploadView({ site, file, preview, chooseFile, inputRef, analyze, job, updateConfiguration, saveConfiguration, frameCapture, onFrameCapture, onSuggestGondolas, planogramRef }) {
   const running = job && !['completed', 'failed'].includes(job.status)
   const [showCalibration, setShowCalibration] = useState(false)
   const [showVerify, setShowVerify] = useState(false)
-  const [showPreview3D, setShowPreview3D] = useState(false)
   const calibrationLabel = site.configuration.camera.calibration_status === 'uncalibrated' ? 'sin calibrar' : site.configuration.camera.calibration_status
-
-  const currentStep = file ? (frameCapture ? 3 : 2) : 1
-  const steps = [
-    ['Video', 'Selecciona el MP4'],
-    ['Calibrar y capturar', 'Alinea el piso'],
-    ['Dibujar góndolas', 'Define el plano'],
-    ['Ver modelo 3D', 'Vista previa'],
-    ['Analizar', 'Corre el análisis'],
-  ]
-  const stepState = (index) => {
-    if (index < currentStep) return 'done'
-    if (index === currentStep) return 'active'
-    return 'pending'
-  }
-
   return (
     <section className="upload-workspace">
       <div className="workspace-intro"><div><span className="eyebrow">03 · NUEVO ANÁLISIS</span><h1>Observa el espacio<br /><em>en movimiento.</em></h1></div><p>{site.city} · {site.name}<br />Calibración: <b>{calibrationLabel}</b></p></div>
-
-      <div className="flow-steps" aria-label="Pasos del flujo">
-        {steps.map(([label, help], index) => <div className={`flow-step ${stepState(index)}`} key={label}><span className="flow-node"><b>{index + 1}</b></span><span className="flow-label">{label}<small>{help}</small></span></div>)}
-      </div>
-
-      <div className="step-section">
-        <div className="section-heading"><div><span className="eyebrow">PASO 1 · VIDEO</span><h3>Selecciona el video del piso</h3><p>Sube un MP4 con cámara fija. De este video capturarás el frame para calibrar.</p></div></div>
-        <div className="step-video-grid">
-          <div className="video-preview step-video">{preview ? <video src={preview} controls playsInline /> : <div><span>CAMERA FEED</span><p>La vista previa aparecerá aquí</p></div>}<i className="scan-line" /></div>
-          <div className="step-video-actions">
-            <button className={`drop-zone ${file ? 'has-file' : ''}`} onClick={() => inputRef.current?.click()}><input ref={inputRef} type="file" accept="video/mp4,.mp4" hidden onChange={(event) => chooseFile(event.target.files[0])} /><span className="upload-icon">＋</span><strong>{file?.name || 'Seleccionar video MP4'}</strong><small>{file ? `${(file.size / 1048576).toFixed(1)} MB · listo` : 'Desde tu computador o celular'}</small></button>
-            <div className="configuration-summary"><span><b>{site.configuration.floor.width}×{site.configuration.floor.depth}m</b>Piso configurado</span><span><b>{site.configuration.zones.length}</b>Zonas</span><span><b>{site.configuration.gondolas.length}</b>Góndolas</span></div>
-          </div>
-        </div>
-      </div>
-
-      <div className="step-section">
-        <div className="section-heading"><div><span className="eyebrow">PASO 2 · CALIBRAR Y CAPTURAR FRAME</span><h3>Alinea el piso y captura el frame</h3><p>Arrastra los puntos P1–P4 a las esquinas del piso real y captura el frame que usarás para dibujar.</p></div>
-        <div className="tool-callouts"><button onClick={() => setShowCalibration((value) => !value)} className={showCalibration ? 'active' : ''}>◈ Calibrar cámara</button><button onClick={() => setShowVerify((value) => !value)} className={showVerify ? 'active' : ''}>⌖ Verificar alineación</button></div></div>
-        {showCalibration && <CameraCalibration preview={preview} frameCapture={frameCapture} configuration={site.configuration} onChange={updateConfiguration} onSave={saveConfiguration} onCapture={onFrameCapture} onClose={() => setShowCalibration(false)} />}
-        {showVerify && <VideoOverlay preview={preview} configuration={site.configuration} onClose={() => setShowVerify(false)} />}
-        {!preview && <div className="suggest-error">Primero selecciona un video (Paso 1) para poder calibrar y capturar el frame.</div>}
-      </div>
-
-      <div className="step-section">
-        <div className="section-heading"><div><span className="eyebrow">PASO 3 · DIBUJAR GÓNDOLAS</span><h3>Define el planograma</h3><p>Añade góndolas manualmente, haz clic en 4 esquinas sobre el frame o usa la detección automática.</p></div></div>
-        <PlanogramEditor configuration={site.configuration} onChange={updateConfiguration} onSave={saveConfiguration} frameCapture={frameCapture} onSuggest={onSuggestGondolas} />
-      </div>
-
-      <div className="step-section preview-3d-section">
-        <div className="section-heading"><div><span className="eyebrow">PASO 4 · VISTA 3D</span><h3>Revisa el modelo en 3D sin analizar</h3><p>Visualiza el plano actual de la tienda, sus góndolas y productos en 3D antes de correr el análisis.</p></div><button className="primary-button-inline" onClick={() => setShowPreview3D((value) => !value)}>{showPreview3D ? 'Ocultar modelo 3D' : 'Ver modelo 3D'} ▦</button></div>
-        {showPreview3D && <PlanogramPreview3D configuration={site.configuration} />}
-      </div>
-
-      <div className="step-section">
-        <div className="section-heading"><div><span className="eyebrow">PASO 5 · ANALIZAR</span><h3>Corre el análisis</h3><p>Al analizar se vuelve a guardar el plano y se procesa el video completo (YOLO → ByteTrack → métricas).</p></div></div>
-        <div className="step-analyze">
+      {site.configuration.camera.calibration_status === 'uncalibrated' && <div className="calibration-warning"><b>Cámara sin calibrar</b><span>Puedes configurar y guardar el planograma, pero la proyección en metros será aproximada hasta relacionar cuatro puntos del video con el piso real.</span></div>}
+      <div className="tool-callouts"><button onClick={() => setShowCalibration((value) => !value)} className={showCalibration ? 'active' : ''}>◈ Calibrar cámara</button><button onClick={() => setShowVerify((value) => !value)} className={showVerify ? 'active' : ''}>⌖ Verificar alineación</button></div>
+      {showCalibration && <CameraCalibration preview={preview} configuration={site.configuration} onChange={updateConfiguration} onSave={saveConfiguration} onCapture={onFrameCapture} onClose={() => setShowCalibration(false)} />}
+      {showVerify && <VideoOverlay preview={preview} configuration={site.configuration} onClose={() => setShowVerify(false)} />}
+      <PlanogramEditor ref={planogramRef} configuration={site.configuration} onChange={updateConfiguration} onSave={saveConfiguration} frameCapture={frameCapture} onSuggest={onSuggestGondolas} />
+      <div className="upload-grid">
+        <div className="upload-controls">
+          <span className="field-label">VIDEO MP4 · CÁMARA CONFIGURADA</span>
+          <button className={`drop-zone ${file ? 'has-file' : ''}`} onClick={() => inputRef.current?.click()}><input ref={inputRef} type="file" accept="video/mp4,.mp4" hidden onChange={(event) => chooseFile(event.target.files[0])} /><span className="upload-icon">＋</span><strong>{file?.name || 'Seleccionar video MP4'}</strong><small>{file ? `${(file.size / 1048576).toFixed(1)} MB · listo` : 'Desde tu computador o celular'}</small></button>
+          <div className="configuration-summary"><span><b>{site.configuration.floor.width}×{site.configuration.floor.depth}m</b>Piso configurado</span><span><b>{site.configuration.zones.length}</b>Zonas</span><span><b>{site.configuration.gondolas.length}</b>Góndolas</span></div>
           <button className="primary-button" disabled={!file || running} onClick={analyze}>{running ? 'Procesando…' : 'Analizar video'}<b>→</b></button>
-          {!file && <span className="analyze-hint">Sube un video en el Paso 1 para habilitar el análisis.</span>}
           {job && <div className={`job-progress ${job.status === 'failed' ? 'error' : ''}`} aria-live="polite"><div><span>{job.message}</span><b>{job.progress}%</b></div><progress value={job.progress} max="100" /></div>}
         </div>
+        <div className="video-preview">{preview ? <video src={preview} controls playsInline /> : <div><span>CAMERA FEED</span><p>La vista previa aparecerá aquí</p></div>}<i className="scan-line" /></div>
       </div>
-
       <ProcessRail stage={job?.stage} progress={job?.progress} running={running} />
     </section>
   )
@@ -215,6 +170,7 @@ export default function App() {
   const inputRef = useRef(null)
   const siteRef = useRef(site)
   siteRef.current = site
+  const planogramRef = useRef(null)
 
   useEffect(() => { if (user) api('/api/retailers').then(setRetailers).catch(() => logout()) }, [user])
   useEffect(() => { if (retailer) api(`/api/retailers/${retailer.id}/sites`).then(setSites) }, [retailer])
@@ -238,7 +194,10 @@ export default function App() {
     const body = new FormData(); body.append('site_id', site.id); body.append('video', file)
     setJob({ status: 'uploading', stage: 'upload', progress: 0, message: 'Guardando configuración espacial…' })
     try {
-      await saveConfiguration()
+      // Cualquier góndola dibujada/detectada que no se aceptó a mano entra aquí,
+      // así el análisis nunca corre contra un plano incompleto.
+      const flushed = planogramRef.current?.flushPendingCandidates?.()
+      await saveConfiguration(flushed)
       setJob({ status: 'uploading', stage: 'upload', progress: 0, message: 'Guardando MP4…' })
       const created = await api('/api/analyses', { method: 'POST', body })
       setJob({ id: created.id, status: 'queued', stage: 'upload', progress: 1, message: 'Video recibido' })
@@ -271,7 +230,7 @@ export default function App() {
       <Header user={user} logout={logout} retailer={retailer} site={site} goHome={goHome} />
       {!retailer && <RetailerPicker retailers={retailers} onSelect={setRetailer} />}
       {retailer && !site && <SitePicker retailer={retailer} sites={sites} onSelect={setSite} onBack={() => setRetailer(null)} onCreate={createSite} />}
-      {site && !job?.result && <UploadView site={site} file={file} preview={preview} chooseFile={chooseFile} inputRef={inputRef} analyze={analyze} job={job} updateConfiguration={updateConfiguration} saveConfiguration={saveConfiguration} frameCapture={frameCapture} onFrameCapture={handleFrameCapture} onSuggestGondolas={suggestGondolas} />}
+      {site && !job?.result && <UploadView site={site} file={file} preview={preview} chooseFile={chooseFile} inputRef={inputRef} analyze={analyze} job={job} updateConfiguration={updateConfiguration} saveConfiguration={saveConfiguration} frameCapture={frameCapture} onFrameCapture={handleFrameCapture} onSuggestGondolas={suggestGondolas} planogramRef={planogramRef} />}
       {job?.result && <ResultsView analysis={job} mode={mode} setMode={setMode} selectedId={selectedId} setSelectedId={setSelectedId} closeDetail={() => setSelectedId(null)} />}
     </main>
   )

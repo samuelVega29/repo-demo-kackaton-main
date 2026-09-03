@@ -5,6 +5,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import cv2
+import numpy as np
 
 from ..database import SessionLocal
 from ..models import Analysis, Site
@@ -12,6 +13,116 @@ from .detector import PersonDetector
 from .heatmaps import create_floor_heatmap, overlay_heatmap_on_frame
 from .interaction import InteractionEngine
 from .spatial import SpatialEngine, with_homographies
+from .track_stab import TrackStabilizer
+from .video_utils import detect_black_bars
+
+
+# Keypoint index → estimated height fraction (0=floor, 1=standing height ~1.75m)
+# Used when we have pose keypoints to project them into 3D floor space.
+KEYPOINT_HEIGHT_FRACTION: dict[int, float] = {
+    0: 0.93,   # nose
+    1: 0.94,   # left_eye
+    2: 0.94,   # right_eye
+    3: 0.91,   # left_ear
+    4: 0.91,   # right_ear
+    5: 0.78,   # left_shoulder
+    6: 0.78,   # right_shoulder
+    7: 0.62,   # left_elbow
+    8: 0.62,   # right_elbow
+    9: 0.48,   # left_wrist
+    10: 0.48,  # right_wrist
+    11: 0.53,  # left_hip
+    12: 0.53,  # right_hip
+    13: 0.28,  # left_knee
+    14: 0.28,  # right_knee
+    15: 0.04,  # left_ankle
+    16: 0.04,  # right_ankle
+}
+
+STANDING_HEIGHT_M = 1.75
+
+
+def project_keypoints_to_3d(
+    keypoints: list[list[float] | None] | None,
+    image_point: list[float],
+    bbox: list[float],
+    spatial: SpatialEngine,
+) -> list[list[float] | None] | None:
+    """
+    Projects 2D pose keypoints into 3D floor space using the floor homography as the base.
+
+    The floor homography (4 visual clicks) maps the feet of the person to the real floor
+    plane [x, z, 0]. Each keypoint's *height* is derived from its vertical position inside
+    the detection box, and its horizontal [x, z] position is lifted orthogonally from the
+    floor along that same ground plane. This is the "raise a column from the floor" model:
+    no separate camera-angle model is required, only the homography + the box proportions.
+
+    Returns None if no keypoints available.
+    """
+    if not keypoints:
+        return None
+
+    x1, y1, x2, y2 = bbox
+    bbox_height = y2 - y1
+    bbox_width = max(1.0, x2 - x1)
+    if bbox_height <= 0:
+        return None
+
+    cx = (x1 + x2) / 2
+    # Feet ground point (bottom-center of box) through the floor homography -> [x, z] at height 0.
+    feet_floor = spatial.project([cx, y2]) or spatial.project([image_point[0], image_point[1]])
+    if feet_floor is None:
+        return None
+    feet_x, feet_z = feet_floor
+
+    # Head "shadow" projected onto the floor plane (top-center of box). Because the head is
+    # higher, its back-projection lands further along the floor plane; this gives the camera
+    # tilt so that raising the body reads diagonally instead of straight up.
+    head_floor = spatial.project([cx, y1]) or feet_floor
+    head_x, head_z = head_floor
+
+    # Real-world standing height (meters) that the full box represents at this depth.
+    standing_m = STANDING_HEIGHT_M
+
+    projected = []
+    for idx, kp in enumerate(keypoints):
+        if kp is None:
+            projected.append(None)
+            continue
+
+        kp_x, kp_y = kp[0], kp[1]
+        # Fraction of the box height this keypoint sits at, 1=top (head) -> 0=bottom (feet).
+        fraction = max(0.0, min(1.0, (y2 - kp_y) / bbox_height))
+
+        # Horizontal placement: blend from feet-horizon to head-horizon so off-axis keypoints
+        # (hands to the side) move with body depth, and add lateral offset from box center.
+        lateral = (kp_x - cx) / bbox_width  # -1..1 relative to the body width
+        x = head_x + (feet_x - head_x) * fraction + lateral * (bbox_width / bbox_height) * 0.35 * standing_m
+        z = head_z + (feet_z - head_z) * fraction
+
+        height_m = fraction * standing_m
+        projected.append([round(x, 3), round(z, 3), round(height_m, 3)])
+
+    return projected
+
+
+def project_keypoints_to_3d_v2(
+    keypoints: list[list[float] | None] | None,
+    image_point: list[float],
+    bbox: list[float],
+    spatial: SpatialEngine,
+) -> list[list[float] | None] | None:
+    """
+    Projects 2D pose keypoints into 3D floor space from the floor homography.
+
+    The floor homography (set visually with 4 clicks on the video) is always the base. The
+    "3D" part only raises each keypoint vertically from that floor plane according to its
+    position inside the detection box — a straight column of the standing person. No separate
+    camera-angle model is required, so this always works whenever pose keypoints are present.
+
+    Returns None if no keypoints available.
+    """
+    return project_keypoints_to_3d(keypoints, image_point, bbox, spatial)
 
 
 def update_analysis(analysis_id: str, **values) -> None:
@@ -61,9 +172,39 @@ def run_analysis(analysis_id: str) -> None:
             raise ValueError("El video no contiene FPS, duración o resolución válidos")
 
         update_analysis(analysis_id, stage="model", progress=5, message="Cargando YOLO y ByteTrack")
-        detector = PersonDetector()
+        # Try pose model first; fall back to detection-only if unavailable
+        try:
+            detector = PersonDetector(detection_only=False)
+            has_pose = True
+        except Exception:
+            detector = PersonDetector(detection_only=True)
+            has_pose = False
+
+        # Detect black bars only to remember where the "real" content is, so detections that
+        # land inside the black bars (where there is no real person) can be ignored. We do NOT
+        # crop the frame or adjust the calibration: the user calibrates over the video exactly
+        # as it is shown, so cropping would misalign every overlay.
+        capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        ret, first_frame = capture.read()
+        if ret:
+            bars_info = detect_black_bars(first_frame)
+            if bars_info["has_bars"]:
+                update_analysis(
+                    analysis_id,
+                    stage="preprocessing",
+                    progress=7,
+                    message=f"Márgenes negros detectados: {bars_info['top']}/{bars_info['bottom']}/{bars_info['left']}/{bars_info['right']}px - se ignorarán las detecciones en los márgenes"
+                )
+                configuration = {
+                    **configuration,
+                    "camera": {**configuration["camera"], "crop_info": bars_info},
+                }
+            capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
         spatial = SpatialEngine(configuration, width, height)
         interactions = InteractionEngine(configuration)
+        # Stabilizer merges fragmented ByteTrack ids into stable people identities.
+        track_stabilizer = TrackStabilizer()
         result_dir = Path(__file__).resolve().parents[2] / "data" / "results" / analysis_id
         result_dir.mkdir(parents=True, exist_ok=True)
 
@@ -92,26 +233,48 @@ def run_analysis(analysis_id: str) -> None:
             "interaction": [[] for _ in range(slice_count)],
         }
 
+        # Black-bar exclusion zone (pixels where there is no real content). Detections whose
+        # bottom-center lands inside these bars are ignored - they are spurious/stretched.
+        crop_info = configuration["camera"].get("crop_info")
+        bar_left = crop_info["left"] if crop_info and crop_info["has_bars"] else 0
+        bar_right = (width - crop_info["right"]) if crop_info and crop_info["has_bars"] else width
+        bar_top = crop_info["top"] if crop_info and crop_info["has_bars"] else 0
+        bar_bottom = (height - crop_info["bottom"]) if crop_info and crop_info["has_bars"] else height
+
         frame_index = 0
         while True:
             ok, frame = capture.read()
             if not ok:
                 break
+
             prediction, detections = detector.track(frame)
             timestamp = frame_index / fps
             dt = 1 / fps
             active_this_frame = set()
             sample_detections = []
+            # First pass: project floor points for every valid detection, skipping any whose
+            # feet fall inside the black bars (those have no real content).
+            valid_detections = []
             for detection in detections:
+                feet_x, feet_y = detection["image_point"]
+                if not (bar_left < feet_x < bar_right and bar_top < feet_y < bar_bottom):
+                    continue
                 floor_point = spatial.project(detection["image_point"])
                 if not floor_point:
                     continue
                 detection["floor_point"] = floor_point
+                valid_detections.append(detection)
+            # Second pass: unify fragmented ByteTrack ids into stable people identities
+            # and rewrite track_id so all downstream state is keyed by the stable person.
+            track_stabilizer.update(valid_detections, timestamp, frame_index)
+            for detection in valid_detections:
+                detection["track_id"] = detection["person_id"]
+            for detection in valid_detections:
                 behavior = interactions.observe(detection, timestamp, dt, height)
                 total_detections += 1
                 active_this_frame.add(detection["track_id"])
                 track_frames[detection["track_id"]] += 1
-                zone = spatial.zone_at(floor_point)
+                zone = spatial.zone_at(detection["floor_point"])
                 if zone:
                     zone_dwell[zone["id"]] += dt
                 if frame_index % payload_every == 0:
@@ -126,6 +289,10 @@ def run_analysis(analysis_id: str) -> None:
                         "track_id": detection["track_id"], "bbox": detection["bbox"],
                         "confidence": detection["confidence"], "floor_point": floor_point,
                         "state": behavior["state"], "gondola_id": behavior["gondola_id"],
+                        "keypoints_3d": project_keypoints_to_3d_v2(
+                            detection.get("keypoints"), detection["image_point"],
+                            detection["bbox"], spatial,
+                        ) if has_pose else None,
                     })
                 if behavior["interaction"]:
                     interaction_points.append({"x": floor_point[0], "z": floor_point[1], "weight": 1, "t": round(timestamp, 2)})
@@ -188,6 +355,13 @@ def run_analysis(analysis_id: str) -> None:
             slices_meta.append(entry)
 
         gondolas = interactions.results()
+
+        # Add height and tier_heights to gondola results from configuration
+        gondola_config = {item["id"]: item for item in configuration.get("gondolas", [])}
+        for gondola in gondolas:
+            config = gondola_config.get(gondola["id"], {})
+            gondola["height"] = config.get("height", 1.45)
+            gondola["tier_heights"] = config.get("tier_heights", [0.25, 0.73, 1.20])
         zones = [
             {**zone, "dwell_seconds": round(zone_dwell[zone["id"]], 2)}
             for zone in configuration.get("zones", [])
@@ -233,7 +407,7 @@ def run_analysis(analysis_id: str) -> None:
         result = {
             "site": {"id": site.id, "name": site.name, "city": site.city, "configuration": with_homographies(configuration)},
             "video": {"fps": round(fps, 2), "duration_seconds": round(total_frames / fps, 2), "width": width, "height": height, "total_frames": total_frames, "processed_frames": frame_index},
-            "model": {"detector": "YOLO11n COCO person", "tracker": "ByteTrack", "privacy": "temporary_ids_only", "custom_behavior_model": False},
+            "model": {"detector": "YOLO11n COCO person", "tracker": "ByteTrack", "privacy": "temporary_ids_only", "custom_behavior_model": False, "has_pose": has_pose},
             "metrics": {
                 "people_detected": len(valid_track_ids),
                 "tracked_presences": len(valid_track_ids),

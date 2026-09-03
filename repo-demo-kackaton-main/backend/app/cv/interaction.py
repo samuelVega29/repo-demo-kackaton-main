@@ -57,6 +57,21 @@ class InteractionEngine:
             speed = math.dist(point, previous[0]) / (timestamp - previous[1])
         self.track_motion[track_id] = (point, timestamp)
 
+        # Extract3D keypoint data for shelf-level detection if available
+        keypoints_3d = detection.get("keypoints_3d")
+        wrist_height_3d = None
+        if keypoints_3d:
+            # Use wrist keypoints (indices 9 and 10) for height estimation
+            left_wrist = keypoints_3d[9] if len(keypoints_3d) > 9 and keypoints_3d[9] else None
+            right_wrist = keypoints_3d[10] if len(keypoints_3d) > 10 and keypoints_3d[10] else None
+            # Get the higher wrist (closer to interaction)
+            if left_wrist and right_wrist:
+                wrist_height_3d = max(left_wrist[2], right_wrist[2])
+            elif left_wrist:
+                wrist_height_3d = left_wrist[2]
+            elif right_wrist:
+                wrist_height_3d = right_wrist[2]
+
         if not self.configuration.get("gondolas"):
             return {"state": "PASS", "speed": round(speed, 3), "gondola_id": None, "interaction": False}
 
@@ -91,10 +106,29 @@ class InteractionEngine:
         data["visitors"].add(track_id)
         data["dwell_seconds"] += dt
         data["states"][state_name] += 1
-        relative_x = (point[0] - nearest["x"]) / nearest["width"]
+        local_u, _ = SpatialEngine.local_offset(point, nearest)
+        relative_x = (local_u + nearest["width"] / 2) / nearest["width"]
         column = min(2, max(0, int(relative_x * 3)))
-        # Person-only YOLO cannot confirm a touched shelf level; this is a low-confidence body-position proxy.
-        row = min(2, max(0, int((detection["body_center_y"] / frame_height) * 3)))
+
+        # Determine shelf level (row) - use3D height if available, fallback to body proxy
+        row = 0  # default to bottom shelf
+        if wrist_height_3d is not None:
+            # Use3D wrist height to determine shelf level based on tier_heights
+            tier_heights = nearest.get("tier_heights", [0.25, 0.73, 1.20])
+            shelf_height = nearest.get("height", 1.45)
+
+            # Find which tier the wrist is closest to
+            min_distance = float("inf")
+            best_row = 0
+            for i, tier_height in enumerate(tier_heights):
+                distance = abs(wrist_height_3d - tier_height)
+                if distance < min_distance:
+                    min_distance = distance
+                    best_row = i
+            row = best_row
+        else:
+            # Fallback: low-confidence body-position proxy
+            row = min(2, max(0, int((detection["body_center_y"] / frame_height) * 3)))
         cell = (track_id, row, column)
         if cell not in data["seen_cells"]:
             data["seen_cells"].add(cell)
