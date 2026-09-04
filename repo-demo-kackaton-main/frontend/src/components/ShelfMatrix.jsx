@@ -1,7 +1,7 @@
 const rows = ['Superior', 'Media', 'Inferior']
 const columns = ['Izquierda', 'Centro', 'Derecha']
 
-export default function ShelfMatrix({ gondola, mode, events = [] }) {
+export default function ShelfMatrix({ gondola, mode, events = [], pickupEvents = [] }) {
   if (!gondola) {
     return <div className="grid min-h-64 place-items-center p-8 text-center text-sm leading-7 text-slate-500">Selecciona una gondola en el planograma para inspeccionar su actividad.</div>
   }
@@ -11,12 +11,14 @@ export default function ShelfMatrix({ gondola, mode, events = [] }) {
     traffic: `${gondola.traffic} visitantes`,
     dwell: `${gondola.dwell_seconds} s`,
     interaction: `${gondola.interactions} eventos`,
+    pickup: `${gondola.pickups ?? 0} pick-ups`,
   }
   const peak = Math.max(...matrix.flat(), 1)
   const cellTotal = (gondola.products || []).flat().length || 9
   const tagged = (gondola.products || []).flat().filter(Boolean).length
   const completeness = Math.round(tagged / cellTotal * 100)
   const gondolaEvents = events.filter((event) => event.gondola_id === gondola.id)
+  const gondolaPickups = pickupEvents.filter((event) => event.gondola_id === gondola.id)
 
   return (
     <section className="p-5">
@@ -54,14 +56,18 @@ export default function ShelfMatrix({ gondola, mode, events = [] }) {
         <span><b>{gondola.dwell_avg_seconds ?? 0}s</b>perman. media</span>
         <span><b>{gondola.engagement_avg_seconds ?? 0}s</b>atencion media</span>
         <span><b>{gondolaEvents.length}</b>interacciones</span>
+        <span><b>{gondola.pickups ?? 0}</b>pick-ups</span>
       </div>
-
+      {mode === 'pickup' && <div className="mt-4 grid gap-1 border border-white/10 bg-[#0c1714] p-3 text-[10px] text-slate-400 sm:grid-cols-2 [&_b]:text-lime-300">
+        <span><b>{gondolaPickups.length}</b> pick-ups registrados en el video</span>
+        <span><b>{gondola.pickup_ratio_percent ?? 0}%</b> de las interacciones resultaron en pick-up probable</span>
+      </div>}
       <div className="mt-4 flex items-center gap-3 text-[10px] uppercase text-slate-500">
         <span>Etiquetado de productos</span>
         <div className="h-2 flex-1 overflow-hidden border border-slate-700 bg-[#12211c]"><i className="block h-full bg-lime-300" style={{ width: `${completeness}%` }} /></div>
         <b className="font-mono text-lime-300">{tagged}/{cellTotal}</b>
       </div>
-      <p className="mt-5 text-xs leading-6 text-slate-500">Valores absolutos del video. El nivel vertical es una inferencia de baja confianza hasta disponer del modelo de interaccion propio.</p>
+      <p className="mt-5 text-xs leading-6 text-slate-500">Valores absolutos del video. El nivel vertical es una inferencia de baja confianza hasta disponer del modelo de interaccion propio. Los pick-ups son una aproximacion del alcance de la mano hacia la gondola (heuristica de baja confianza), no una confirmacion de compra.</p>
     </section>
   )
 }

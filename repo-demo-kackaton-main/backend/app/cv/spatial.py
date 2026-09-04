@@ -81,3 +81,16 @@ class SpatialEngine:
         dx = max(gondola["x"] - x, 0, x - (gondola["x"] + gondola["width"]))
         dz = max(gondola["z"] - z, 0, z - (gondola["z"] + gondola["depth"]))
         return math.hypot(dx, dz)
+
+    @staticmethod
+    def nearest_point_on_gondola(point: list[float], gondola: dict) -> list[float]:
+        """Clamps a 2D point to the closest point on the gondola AABB (in floor meters).
+
+        If the point is inside the rectangle it is returned unchanged; otherwise the
+        nearest boundary point is returned. This anchors the reported pick-up location
+        to the gondola instead of leaving the (often distorted) raw hand projection.
+        """
+        x, z = point
+        cx = min(max(x, gondola["x"]), gondola["x"] + gondola["width"])
+        cz = min(max(z, gondola["z"]), gondola["z"] + gondola["depth"])
+        return [round(float(cx), 3), round(float(cz), 3)]

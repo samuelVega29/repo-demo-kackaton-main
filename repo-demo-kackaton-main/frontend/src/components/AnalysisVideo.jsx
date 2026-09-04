@@ -41,6 +41,7 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
   const floor = configuration.floor || {}
   const duration = result.video.duration_seconds || 0
   const events = result.interaction_events_log || []
+  const pickupEvents = result.pickup_events_log || []
   const histogram = result.interaction_histogram
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
@@ -52,8 +53,11 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
   const [showHeat, setShowHeat] = useState(false)
+  const [showPickups, setShowPickups] = useState(false)
   const [heatMatrix, setHeatMatrix] = useState(null)
   const [heatDims, setHeatDims] = useState(null)
+  const showPickupsRef = useRef(showPickups)
+  showPickupsRef.current = showPickups
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -112,6 +116,35 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
       ;(config.zones || []).forEach((zone) => {
         quad(zone.polygon || [], 'rgba(97, 222, 192, .05)', 'rgba(97, 222, 192, .4)', 2, [4, 4])
       })
+
+      if (matrix && showPickupsRef.current) {
+        const cur = video.currentTime || 0
+        const windowS = 1.2
+        ;(result.pickup_events_log || []).forEach((ev) => {
+          if (Math.abs(ev.t - cur) > windowS) return
+          const pos = px(ev.x, ev.z)
+          if (!pos) return
+          const [pX, pY] = pos
+          ctx.lineWidth = 2
+          ctx.strokeStyle = '#ffb020'
+          ctx.beginPath()
+          ctx.moveTo(pX - 6, pY)
+          ctx.lineTo(pX + 6, pY)
+          ctx.moveTo(pX, pY - 6)
+          ctx.lineTo(pX, pY + 6)
+          ctx.stroke()
+          ctx.beginPath()
+          ctx.arc(pX, pY, 3, 0, Math.PI * 2)
+          ctx.fillStyle = '#ff8a3d'
+          ctx.fill()
+          ctx.fillStyle = 'rgba(6, 14, 12, .85)'
+          const label = `pick ${ev.row}/${ev.column} · ${ev.gondola_name || ''}`.trim()
+          ctx.font = '12px ui-monospace, monospace'
+          ctx.fillRect(pX + 8, pY - 10, ctx.measureText(label).width + 10, 18)
+          ctx.fillStyle = '#ffb020'
+          ctx.fillText(label, pX + 14, pY + 3)
+        })
+      }
     }
 
     const loop = () => {
@@ -200,6 +233,7 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
             <span>/</span>
             <b>{formatTime(duration)}</b>
             <label className="ml-auto inline-flex cursor-pointer select-none items-center gap-2 text-xs text-slate-300 [&_input]:accent-lime-300"><input type="checkbox" checked={showHeat} onChange={(event) => setShowHeat(event.target.checked)} />Calor superpuesto</label>
+            <label className="inline-flex cursor-pointer select-none items-center gap-2 text-xs text-slate-300 [&_input]:accent-lime-300"><input type="checkbox" checked={showPickups} onChange={(event) => setShowPickups(event.target.checked)} />Ver pick-ups</label>
           </div>
           <div className="relative px-4 pb-2 pt-3 [&_input]:w-full [&_input]:accent-lime-300">
             <input type="range" min="0" max={Math.max(1, duration)} step="0.1" value={Math.min(time, duration)} onChange={(event) => seek(Number(event.target.value))} />
@@ -230,6 +264,20 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
                   <i>→</i>
                 </button>))}</div>
               : <p className="text-xs leading-6 text-slate-500">Lista de eventos vacía: se completa al inferir interacciones de proximidad, velocidad y tiempo frente a las góndolas.</p>}
+          </div>
+          <div className="interaction-heading pickup">
+            <span className="eyebrow">PICK-UPS PROBABLES</span>
+            <b>{pickupEvents.length}</b>
+          </div>
+          <div className="interaction-list">
+            {pickupEvents.length > 0
+              ? <div className="interaction-scroll">{[...pickupEvents].reverse().map((event, index) => (
+                <button className="interaction-event pickup" key={`${event.t}-${index}`} onClick={() => seekToEvent(event)}>
+                  <b>{formatTime(event.t)}</b>
+                  <span>{event.gondola_name}</span>
+                  <i>→</i>
+                </button>))}</div>
+              : <p className="interaction-empty">Sin pick-ups inferidos. Esta señal se activa cuando la mano estimada del visitante se acerca a la góndola durante un engagement.</p>}
           </div>
         </aside>
       </div>

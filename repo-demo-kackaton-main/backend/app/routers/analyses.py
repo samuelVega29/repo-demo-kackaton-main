@@ -119,10 +119,10 @@ def artifact(
     if not analysis or not can_access(user, site):
         raise HTTPException(status_code=404, detail="Artefacto no encontrado")
     safe_name = Path(filename).name
-    base_ok = safe_name in {"traffic.png", "dwell.png", "interaction.png"}
-    overlay_ok = re.fullmatch(r"overlay_(traffic|dwell|interaction)_[1-9]\d*\.jpg", safe_name)
+    base_ok = safe_name in {"traffic.png", "dwell.png", "interaction.png", "pickup.png"}
+    overlay_ok = re.fullmatch(r"overlay_(traffic|dwell|interaction|pickup)_[1-9]\d*\.jpg", safe_name)
     frame_ok = re.fullmatch(r"frame_[1-9]\d*\.jpg", safe_name)
-    time_ok = re.fullmatch(r"time_\d+_(traffic|dwell|interaction)\.png", safe_name)
+    time_ok = re.fullmatch(r"time_\d+_(traffic|dwell|interaction|pickup)\.png", safe_name)
     if safe_name != filename or not (base_ok or overlay_ok or frame_ok or time_ok):
         raise HTTPException(status_code=404, detail="Artefacto no encontrado")
     path = RESULT_DIR / analysis_id / safe_name

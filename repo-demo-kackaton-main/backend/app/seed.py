@@ -42,7 +42,7 @@ SITE_CONFIGURATION = {
             "products": [["Salsas", "Especias", "Conservas"], ["Arroz", "Pasta", "Granos"], ["Harinas", "Azúcar", "Aceites"]],
         },
     ],
-    "thresholds": {"approach_m": 1.5, "engaged_m": 0.8, "engaged_seconds": 2.0, "interaction_seconds": 4.0, "minimum_track_seconds": 2.0},
+    "thresholds": {"approach_m": 1.5, "engaged_m": 0.8, "engaged_seconds": 2.0, "interaction_seconds": 4.0, "minimum_track_seconds": 2.0, "pickup_reach_m": 0.5, "pickup_min_seconds": 0.6, "pickup_cooldown_s": None},
 }
 
 

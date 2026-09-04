@@ -4,7 +4,7 @@ import { Canvas } from '@react-three/fiber'
 import { Grid, Line, OrbitControls, Text, useTexture } from '@react-three/drei'
 import { artifactUrl } from '../api/client'
 
-const metricField = { traffic: 'traffic', dwell: 'dwell_seconds', interaction: 'interactions' }
+const metricField = { traffic: 'traffic', dwell: 'dwell_seconds', interaction: 'interactions', pickup: 'pickups' }
 
 const productRows = ['Superior', 'Media', 'Inferior']
 const productColumns = ['Izquierda', 'Centro', 'Derecha']

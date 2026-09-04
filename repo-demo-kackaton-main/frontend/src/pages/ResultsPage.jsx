@@ -11,6 +11,7 @@ export default function ResultsPage({ analysis, mode, setMode, selectedId, setSe
   const selected = result.gondolas.find((item) => item.id === selectedId)
   const heatmapUrl = artifactUrl(analysis.id, `${mode}.png`)
   const interactionAvailable = Boolean(result.heatmaps.interaction)
+  const pickupAvailable = Boolean(result.pickup_events_log?.length)
 
   return (
     <PageShell wide>
@@ -24,13 +25,19 @@ export default function ResultsPage({ analysis, mode, setMode, selectedId, setSe
           <Fact value={`${result.video.duration_seconds}s`} label="Duracion" />
           <Fact value={result.video.processed_frames} label="Frames" />
           <Fact value={result.metrics.interaction_events} label="Interacciones" />
+          <Fact value={result.metrics.pickup_events ?? 0} label="Pick-ups" />
+          <Fact value={`${result.metrics.average_speed_m_s ?? 0} m/s`} label="Velocidad media" />
+          <Fact value={`${result.metrics.flow_per_minute ?? 0}/min`} label="Flujo" />
+          <Fact value={result.metrics.peak_presence ?? 0} label="Pico simultaneo" />
         </div>
       </div>
 
       <div className="mt-8 flex flex-wrap gap-2" role="tablist">
         {ANALYSIS_MODES.map(([value, label]) => (
           <button className={`border px-4 py-3 text-sm ${mode === value ? 'border-lime-300 text-lime-300' : 'border-white/10 text-slate-300'}`} role="tab" aria-selected={mode === value} onClick={() => setMode(value)} key={value} type="button">
-            {label}{value === 'interaction' && !interactionAvailable && <small className="ml-2 text-[9px] text-slate-500">evidencia insuficiente</small>}
+            {label}
+            {value === 'interaction' && !interactionAvailable && <small className="ml-2 text-[9px] text-slate-500">evidencia insuficiente</small>}
+            {value === 'pickup' && !pickupAvailable && <small className="ml-2 text-[9px] text-slate-500">evidencia insuficiente</small>}
           </button>
         ))}
       </div>
@@ -44,8 +51,8 @@ export default function ResultsPage({ analysis, mode, setMode, selectedId, setSe
         </div>
         <aside className="border-t border-white/10 bg-[#0a1310] lg:border-l lg:border-t-0">
           <button className="m-3 ml-auto grid h-8 w-8 place-items-center border border-white/10 text-slate-300" onClick={closeDetail} type="button">x</button>
-          <ShelfMatrix gondola={selected} mode={mode} events={result.interaction_events_log || []} />
-          {selected && <div className="grid grid-cols-2 gap-2 p-4 text-xs"><Fact value={selected.visitors} label="Visitantes" /><Fact value={`${selected.dwell_seconds}s`} label="Permanencia" /><Fact value={selected.interactions} label="Eventos" /><Fact value={`${selected.conversion_percent ?? 0}%`} label="Conversion" /></div>}
+          <ShelfMatrix gondola={selected} mode={mode} events={result.interaction_events_log || []} pickupEvents={result.pickup_events_log || []} />
+          {selected && <div className="grid grid-cols-2 gap-2 p-4 text-xs"><Fact value={selected.visitors} label="Visitantes" /><Fact value={`${selected.dwell_seconds}s`} label="Permanencia" /><Fact value={selected.interactions} label="Eventos" /><Fact value={selected.pickups ?? 0} label="Pick-ups" /><Fact value={`${selected.conversion_percent ?? 0}%`} label="Conversion" /></div>}
         </aside>
       </div>
 
