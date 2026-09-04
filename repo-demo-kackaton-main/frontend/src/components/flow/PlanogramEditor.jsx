@@ -415,7 +415,21 @@ const PlanogramEditor = forwardRef(function PlanogramEditor({ configuration, onC
     } catch (requestError) { setSuggestError(requestError.message) } finally { setDetecting(false) }
   }
 
-  const addDrawnCandidate = (candidate) => setSuggestions((current) => [...current, candidate])
+  const addDrawnCandidate = (candidate) => {
+    // Cada rectángulo trazado se convierte al instante en una góndola real (sin pasos
+    // intermedios de "aceptar candidatos"): así dibujar es directo y lo que ves queda
+    // guardado en el plano desde el primer momento.
+    const id = `d-${Date.now()}-${drawId++}`
+    const item = {
+      id, name: `Góndola ${configuration.gondolas.length + 1}`,
+      x: candidate.x, z: candidate.z,
+      width: candidate.width, depth: candidate.depth, rotation: 0,
+      segments: { rows, columns }, products: emptyProducts(),
+    }
+    const next = [...configuration.gondolas, item]
+    replaceGondolas(next)
+    setSelectedId(id)
+  }
   const commitOutline = (outline) => { onChange({ ...configuration, floor: { ...floor, outline } }); setFloorDrawMode(false) }
   const clearOutline = () => onChange({ ...configuration, floor: { ...floor, outline: undefined } })
 

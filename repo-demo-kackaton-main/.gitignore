@@ -1,5 +1,5 @@
 .DS_Store
-.env
+.venv
 training/dataset/*
 !training/dataset/.gitkeep
 training/annotations/*

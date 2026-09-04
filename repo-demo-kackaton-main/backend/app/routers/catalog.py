@@ -10,7 +10,7 @@ from ..cv.shelf_detector import suggest_gondolas
 from ..cv.spatial import with_homographies
 from ..database import get_db
 from ..models import Retailer, Site, User
-from ..security import current_user
+from ..security import current_user, require_admin
 
 
 router = APIRouter(prefix="/api", tags=["catalog"])
@@ -51,6 +51,29 @@ def retailers(user: User = Depends(current_user), database: Session = Depends(ge
     if user.role != "admin":
         query = query.where(Retailer.id == user.retailer_id)
     return [{"id": item.id, "name": item.name, "code": item.code, "site_count": len(item.sites)} for item in database.scalars(query).all()]
+
+
+class RetailerCreateBody(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    code: str = Field(min_length=2, max_length=50)
+
+
+@router.post("/retailers", status_code=201)
+def create_retailer(
+    body: RetailerCreateBody,
+    user: User = Depends(require_admin),
+    database: Session = Depends(get_db),
+) -> dict:
+    name = body.name.strip()
+    code = body.code.strip()
+    existing = database.scalars(select(Retailer).where((Retailer.name == name) | (Retailer.code == code))).first()
+    if existing:
+        field = "name" if existing.name == name else "code"
+        raise HTTPException(status_code=400, detail=f"El campo {field} ya está en uso")
+    retailer = Retailer(name=name, code=code)
+    database.add(retailer)
+    database.commit()
+    return {"id": retailer.id, "name": retailer.name, "code": retailer.code, "site_count": 0}
 
 
 @router.get("/retailers/{retailer_id}/sites")

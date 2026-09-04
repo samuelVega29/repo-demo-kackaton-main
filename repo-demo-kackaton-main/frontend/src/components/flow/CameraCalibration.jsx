@@ -40,7 +40,7 @@ const projectFloor = (matrix, x, z) => {
   return [(matrix[0] * x + matrix[1] * z + matrix[2]) / denominator, (matrix[3] * x + matrix[4] * z + matrix[5]) / denominator]
 }
 
-export default function CameraCalibration({ preview, configuration, onChange, onSave, onCapture, onClose }) {
+export default function CameraCalibration({ preview, configuration, onChange, onSave, onCapture, onClose, externalCapture }) {
   const floor = configuration.floor || {}
   const camera = configuration.camera || {}
   const targets = camera.target_meters || [[0, 0], [floor.width ?? 1, 0], [floor.width ?? 1, floor.depth ?? 1], [0, floor.depth ?? 1]]
@@ -49,7 +49,10 @@ export default function CameraCalibration({ preview, configuration, onChange, on
   // time so we can warn if it changed while gondolas already exist (their x/z meters were
   // computed under the OLD calibration, so a new one silently misaligns them from the video).
   const openedWithRef = useRef(camera.source_normalized ? camera.source_normalized.map((point) => [...point]) : null)
-  const [captured, setCaptured] = useState(null)
+  const [internalCaptured, setInternalCaptured] = useState(null)
+  // When a frame is captured in a dedicated window (externalCapture), reuse it instead of
+  // taking a new one here — keeps the "tomar frame" step explicit and shared across panels.
+  const captured = externalCapture || internalCaptured
   const [saving, setSaving] = useState(false)
   const [saveState, setSaveState] = useState({ kind: 'idle', text: '' })
   // 3D model state
@@ -203,7 +206,7 @@ export default function CameraCalibration({ preview, configuration, onChange, on
     setCropInfo((prev) => prev || bars)
 
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
-    setCaptured({ dataUrl, width, height })
+    setInternalCaptured({ dataUrl, width, height })
     if (onCapture) onCapture(dataUrl, width, height)
   }
 
@@ -355,11 +358,11 @@ export default function CameraCalibration({ preview, configuration, onChange, on
       <p className="calibration-help">Pausa el video donde se vea el pasillo completo y captura el frame. Luego arrastra P1…·P4 a las esquinas del piso real en el video:<b> P1</b> esquina superior-izquierda · <b>P2</b> superior-derecha · <b>P3</b> fondo-derecha · <b>P4</b> fondo-izquierda. Cuanto más separados queden los puntos, mejor se ajusta la perspectiva; la rejilla y las góndolas proyectadas confirman el mapeo en vivo.</p>
       {!preview
         ? <div className="calib-empty">Primero selecciona un video MP4 para capturar un frame y calibrar la cámara.</div>
-        : <><div className="calibration-grid">
-        <div className="calibration-stage">
+        : <><div className={`calibration-grid${externalCapture ? ' external' : ''}`}>
+        {!externalCapture && <div className="calibration-stage">
           <video ref={videoRef} src={preview} controls muted playsInline />
           <button className="capture-frame" onClick={capture}>＋ Capturar frame</button>
-        </div>
+        </div>}
         <div className="calibration-canvas-wrap">
           {captured
             ? <canvas ref={canvasRef} className="calib-canvas" style={{ width: '100%', aspectRatio: `${captured.width}/${captured.height}` }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={release} onPointerCancel={release} />
