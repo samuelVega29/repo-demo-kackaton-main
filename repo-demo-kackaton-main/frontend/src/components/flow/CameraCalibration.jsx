@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { gondolaCorners } from '../../lib/homography'
-import { DEFAULT_CAMERA_HEIGHT_M, DEFAULT_PITCH_DEG, DEFAULT_FOCAL_LENGTH_PX, DEFAULT_PRINCIPAL_POINT } from '../../lib/camera3d'
 
 const solveHomography = (pairs) => {
   const a = []
@@ -55,15 +54,6 @@ export default function CameraCalibration({ preview, configuration, onChange, on
   const captured = externalCapture || internalCaptured
   const [saving, setSaving] = useState(false)
   const [saveState, setSaveState] = useState({ kind: 'idle', text: '' })
-  // 3D model state
-  const [model3dEnabled, setModel3dEnabled] = useState(camera.model_3d?.enabled || false)
-  const [model3dHeight, setModel3dHeight] = useState(camera.model_3d?.height ?? DEFAULT_CAMERA_HEIGHT_M)
-  const [model3dPitch, setModel3dPitch] = useState(camera.model_3d?.pitch ?? DEFAULT_PITCH_DEG)
-  const [model3dYaw, setModel3dYaw] = useState(camera.model_3d?.yaw ?? 0)
-  const [model3dRoll, setModel3dRoll] = useState(camera.model_3d?.roll ?? 0)
-  const [model3dFocal, setModel3dFocal] = useState(camera.model_3d?.focal_length ?? DEFAULT_FOCAL_LENGTH_PX)
-  // Advanced (experimental) 3D projection — collapsed by default so it doesn't confuse users.
-  const [showAdvanced, setShowAdvanced] = useState(false)
   // Crop info state
   const [cropInfo, setCropInfo] = useState(camera.crop_info || null)
   const videoRef = useRef(null)
@@ -108,22 +98,6 @@ export default function CameraCalibration({ preview, configuration, onChange, on
           const b = toPx(floor.width || 1, gz)
           if (!a || !b) continue
           ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.stroke()
-        }
-      }
-
-      const outline = configuration.floor?.outline
-      if (outline?.length >= 3) {
-        const outlinePx = outline.map(([x, z]) => toPx(x, z)).filter(Boolean)
-        if (outlinePx.length >= 3) {
-          ctx.beginPath()
-          ctx.moveTo(...outlinePx[0])
-          outlinePx.slice(1).forEach((point) => ctx.lineTo(...point))
-          ctx.closePath()
-          ctx.strokeStyle = '#5b9dff'
-          ctx.lineWidth = 2
-          ctx.setLineDash([9, 7])
-          ctx.stroke()
-          ctx.setLineDash([])
         }
       }
 
@@ -307,24 +281,12 @@ export default function CameraCalibration({ preview, configuration, onChange, on
   const release = () => { drag.current = -1 }
 
   const save = async () => {
-    // Build3D model config if enabled
-    const model3d = model3dEnabled ? {
-      enabled: true,
-      height: model3dHeight,
-      pitch: model3dPitch,
-      yaw: model3dYaw,
-      roll: model3dRoll,
-      focal_length: model3dFocal,
-      principal_point: DEFAULT_PRINCIPAL_POINT,
-    } : undefined
-
     const next = {
       ...configuration,
       camera: {
         ...camera,
         source_normalized: points,
         calibration_status: 'calibrated',
-        model_3d: model3d,
         crop_info: cropInfo || undefined,
       },
     }
@@ -336,10 +298,9 @@ export default function CameraCalibration({ preview, configuration, onChange, on
     try {
       if (onSave) await onSave(next)
       openedWithRef.current = points.map((point) => [...point])
-      const msg3d = model3dEnabled ? ' + modelo3D' : ''
       setSaveState(calibrationMoved && gondolaCount > 0
         ? { kind: 'warn', text: `Moviste los 4 puntos con ${gondolaCount} góndola${gondolaCount === 1 ? '' : 's'} ya definida${gondolaCount === 1 ? '' : 's'} — sus posiciones se calcularon con la calibración anterior y pueden haber quedado desalineadas. Revisá "Verificar alineación" en la pantalla de subida.` }
-        : { kind: 'ok', text: `Calibración${msg3d} guardada` })
+        : { kind: 'ok', text: 'Calibración guardada' })
     } catch (error) {
       setSaveState({ kind: 'error', text: error.message || 'No se pudo guardar la calibración' })
     } finally {
@@ -380,92 +341,6 @@ export default function CameraCalibration({ preview, configuration, onChange, on
           <small>Los márgenes negros se recortarán automáticamente durante el análisis para que la calibración quede alineada.</small>
         </div>
       )}
-
-      {/* Advanced: experimental 3D projection (collapsed by default).
-          The recommended, easy path is the visual 4-point calibration above, which is what
-          every overlay uses. These numeric sliders are for expert tuning only. */}
-      <div className="model3d-section">
-        <button type="button" className="model3d-toggle-advanced" onClick={() => setShowAdvanced((value) => !value)}>
-          <span>{showAdvanced ? '▾' : '▸'} Opciones avanzadas (proyección3D experimental)</span>
-        </button>
-        {showAdvanced && (
-          <div className="model3d-fields">
-            <p className="model3d-help">Recomendado: usa la calibración visual de 4 puntos de arriba — todas las capas la usan. Estos parámetros numéricos son opcionales y experimentales.</p>
-            <div className="model3d-grid">
-              <label>
-                <span className="model3d-check">
-                  <input
-                    type="checkbox"
-                    checked={model3dEnabled}
-                    onChange={(e) => setModel3dEnabled(e.target.checked)}
-                  />
-                  Activar proyección3D
-                </span>
-              </label>
-              <label>
-                <span>Altura cámara</span>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="1.0"
-                  max="10.0"
-                  value={model3dHeight}
-                  onChange={(e) => setModel3dHeight(Number(e.target.value))}
-                />
-                <small>m</small>
-              </label>
-              <label>
-                <span>Pitch (inclinación)</span>
-                <input
-                  type="number"
-                  step="1"
-                  min="-90"
-                  max="0"
-                  value={model3dPitch}
-                  onChange={(e) => setModel3dPitch(Number(e.target.value))}
-                />
-                <small>°</small>
-              </label>
-              <label>
-                <span>Yaw (rotación)</span>
-                <input
-                  type="number"
-                  step="1"
-                  min="-180"
-                  max="180"
-                  value={model3dYaw}
-                  onChange={(e) => setModel3dYaw(Number(e.target.value))}
-                />
-                <small>°</small>
-              </label>
-              <label>
-                <span>Roll</span>
-                <input
-                  type="number"
-                  step="1"
-                  min="-45"
-                  max="45"
-                  value={model3dRoll}
-                  onChange={(e) => setModel3dRoll(Number(e.target.value))}
-                />
-                <small>°</small>
-              </label>
-              <label>
-                <span>Distancia focal</span>
-                <input
-                  type="number"
-                  step="50"
-                  min="400"
-                  max="3000"
-                  value={model3dFocal}
-                  onChange={(e) => setModel3dFocal(Number(e.target.value))}
-                />
-                <small>px</small>
-              </label>
-            </div>
-          </div>
-        )}
-      </div>
 
       {saveState.kind === 'ok' && <div className="calib-status ok">{saveState.text}</div>}
       {saveState.kind === 'warn' && <div className="calib-status warn">⚠ {saveState.text}</div>}

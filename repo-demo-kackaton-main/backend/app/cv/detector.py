@@ -1,6 +1,9 @@
+import os
 from pathlib import Path
 
 from ultralytics import YOLO
+
+from ..config import settings
 
 
 # YOLO11-pose COCO keypoint indices (17 keypoints)
@@ -28,16 +31,16 @@ SKELETON_CONNECTIONS = [
 
 
 def _find_model(detection_only: bool) -> Path:
-    """Resolve model path: prefer exported, then bundled, then bare name."""
+    """Resolve model path: env override, exported, then bundled, then bare name."""
     project_root = Path(__file__).resolve().parents[3]
-    if detection_only:
-        exported = project_root / "models" / "exported" / "people-yolo11n.pt"
-        bundled = project_root / "backend" / "yolo11n.pt"
-    else:
-        exported = project_root / "models" / "exported" / "yolo11n-pose.pt"
-        bundled = project_root / "backend" / "yolo11n-pose.pt"
-    model_path = exported if exported.exists() else bundled
-    return model_path if model_path.exists() else Path("yolo11n-pose.pt" if not detection_only else "yolo11n.pt")
+    override = os.environ.get("SCAPDER_DETECTOR_MODEL")
+    if override:
+        return Path(override)
+    exported = settings.EXPORTED_MODELS / ("people-yolo11n.pt" if detection_only else "yolo11n-pose.pt")
+    bundled = project_root / "backend" / ("yolo11n.pt" if detection_only else "yolo11n-pose.pt")
+    if exported.exists():
+        return exported
+    return bundled if bundled.exists() else Path("yolo11n.pt" if detection_only else "yolo11n-pose.pt")
 
 
 class PersonDetector:

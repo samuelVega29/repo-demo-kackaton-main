@@ -266,7 +266,7 @@ def run_analysis(analysis_id: str) -> None:
                 valid_detections.append(detection)
             # Second pass: unify fragmented ByteTrack ids into stable people identities
             # and rewrite track_id so all downstream state is keyed by the stable person.
-            track_stabilizer.update(valid_detections, timestamp, frame_index)
+            track_stabilizer.update(valid_detections, timestamp, frame_index, frame)
             for detection in valid_detections:
                 detection["track_id"] = detection["person_id"]
             for detection in valid_detections:
@@ -278,8 +278,8 @@ def run_analysis(analysis_id: str) -> None:
                 if zone:
                     zone_dwell[zone["id"]] += dt
                 if frame_index % payload_every == 0:
-                    timestamped = {**{"x": floor_point[0], "z": floor_point[1]}}
-                    trajectories[detection["track_id"]].append(floor_point)
+                    timestamped = {**{"x": detection["floor_point"][0], "z": detection["floor_point"][1]}}
+                    trajectories[detection["track_id"]].append(detection["floor_point"])
                     traffic_points.append({**timestamped, "weight": 1})
                     dwell_points.append({**timestamped, "weight": max(dt, 0.01) * (1.5 if behavior["speed"] < 0.6 else 0.5)})
                     slice_index = min(slice_count - 1, int(frame_index / slice_size))
@@ -287,7 +287,7 @@ def run_analysis(analysis_id: str) -> None:
                     slice_buckets["dwell"][slice_index].append({**timestamped, "weight": max(dt, 0.01) * (1.5 if behavior["speed"] < 0.6 else 0.5)})
                     sample_detections.append({
                         "track_id": detection["track_id"], "bbox": detection["bbox"],
-                        "confidence": detection["confidence"], "floor_point": floor_point,
+                        "confidence": detection["confidence"], "floor_point": detection["floor_point"],
                         "state": behavior["state"], "gondola_id": behavior["gondola_id"],
                         "keypoints_3d": project_keypoints_to_3d_v2(
                             detection.get("keypoints"), detection["image_point"],
@@ -295,18 +295,18 @@ def run_analysis(analysis_id: str) -> None:
                         ) if has_pose else None,
                     })
                 if behavior["interaction"]:
-                    interaction_points.append({"x": floor_point[0], "z": floor_point[1], "weight": 1, "t": round(timestamp, 2)})
+                    interaction_points.append({"x": detection["floor_point"][0], "z": detection["floor_point"][1], "weight": 1, "t": round(timestamp, 2)})
                     if not last_interaction[detection["track_id"]]:
                         interaction_events.append({
                             "t": round(timestamp, 2),
                             "track_id": detection["track_id"],
-                            "x": floor_point[0],
-                            "z": floor_point[1],
+                            "x": detection["floor_point"][0],
+                            "z": detection["floor_point"][1],
                             "gondola_id": behavior["gondola_id"],
                             "gondola_name": gondola_names.get(behavior["gondola_id"], behavior["gondola_id"]),
                         })
                     last_interaction[detection["track_id"]] = True
-                    slice_buckets["interaction"][min(slice_count - 1, int(frame_index / slice_size))].append({"x": floor_point[0], "z": floor_point[1], "weight": 1})
+                    slice_buckets["interaction"][min(slice_count - 1, int(frame_index / slice_size))].append({"x": detection["floor_point"][0], "z": detection["floor_point"][1], "weight": 1})
                 else:
                     last_interaction[detection["track_id"]] = False
 

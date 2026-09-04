@@ -6,44 +6,12 @@ import ShelfMatrix from './components/ShelfMatrix'
 import StoreScene from './components/StoreScene'
 import PlanogramEditor from './components/flow/PlanogramEditor'
 import PlanogramPreview3D from './components/flow/PlanogramPreview3D'
-import LiveAlignment from './components/flow/LiveAlignment'
 import CameraCalibration from './components/flow/CameraCalibration'
 import VideoOverlay from './components/VideoOverlay'
 import AnalysisVideo from './components/AnalysisVideo'
+import LoginPage from './pages/LoginPage'
 
 const modes = [['traffic', 'Tráfico'], ['dwell', 'Permanencia'], ['interaction', 'Interacción']]
-
-function LoginScreen() {
-  const { login } = useAuth()
-  const [email, setEmail] = useState('admin@scapder.ai')
-  const [password, setPassword] = useState('Scapder2026!')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const submit = async (event) => {
-    event.preventDefault(); setError(''); setLoading(true)
-    try { await login(email, password) } catch (requestError) { setError(requestError.message) } finally { setLoading(false) }
-  }
-  return (
-    <main className="login-page">
-      <div className="login-visual">
-        <div className="radar"><i /><i /><i /><span /></div>
-        <span className="eyebrow">SPATIAL RETAIL INTELLIGENCE</span>
-        <h1>La tienda también<br /><em>habla en datos.</em></h1>
-        <p>Computer Vision para comprender movimiento, permanencia y comportamiento frente a góndola sin identificar personas.</p>
-        <div className="privacy-seal">PRIVACY BY DESIGN · TEMPORARY IDS · NO BIOMETRICS</div>
-      </div>
-      <form className="login-card" onSubmit={submit}>
-        <div className="brand"><span className="brand-mark">S</span><span>SCAPDER<small>VISION OS</small></span></div>
-        <div><span className="eyebrow">ACCESO SEGURO</span><h2>Bienvenido.</h2><p>Ingresa al espacio de tu organización.</p></div>
-        <label>Correo<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
-        <label>Contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-        {error && <p className="form-error" role="alert">{error}</p>}
-        <button className="primary-button" disabled={loading}>{loading ? 'Verificando…' : 'Ingresar'}<b>→</b></button>
-        <small className="demo-note">Demo local: admin@scapder.ai / Scapder2026!</small>
-      </form>
-    </main>
-  )
-}
 
 function Header({ user, logout, retailer, site, goHome }) {
   return (
@@ -166,34 +134,22 @@ function FrameCaptureFields({ preview, frameCapture, onCapture }) {
   )
 }
 
-function GondolaStep({ configuration, frameCapture, moveGondola, onSelect, planogramRef, onSuggest, onChange, onSave }) {
+function GondolaStep({ configuration, frameCapture, onChange, onSave }) {
   return (
-    <FlowStep number="04" eyebrow="GÓNDOLAS Y PLANO" title="Cuadrá el video y dibujá tu planograma" desc="El video va arriba a lo ancho: alineá el piso del video con el plano en metros. Cada góndola que dibujés o movés se ve en vivo sobre el frame." open badge={configuration.gondolas.length ? `${configuration.gondolas.length} góndolas` : 'sin góndolas'} onToggle={() => {}}>
-      <div className="projection-band">
-        <span className="live-label">Sobre el frame · proyección del plano en metros</span>
-        {frameCapture
-          ? <LiveAlignment frameCapture={frameCapture} configuration={configuration} interactive onMoveGondola={moveGondola} onSelect={onSelect} />
-          : <div className="calib-empty">Capturá un frame (paso 02) para proyectar y cuadrar las góndolas.</div>}
-        <p className="flow-note">Arrastrá una góndola directamente sobre el frame para alinearla con la perspectiva. Debajo dibujás y personalizás el planograma.</p>
-      </div>
+    <FlowStep number="04" eyebrow="GÓNDOLAS Y PLANO" title="Cuadrá el video y dibujá tu planograma" desc="El planograma se proyecta en vivo sobre el frame capturado. Cada góndola que dibujés o movés se ve reflejada en el video y en el plano." open badge={configuration.gondolas.length ? `${configuration.gondolas.length} góndolas` : 'sin góndolas'} onToggle={() => {}}>
       <div className="editor-full">
-        <PlanogramEditor ref={planogramRef} configuration={configuration} onChange={onChange} onSave={onSave} frameCapture={frameCapture} onSuggest={onSuggest} />
+        <PlanogramEditor configuration={configuration} onChange={onChange} onSave={onSave} frameCapture={frameCapture} />
       </div>
     </FlowStep>
   )
 }
 
-function UploadView({ site, file, preview, chooseFile, inputRef, analyze, job, updateConfiguration, saveConfiguration, frameCapture, onFrameCapture, onSuggestGondolas, planogramRef }) {
+function UploadView({ site, file, preview, chooseFile, inputRef, analyze, job, updateConfiguration, saveConfiguration, frameCapture, onFrameCapture }) {
   const running = job && !['completed', 'failed'].includes(job.status)
   const [showVerify, setShowVerify] = useState(false)
   const [showPreview3D, setShowPreview3D] = useState(false)
   const [showFrame, setShowFrame] = useState(false)
-  const [liveSelectedId, setLiveSelectedId] = useState(null)
   const calibrationLabel = site.configuration.camera.calibration_status === 'uncalibrated' ? 'sin calibrar' : site.configuration.camera.calibration_status
-  const moveGondola = (id, values) => {
-    const gondolas = site.configuration.gondolas.map((item) => item.id === id ? { ...item, ...values } : item)
-    updateConfiguration({ ...site.configuration, gondolas })
-  }
   const canAnalyze = Boolean(file)
   return (
     <section className="upload-workspace flow-workspace">
@@ -210,7 +166,7 @@ function UploadView({ site, file, preview, chooseFile, inputRef, analyze, job, u
           <div className="points-body"><CameraCalibration preview={preview} externalCapture={frameCapture} configuration={site.configuration} onChange={updateConfiguration} onSave={saveConfiguration} onCapture={onFrameCapture} onClose={() => {}} /></div>
         </FlowStep>
 
-        <GondolaStep configuration={site.configuration} frameCapture={frameCapture} moveGondola={moveGondola} onSelect={setLiveSelectedId} planogramRef={planogramRef} onSuggest={onSuggestGondolas} onChange={updateConfiguration} onSave={saveConfiguration} />
+        <GondolaStep configuration={site.configuration} frameCapture={frameCapture} onChange={updateConfiguration} onSave={saveConfiguration} />
       </div>
 
       <div className="step-section preview-3d-section preview-3d-compact">
@@ -274,11 +230,9 @@ export default function App() {
   const [job, setJob] = useState(null)
   const [mode, setMode] = useState('traffic')
   const [selectedId, setSelectedId] = useState(null)
-  const [frameCapture, setFrameCapture] = useState(null)
+const [frameCapture, setFrameCapture] = useState(null)
   const inputRef = useRef(null)
   const siteRef = useRef(site)
-  siteRef.current = site
-  const planogramRef = useRef(null)
 
   useEffect(() => { if (user) api('/api/retailers').then(setRetailers).catch(() => logout()) }, [user])
   useEffect(() => { if (retailer) api(`/api/retailers/${retailer.id}/sites`).then(setSites) }, [retailer])
@@ -290,7 +244,7 @@ export default function App() {
   }, [job?.id, job?.status])
 
   if (checking) return <div className="boot-screen">SCAPDER <span>INITIALIZING</span></div>
-  if (!user) return <LoginScreen />
+  if (!user) return <LoginPage />
 
   const chooseFile = (candidate) => {
     if (!candidate) return
@@ -302,10 +256,7 @@ export default function App() {
     const body = new FormData(); body.append('site_id', site.id); body.append('video', file)
     setJob({ status: 'uploading', stage: 'upload', progress: 0, message: 'Guardando configuración espacial…' })
     try {
-      // Cualquier góndola dibujada/detectada que no se aceptó a mano entra aquí,
-      // así el análisis nunca corre contra un plano incompleto.
-      const flushed = planogramRef.current?.flushPendingCandidates?.()
-      await saveConfiguration(flushed)
+      await saveConfiguration()
       setJob({ status: 'uploading', stage: 'upload', progress: 0, message: 'Guardando MP4…' })
       const created = await api('/api/analyses', { method: 'POST', body })
       setJob({ id: created.id, status: 'queued', stage: 'upload', progress: 1, message: 'Video recibido' })
@@ -330,20 +281,12 @@ export default function App() {
     setRetailers((current) => [created, ...current])
     setRetailer(created)
   }
-  const suggestGondolas = async (capture) => {
-    if (!capture?.dataUrl || !capture.width || !capture.height) throw new Error('Captura primero un frame en “Calibrar cámara”')
-    const response = await api(`/api/sites/${siteRef.current.id}/suggest-gondolas`, {
-      method: 'POST',
-      body: JSON.stringify({ configuration: siteRef.current.configuration, image: capture.dataUrl, image_width: capture.width, image_height: capture.height }),
-    })
-    return response.candidates
-  }
   return (
     <main className="app-shell">
       <Header user={user} logout={logout} retailer={retailer} site={site} goHome={goHome} />
       {!retailer && <RetailerPicker retailers={retailers} onSelect={setRetailer} onCreate={createRetailer} />}
       {retailer && !site && <SitePicker retailer={retailer} sites={sites} onSelect={setSite} onBack={() => setRetailer(null)} onCreate={createSite} />}
-      {site && !job?.result && <UploadView site={site} file={file} preview={preview} chooseFile={chooseFile} inputRef={inputRef} analyze={analyze} job={job} updateConfiguration={updateConfiguration} saveConfiguration={saveConfiguration} frameCapture={frameCapture} onFrameCapture={handleFrameCapture} onSuggestGondolas={suggestGondolas} planogramRef={planogramRef} />}
+      {site && !job?.result && <UploadView site={site} file={file} preview={preview} chooseFile={chooseFile} inputRef={inputRef} analyze={analyze} job={job} updateConfiguration={updateConfiguration} saveConfiguration={saveConfiguration} frameCapture={frameCapture} onFrameCapture={handleFrameCapture} />}
       {job?.result && <ResultsView analysis={job} mode={mode} setMode={setMode} selectedId={selectedId} setSelectedId={setSelectedId} closeDetail={() => setSelectedId(null)} />}
     </main>
   )

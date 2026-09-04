@@ -29,6 +29,23 @@ def can_access(user: User, site: Site | None) -> bool:
     return bool(site and (user.role == "admin" or user.retailer_id == site.retailer_id))
 
 
+def _has_valid_calibration(configuration: dict) -> bool:
+    """True when the site's camera was visibly calibrated (P1–P4 moved).
+
+    Accepts the demo marker status from the seed data; rejects the identity
+    default that new sites get from ``empty_site_configuration``.
+    """
+    camera = (configuration or {}).get("camera") or {}
+    if camera.get("calibration_status") not in {"calibrated", "demo"}:
+        return False
+    source = camera.get("source_normalized")
+    if not source or len(source) != 4:
+        return False
+    identity = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+    rounded = [[round(float(x), 4), round(float(y), 4)] for x, y in source]
+    return rounded != identity
+
+
 def payload(analysis: Analysis) -> dict:
     return {
         "id": analysis.id,
@@ -53,6 +70,11 @@ def create_analysis(
     site = database.get(Site, site_id)
     if not can_access(user, site):
         raise HTTPException(status_code=404, detail="Sede no encontrada")
+    if not _has_valid_calibration(site.configuration):
+        raise HTTPException(
+            status_code=400,
+            detail="Calibrá la cámara (paso 03, arrastrá P1–P4 a las esquinas del piso) antes de analizar el video.",
+        )
     filename = video.filename or "video.mp4"
     if Path(filename).suffix.lower() != ".mp4" or video.content_type not in {"video/mp4", "application/octet-stream"}:
         raise HTTPException(status_code=400, detail="Carga un archivo MP4 válido")
