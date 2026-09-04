@@ -173,10 +173,10 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
   const maxCount = histogram ? Math.max(1, ...histogram.buckets.map((bucket) => bucket.count)) : 1
 
   return (
-    <section className="analysis-video">
-      <div className="section-title"><span className="eyebrow">REPRODUCCIÓN DEL ANÁLISIS</span><h2>El video, con geografía</h2><p>Reproduce el video real con las góndolas y zonas proyectadas. Enciende el calor para ver el mapa espacial superpuesto.</p></div>
-      <div className="analysis-video-layout">
-        <div className="analysis-video-stage">
+    <section className="mt-20">
+      <div className="mb-7"><span className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-teal-300">REPRODUCCIÓN DEL ANÁLISIS</span><h2>El video, con geografía</h2><p>Reproduce el video real con las góndolas y zonas proyectadas. Enciende el calor para ver el mapa espacial superpuesto.</p></div>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.9fr)_minmax(240px,1fr)]">
+        <div className="relative overflow-hidden rounded-2xl border border-teal-900 bg-black">
           <video
             ref={videoRef}
             src={videoUrl(analysis.id)}
@@ -186,50 +186,50 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
             onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)}
             onEnded={() => setPlaying(false)}
           />
-          <canvas ref={canvasRef} className="analysis-overlay" />
+          <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
           {showHeat && <img
             ref={heatRef}
-            className="analysis-heat"
+            className="pointer-events-none absolute left-0 top-0 origin-top-left opacity-55 mix-blend-screen"
             src={artifactUrl(analysis.id, result.heatmaps.traffic)}
             style={heatDims ? { width: heatDims[0], height: heatDims[1], transform: `matrix3d(${heatMatrix.join(',')})` } : undefined}
             alt=""
           />}
-          <div className="analysis-video-controls">
-            <button className="play-toggle" onClick={() => { const video = videoRef.current; if (!video) return; if (video.paused) { video.play().catch(() => {}) } else { video.pause() } }}>{playing ? '❚❚' : '▶'}</button>
+          <div className="flex items-center gap-3 border-t border-teal-950 bg-[#08100e]/95 px-4 py-3">
+            <button className="grid h-9 w-9 flex-none place-items-center rounded-full border border-lime-300 text-xs text-lime-300" onClick={() => { const video = videoRef.current; if (!video) return; if (video.paused) { video.play().catch(() => {}) } else { video.pause() } }}>{playing ? '❚❚' : '▶'}</button>
             <strong>{formatTime(time)}</strong>
             <span>/</span>
             <b>{formatTime(duration)}</b>
-            <label className="heat-toggle"><input type="checkbox" checked={showHeat} onChange={(event) => setShowHeat(event.target.checked)} />Calor superpuesto</label>
+            <label className="ml-auto inline-flex cursor-pointer select-none items-center gap-2 text-xs text-slate-300 [&_input]:accent-lime-300"><input type="checkbox" checked={showHeat} onChange={(event) => setShowHeat(event.target.checked)} />Calor superpuesto</label>
           </div>
-          <div className="video-timeline">
+          <div className="relative px-4 pb-2 pt-3 [&_input]:w-full [&_input]:accent-lime-300">
             <input type="range" min="0" max={Math.max(1, duration)} step="0.1" value={Math.min(time, duration)} onChange={(event) => seek(Number(event.target.value))} />
             {events.map((event, index) => (
-              <button key={`${event.t}-${index}`} className="event-tick" style={{ left: `${Math.min(100, event.t / Math.max(1, duration) * 100)}%` }} title={`${event.gondola_name} · ${formatTime(event.t)}`} onClick={() => seekToEvent(event)} />
+              <button key={`${event.t}-${index}`} className="absolute top-1 h-1.5 w-1.5 -translate-x-1/2 rounded-full border border-orange-400 bg-orange-400 p-0" style={{ left: `${Math.min(100, event.t / Math.max(1, duration) * 100)}%` }} title={`${event.gondola_name} · ${formatTime(event.t)}`} onClick={() => seekToEvent(event)} />
             ))}
           </div>
-          <small className="analysis-video-note">Overlay fijo: la cámara estática mantiene la proyección alineada durante toda la reproducción.</small>
+          <small className="block px-4 pb-3 text-[10px] text-slate-500">Overlay fijo: la cámara estática mantiene la proyección alineada durante toda la reproducción.</small>
         </div>
-        <aside className="interaction-panel">
-          <div className="interaction-heading">
-            <span className="eyebrow">FLUJO DE INTERACCIÓN</span>
+        <aside className="min-h-52 rounded-2xl border border-teal-950 bg-[#0a1310] p-4">
+          <div className="mb-3 flex items-baseline justify-between [&_b]:font-mono [&_b]:text-xl [&_b]:font-semibold [&_b]:text-orange-400">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-teal-300">FLUJO DE INTERACCIÓN</span>
             <b>{events.length} eventos</b>
           </div>
           {histogram && histogram.buckets.some((bucket) => bucket.count > 0)
-            ? <div className="interaction-histogram">{histogram.buckets.map((bucket) => (
-              <div key={bucket.index} className="hist-column" title={`${formatTime(bucket.start)}–${formatTime(bucket.end)} · ${bucket.count} evento${bucket.count === 1 ? '' : 's'}`}>
+            ? <div className="flex h-20 items-end gap-1 border-b border-teal-950 pb-4">{histogram.buckets.map((bucket) => (
+              <div key={bucket.index} className="flex h-full flex-1 flex-col items-center justify-end gap-1 [&_i]:block [&_i]:min-h-[3px] [&_i]:w-full [&_i]:rounded-t [&_i]:bg-gradient-to-b [&_i]:from-orange-400 [&_i]:to-orange-900 [&_small]:rotate-[-40deg] [&_small]:whitespace-nowrap [&_small]:font-mono [&_small]:text-[7px] [&_small]:font-medium [&_small]:text-slate-500" title={`${formatTime(bucket.start)}–${formatTime(bucket.end)} · ${bucket.count} evento${bucket.count === 1 ? '' : 's'}`}>
                 <i style={{ height: `${Math.max(4, bucket.count / maxCount * 100)}%` }} />
                 <small>{formatTime(bucket.start)}</small>
               </div>))}</div>
-            : <p className="interaction-empty">Sin eventos de interacción inferidos en este video.</p>}
-          <div className="interaction-list">
+            : <p className="text-xs leading-6 text-slate-500">Sin eventos de interacción inferidos en este video.</p>}
+          <div className="mt-4 max-h-60 overflow-hidden">
             {events.length > 0
-              ? <div className="interaction-scroll">{[...events].reverse().map((event, index) => (
-                <button className="interaction-event" key={`${event.t}-${index}`} onClick={() => seekToEvent(event)}>
+              ? <div className="grid max-h-60 gap-1 overflow-y-auto pr-1">{[...events].reverse().map((event, index) => (
+                <button className="flex w-full items-center gap-3 rounded-lg border border-teal-950 bg-[#0d1916] px-3 py-2 text-left text-xs text-slate-200 hover:border-orange-400 hover:bg-orange-400/10 [&_b]:font-mono [&_b]:text-xs [&_b]:text-orange-400 [&_span]:flex-1 [&_i]:not-italic [&_i]:text-slate-500" key={`${event.t}-${index}`} onClick={() => seekToEvent(event)}>
                   <b>{formatTime(event.t)}</b>
                   <span>{event.gondola_name}</span>
                   <i>→</i>
                 </button>))}</div>
-              : <p className="interaction-empty">Lista de eventos vacía: se completa al inferir interacciones de proximidad, velocidad y tiempo frente a las góndolas.</p>}
+              : <p className="text-xs leading-6 text-slate-500">Lista de eventos vacía: se completa al inferir interacciones de proximidad, velocidad y tiempo frente a las góndolas.</p>}
           </div>
         </aside>
       </div>

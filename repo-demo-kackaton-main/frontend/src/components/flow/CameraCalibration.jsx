@@ -225,45 +225,45 @@ export default function CameraCalibration({ preview, frameCapture, configuration
   }
 
   return (
-    <section className="calibration-panel">
-      <div className="calibration-heading">
-        <div><span className="eyebrow">CALIBRACIÓN DE CÁMARA · {points.length} PUNTOS</span><h3>Alinea el piso del video con el plano en metros</h3></div>
-        <button className="sheet-close-static" onClick={onClose}>×</button>
+    <section className="my-4 border border-teal-800 bg-[#0c1915] p-5">
+      <div className="mb-5 flex items-start justify-between gap-4 [&_h3]:mt-2 [&_h3]:text-2xl [&_h3]:font-semibold">
+        <div><span className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-teal-300">CALIBRACIÓN DE CÁMARA · {points.length} PUNTOS</span><h3>Alinea el piso del video con el plano en metros</h3></div>
+        <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-[#172720] text-slate-200" onClick={onClose}>×</button>
       </div>
-      <p className="calibration-help">Pausa el video donde se vea el pasillo completo y captura el frame. Luego arrastra P1…·P{Math.max(4, points.length)} a las esquinas del piso real en el video:<b> P1</b> esquina superior-izquierda · <b>P2</b> superior-derecha · <b>P3</b> fondo-derecha · <b>P4</b> fondo-izquierda. Si la cámara necesita un punto extra, añade P5 y arrástralo <b>hacia un lado</b> del piso: se fija automáticamente a ese borde y te deja deslizarlo a lo largo de él para afinar la homografía en tiempo real.</p>
+      <p className="my-4 max-w-3xl text-xs leading-6 text-slate-400">Pausa el video donde se vea el pasillo completo y captura el frame. Luego arrastra P1…·P{Math.max(4, points.length)} a las esquinas del piso real en el video:<b> P1</b> esquina superior-izquierda · <b>P2</b> superior-derecha · <b>P3</b> fondo-derecha · <b>P4</b> fondo-izquierda. Si la cámara necesita un punto extra, añade P5 y arrástralo <b>hacia un lado</b> del piso: se fija automáticamente a ese borde y te deja deslizarlo a lo largo de él para afinar la homografía en tiempo real.</p>
       {!preview
-        ? <div className="calib-empty">Primero selecciona un video MP4 para capturar un frame y calibrar la cámara.</div>
-        : <>      <div className="calibration-grid">
-        <div className="calibration-stage">
+        ? <div className="p-12 text-center text-xs text-slate-500">Primero selecciona un video MP4 para capturar un frame y calibrar la cámara.</div>
+        : <>      <div className="grid gap-5 lg:grid-cols-2">
+        <div className="min-w-0 [&_video]:aspect-video [&_video]:w-full [&_video]:bg-black">
           <video ref={videoRef} src={preview} controls muted playsInline />
-          <button className="capture-frame" onClick={capture}>＋ Capturar frame</button>
+          <button className="mt-3 border border-lime-300 px-4 py-3 text-xs text-lime-300" onClick={capture}>＋ Capturar frame</button>
         </div>
-        <div className="calibration-canvas-wrap">
+        <div className="grid min-w-0 place-items-center border border-dashed border-teal-800 bg-[#08120f]">
           {captured
-            ? <canvas ref={canvasRef} className="calib-canvas" style={{ width: '100%', aspectRatio: `${captured.width}/${captured.height}` }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={release} onPointerCancel={release} />
-            : <div className="calib-empty">Captura un frame para comenzar</div>}
+            ? <canvas ref={canvasRef} className="block touch-none cursor-crosshair border border-teal-900" style={{ width: '100%', aspectRatio: `${captured.width}/${captured.height}` }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={release} onPointerCancel={release} />
+            : <div className="p-12 text-center text-xs text-slate-500">Captura un frame para comenzar</div>}
         </div>
       </div>
-      <div className="live-alignment">
-        <div className="live-col">
-          <span className="live-label">PLANO 2D · VIDEO REAL</span>
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-2">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-lime-300">PLANO 2D · VIDEO REAL</span>
           <LiveAlignment frameCapture={frameCapture} configuration={configuration} interactive onMoveGondola={updateGondola} selectedId={selectedId} onSelect={setSelectedId} />
         </div>
-        <div className="live-col">
-          <span className="live-label">MAPA · VISTA SUPERIOR</span>
+        <div className="flex min-w-0 flex-col gap-2">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-lime-300">MAPA · VISTA SUPERIOR</span>
           <MiniMap configuration={configuration} interactive onMoveGondola={updateGondola} selectedId={selectedId} onSelect={setSelectedId} />
         </div>
       </div>
-      <div className="corner-labels">{targets.map(([x, z], index) => <span key={index}>P{index + 1} → ({x}, {z}) m</span>)}</div>
-      <div className="calibration-points-control">
+      <div className="my-4 flex flex-wrap gap-x-5 gap-y-2 font-mono text-[10px] text-slate-400">{targets.map(([x, z], index) => <span key={index}>P{index + 1} → ({x}, {z}) m</span>)}</div>
+      <div className="my-4 flex flex-wrap items-center gap-3 border border-teal-900 bg-[#091512]/40 p-3 [&_button]:border [&_button]:border-teal-900 [&_button]:px-3 [&_button]:py-2 [&_button]:text-xs [&_button]:text-slate-300 [&_label]:flex [&_label]:items-center [&_label]:gap-2 [&_label]:font-mono [&_label]:text-xs [&_label]:text-teal-300 [&_input]:w-20 [&_input]:border [&_input]:border-white/10 [&_input]:bg-[#101e1a] [&_input]:p-2 [&_input]:text-white">
         <button onClick={addExtraPoint} disabled={hasExtra}>＋ Añadir punto extra (P{points.length + 1})</button>
         {hasExtra && <button onClick={removeExtraPoint}>－ Quitar punto extra</button>}
       </div>
-      {saveState.kind === 'ok' && <div className="calib-status ok">{saveState.text}</div>}
-      {saveState.kind === 'error' && <div className="calib-status error">{saveState.text}</div>}
-      <div className="calibration-actions">
+      {saveState.kind === 'ok' && <div className="mt-3 border border-lime-300/40 bg-lime-300/10 p-3 text-xs text-lime-300">{saveState.text}</div>}
+      {saveState.kind === 'error' && <div className="mt-3 border border-orange-300/40 bg-orange-300/10 p-3 text-xs text-orange-300">{saveState.text}</div>}
+      <div className="flex gap-2 [&_button]:border [&_button]:border-teal-900 [&_button]:px-4 [&_button]:py-3 [&_button]:text-xs [&_button]:text-slate-300">
         <button onClick={restore}>Restaurar</button>
-        <button className="primary-button-inline" onClick={save} disabled={saving || !captured}>{saving ? 'Guardando…' : 'Guardar calibración'}</button>
+        <button className="!border-lime-300 !text-lime-300 disabled:cursor-not-allowed disabled:opacity-40" onClick={save} disabled={saving || !captured}>{saving ? 'Guardando…' : 'Guardar calibración'}</button>
       </div>
       </>}
     </section>
@@ -277,3 +277,5 @@ function hexToRgba(hex, alpha) {
   if (Number.isNaN(num)) return `rgba(97, 222, 192, ${alpha})`
   return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`
 }
+
+

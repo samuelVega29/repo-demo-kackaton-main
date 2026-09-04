@@ -121,10 +121,10 @@ function Store({ result, mode, selectedId, onSelect, heatmapUrl, sliceEntries, s
 function TimeScrubber({ entries, mode, index, onChange }) {
   const current = entries[index]
   return (
-    <div className="time-scrubber">
-      <span className="scrub-label">{mode.toUpperCase()}</span>
+    <div className="pointer-events-auto absolute bottom-8 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 border border-teal-900 bg-black/80 px-4 py-3 font-mono text-[10px] text-slate-300">
+      <span className="uppercase text-teal-300">{mode.toUpperCase()}</span>
       <input type="range" min="0" max={Math.max(0, entries.length - 1)} value={index} onChange={(event) => onChange(Number(event.target.value))} />
-      <span className="scrub-time">{current ? `${current.start}s – ${current.end}s` : ''}</span>
+      <span className="whitespace-nowrap text-slate-300">{current ? `${current.start}s – ${current.end}s` : ''}</span>
     </div>
   )
 }
@@ -138,12 +138,12 @@ export default function StoreScene({ result, mode, selectedId, onSelect, heatmap
   const [sliceIndex, setSliceIndex] = useState(0)
   useEffect(() => setSliceIndex(0), [mode, heatmapUrl, analysisId, sliceEntries.length])
   return (
-    <div className="scene-canvas">
+    <div className="relative h-[520px] min-h-[520px] overflow-hidden bg-[#07100e] lg:h-[620px]">
       <Canvas shadows camera={{ position: [floor.width * 0.7, 9, floor.depth * 0.8], fov: 43 }} dpr={[1, 1.5]}>
         <Store result={result} mode={mode} selectedId={selectedId} onSelect={onSelect} heatmapUrl={heatmapUrl} sliceEntries={sliceEntries} sliceIndex={sliceIndex} analysisId={analysisId} />
       </Canvas>
       {sliceEntries.length > 1 && <TimeScrubber entries={sliceEntries} mode={mode} index={sliceIndex} onChange={setSliceIndex} />}
-      <span className="scene-hint">ARRASTRA · PELLIZCA · TOCA UNA GÓNDOLA</span>
+      <span className="absolute bottom-4 left-4 z-10 font-mono text-[10px] uppercase tracking-widest text-slate-400">ARRASTRA · PELLIZCA · TOCA UNA GÓNDOLA</span>
     </div>
   )
 }

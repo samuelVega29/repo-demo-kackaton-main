@@ -100,7 +100,7 @@ export default function PlanogramPreview3D({ configuration, onSelect }) {
   const geometry = configuration.gondolas || []
   const isEmpty = geometry.length === 0
   return (
-    <div className="scene-canvas planogram-preview">
+    <div className="relative h-[560px] min-h-[360px] overflow-hidden bg-[#07100e]">
       <Canvas shadows camera={{ position: [floor.width * 0.7, 9, floor.depth * 0.8], fov: 43 }} dpr={[1, 1.5]}>
         <PreviewStore
           configuration={configuration}
@@ -108,8 +108,9 @@ export default function PlanogramPreview3D({ configuration, onSelect }) {
           onSelect={(id) => { setSelectedId(id); if (onSelect) onSelect(id) }}
         />
       </Canvas>
-      {isEmpty && <div className="preview-empty">Aún no hay góndolas. Dibuja tu planograma para verlo en 3D.</div>}
-      <span className="scene-hint">VISTA 3D DEL PLANO · ARRASTRA · SELECCIONA UNA GÓNDOLA</span>
+      {isEmpty && <div className="absolute inset-0 grid place-items-center p-8 text-center text-sm text-slate-500">Aún no hay góndolas. Dibuja tu planograma para verlo en 3D.</div>}
+      <span className="absolute bottom-4 left-4 z-10 font-mono text-[10px] uppercase tracking-widest text-slate-400">VISTA 3D DEL PLANO · ARRASTRA · SELECCIONA UNA GÓNDOLA</span>
     </div>
   )
 }
+

@@ -63,7 +63,7 @@ export function MiniMap({ configuration, interactive, onMoveGondola, selectedId,
   return (
     <div
       ref={ref}
-      className={`live-minimap${interactive ? ' interactive' : ''}`}
+      className={`relative block w-full border border-teal-900 bg-[#091512] ${interactive ? 'cursor-grab active:cursor-grabbing' : ''} [&_i]:absolute [&_i]:grid [&_i]:touch-none [&_i]:place-items-center [&_i]:border [&_i_span]:pointer-events-none [&_i_span]:absolute [&_i_span]:left-1 [&_i_span]:top-1 [&_i_span]:max-w-[95%] [&_i_span]:overflow-hidden [&_i_span]:text-ellipsis [&_i_span]:whitespace-nowrap [&_i_span]:font-mono [&_i_span]:text-[7px] [&_i_span]:font-semibold [&_i_span]:text-slate-100`}
       style={{ aspectRatio: `${floor.width}/${floor.depth}` }}
       onPointerDown={pointerDown}
       onPointerMove={pointerMove}
@@ -73,7 +73,7 @@ export function MiniMap({ configuration, interactive, onMoveGondola, selectedId,
       {configuration.gondolas.map((gondola) => (
         <i
           key={gondola.id}
-          className={interactive && selectedId === gondola.id ? 'selected' : ''}
+          className={interactive && selectedId === gondola.id ? 'border-lime-300 shadow-[0_0_8px_rgba(97,222,192,.5)]' : ''}
           style={{
             left: `${gondola.x / floor.width * 100}%`,
             top: `${gondola.z / floor.depth * 100}%`,
@@ -216,18 +216,19 @@ export default function LiveAlignment({ frameCapture, configuration, interactive
   const endDrag = () => { if (drag.current) drag.current.active = false; drag.current = null }
 
   return (
-    <div className="live-frame">
+    <div className="grid min-w-0 place-items-center border border-dashed border-teal-800 bg-[#08120f] p-2">
       {frameCapture
         ? <canvas
             ref={canvasRef}
-            className={`live-canvas${interactive ? ' interactive' : ''}`}
+            className={`block h-full w-full touch-none border border-teal-900 bg-black object-contain ${interactive ? 'cursor-grab active:cursor-grabbing' : ''}`}
             style={{ aspectRatio: `${frameCapture.width}/${frameCapture.height}` }}
             onPointerDown={pointerDown}
             onPointerMove={pointerMove}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
           />
-        : <div className="calib-empty">Captura un frame en “Calibrar cámara” para ver la proyección.</div>}
+        : <div className="p-12 text-center text-xs text-slate-500">Captura un frame en “Calibrar cámara” para ver la proyección.</div>}
     </div>
   )
 }
+

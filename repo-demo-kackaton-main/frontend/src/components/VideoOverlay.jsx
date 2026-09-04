@@ -118,14 +118,14 @@ export default function VideoOverlay({ preview, configuration, onClose }) {
   }, [])
 
   return (
-    <section className="video-overlay-wrap">
-      <div className="calibration-heading">
-        <div><span className="eyebrow">VERIFICACIÓN DE ALINEACIÓN</span><h3>Góndolas del planograma sobre el video real</h3></div>
-        <button className="sheet-close-static" onClick={onClose}>×</button>
+    <section className="my-4 border border-teal-800 bg-[#0c1915] p-5">
+      <div className="mb-5 flex items-start justify-between gap-4 [&_h3]:mt-2 [&_h3]:text-2xl [&_h3]:font-semibold">
+        <div><span className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-teal-300">VERIFICACIÓN DE ALINEACIÓN</span><h3>Góndolas del planograma sobre el video real</h3></div>
+        <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-[#172720] text-slate-200" onClick={onClose}>×</button>
       </div>
-      <div className="video-overlay-stage">
-        <video ref={videoRef} src={preview} controls muted playsInline className="overlay-video" />
-        <canvas ref={canvasRef} className="overlay-canvas" />
+      <div className="relative border border-teal-900 bg-black">
+        <video ref={videoRef} src={preview} controls muted playsInline className="block w-full" />
+        <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
       </div>
     </section>
   )
