@@ -2,9 +2,7 @@ import { useMemo, useState } from 'react'
 import * as THREE from 'three'
 import { Canvas } from '@react-three/fiber'
 import { Grid, Line, OrbitControls, Text } from '@react-three/drei'
-
-const productRows = ['Superior', 'Media', 'Inferior']
-const productColumns = ['Izquierda', 'Centro', 'Derecha']
+import { ROWS as productRows, COLUMNS as productColumns } from '../../lib/constants'
 
 function buildFacadeTexture(products, flip) {
   const W = 600

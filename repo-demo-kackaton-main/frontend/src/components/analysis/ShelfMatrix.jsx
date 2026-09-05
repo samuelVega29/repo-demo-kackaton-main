@@ -1,5 +1,4 @@
-const rows = ['Superior', 'Media', 'Inferior']
-const columns = ['Izquierda', 'Centro', 'Derecha']
+import { ROWS as rows, COLUMNS as columns } from '../../lib/constants'
 
 export default function ShelfMatrix({ gondola, mode, events = [] }) {
   if (!gondola) {

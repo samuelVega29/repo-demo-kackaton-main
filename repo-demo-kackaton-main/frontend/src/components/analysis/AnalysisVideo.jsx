@@ -1,35 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { artifactUrl, videoUrl } from '../api/client'
-import { gondolaCorners } from '../lib/homography'
-
-const solveHomography = (pairs) => {
-  const a = []
-  const b = []
-  pairs.forEach(([sx, sy, tx, ty]) => {
-    a.push([-sx, -sy, -1, 0, 0, 0, tx * sx, tx * sy])
-    b.push(-tx)
-    a.push([0, 0, 0, -sx, -sy, -1, ty * sx, ty * sy])
-    b.push(-ty)
-  })
-  const n = 8
-  for (let col = 0; col < n; col++) {
-    let pivot = col
-    for (let row = col + 1; row < n; row++) if (Math.abs(a[row][col]) > Math.abs(a[pivot][col])) pivot = row
-    if (Math.abs(a[pivot][col]) < 1e-10) return null
-    ;[a[col], a[pivot]] = [a[pivot], a[col]]
-    ;[b[col], b[pivot]] = [b[pivot], b[col]]
-    const divisor = a[col][col]
-    for (let j = col; j < n; j++) a[col][j] /= divisor
-    b[col] /= divisor
-    for (let row = 0; row < n; row++) {
-      if (row === col) continue
-      const factor = a[row][col]
-      for (let j = col; j < n; j++) a[row][j] -= factor * a[col][j]
-      b[row] -= factor * b[col]
-    }
-  }
-  return [...b, 1]
-}
+import { videoUrl } from '../../api/client'
+import { gondolaCorners } from '../../lib/homography'
 
 const formatTime = (seconds) => {
   const s = Math.max(0, Math.floor(seconds || 0))
@@ -47,18 +18,13 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
   const pickupHistogram = result.pickup_histogram
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
-  const heatRef = useRef(null)
   const configurationRef = useRef(configuration)
   configurationRef.current = configuration
   const selectedRef = useRef(selectedId)
   selectedRef.current = selectedId
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
-  const [showHeat, setShowHeat] = useState(false)
   const [showGeo, setShowGeo] = useState(false)
-  const [heatMode, setHeatMode] = useState('traffic')
-  const [heatMatrix, setHeatMatrix] = useState(null)
-  const [heatDims, setHeatDims] = useState(null)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -127,42 +93,6 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
     return () => cancelAnimationFrame(frame)
   }, [floor.width, floor.depth, showGeo])
 
-  useEffect(() => {
-    if (!showHeat) return
-    const img = heatRef.current
-    if (!img) return
-    const onLoad = () => {
-      const config = configurationRef.current
-      const matrix = config.camera?.homography_inv
-      const video = videoRef.current
-      if (!matrix || !video || !video.videoWidth) return
-      const width = video.videoWidth
-      const height = video.videoHeight
-      const px = (x, z) => {
-        const flat = matrix.flat()
-        const denominator = flat[6] * x + flat[7] * z + flat[8]
-        if (!denominator) return null
-        return [(flat[0] * x + flat[1] * z + flat[2]) / denominator * width, (flat[3] * x + flat[4] * z + flat[5]) / denominator * height]
-      }
-      const target = [[0, 0], [floor.width, 0], [floor.width, floor.depth || 0], [0, floor.depth || 0]].map(([x, z]) => px(x, z))
-      if (target.some((point) => !point)) return
-      const W = img.naturalWidth
-      const H = img.naturalHeight
-      const homography = solveHomography([
-        [0, 0, target[0][0], target[0][1]],
-        [W, 0, target[1][0], target[1][1]],
-        [W, H, target[2][0], target[2][1]],
-        [0, H, target[3][0], target[3][1]],
-      ])
-      if (!homography) return
-      setHeatMatrix(homography)
-      setHeatDims([W, H])
-    }
-    if (img.complete) onLoad()
-    img.addEventListener('load', onLoad)
-    return () => img.removeEventListener('load', onLoad)
-  }, [showHeat, floor.width, floor.depth])
-
   const seek = (seconds) => {
     const video = videoRef.current
     if (!video) return
@@ -177,12 +107,10 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
 
   const maxCount = histogram ? Math.max(1, ...histogram.buckets.map((bucket) => bucket.count)) : 1
   const maxPickupCount = pickupHistogram ? Math.max(1, ...pickupHistogram.buckets.map((bucket) => bucket.count)) : 1
-  const heatArtifact = result.heatmaps?.[heatMode]
-  const heatOptions = ['traffic', 'dwell', 'interaction', 'pickup'].filter((mode) => result.heatmaps?.[mode])
 
   return (
     <section className="analysis-video">
-      <div className="section-title"><span className="eyebrow">REPRODUCCIÓN DEL ANÁLISIS</span><h2>El video, con geografía</h2><p>Reproduce el video real. El mapa de góndolas y zonas es opcional: activalo con «Geografía», y encendé «Calor» para ver el mapa espacial superpuesto.</p></div>
+      <div className="section-title"><span className="eyebrow">REPRODUCCIÓN DEL ANÁLISIS</span><h2>El video, con geografía</h2><p>Reproduce el video real. El mapa de góndolas y zonas es opcional: activalo con «Geografía».</p></div>
       <div className="analysis-video-layout">
         <div className="analysis-video-stage">
           <video
@@ -195,21 +123,12 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
             onEnded={() => setPlaying(false)}
           />
           <canvas ref={canvasRef} className="analysis-overlay" />
-          {showHeat && heatArtifact && <img
-            ref={heatRef}
-            className="analysis-heat"
-            src={artifactUrl(analysis.id, heatArtifact)}
-            style={heatDims ? { width: heatDims[0], height: heatDims[1], transform: `matrix3d(${heatMatrix.join(',')})` } : undefined}
-            alt=""
-          />}
           <div className="analysis-video-controls">
             <button className="play-toggle" onClick={() => { const video = videoRef.current; if (!video) return; if (video.paused) { video.play().catch(() => {}) } else { video.pause() } }}>{playing ? '❚❚' : '▶'}</button>
             <strong>{formatTime(time)}</strong>
             <span>/</span>
             <b>{formatTime(duration)}</b>
             <label className="heat-toggle"><input type="checkbox" checked={showGeo} onChange={(event) => setShowGeo(event.target.checked)} />Geografía</label>
-            <label className="heat-toggle"><input type="checkbox" checked={showHeat} onChange={(event) => setShowHeat(event.target.checked)} />Calor superpuesto</label>
-            {showHeat && <select className="heat-mode" value={heatMode} onChange={(event) => setHeatMode(event.target.value)}>{heatOptions.map((mode) => <option value={mode} key={mode}>{mode.charAt(0).toUpperCase() + mode.slice(1)}</option>)}</select>}
           </div>
           <div className="video-timeline">
             <input type="range" min="0" max={Math.max(1, duration)} step="0.1" value={Math.min(time, duration)} onChange={(event) => seek(Number(event.target.value))} />

@@ -1,9 +1,6 @@
 import { useRef, useState } from 'react'
 import LiveAlignment from './LiveAlignment'
-
-const rows = ['Superior', 'Media', 'Inferior']
-const columns = ['Izquierda', 'Centro', 'Derecha']
-const emptyProducts = () => Array.from({ length: 3 }, () => ['', '', ''])
+import { ROWS as rows, COLUMNS as columns, emptyProducts } from '../../lib/constants'
 
 const GRID_SNAP = 0.25
 

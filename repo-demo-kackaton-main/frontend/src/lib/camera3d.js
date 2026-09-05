@@ -1,8 +1,10 @@
 /**
- * 3D camera model using pinhole projection.
+ * Matemática de modelo de cámara 3D (proyección pinhole).
  *
- * Provides projection from 3D world coordinates to 2D normalized image coordinates
- * and inverse operations for proper height-aware spatial analysis.
+ * Referencia para cámaras con `camera.model_3d` configurado (height/pitch/yaw/roll/focal).
+ * La proyección de los overlays de video usa el modelo 2D de lib/homography.js, que es la
+ * calibración que el usuario traza sobre el frame; este módulo queda como la versión con
+ * altura de esa proyección (equivalente frontend a backend/camera3d.py).
  *
  * World coordinate system: X = floor right, Y = up (height), Z = floor forward (depth).
  */
@@ -155,7 +157,7 @@ export function projectFloor3D(P, x, z, y = 0.0) {
 }
 
 /**
- * Build a3D model from camera config.
+ * Modelo 3D desde la configuración de cámara.
  * Returns { enabled, projection, inverse_projection, camera_center, params } or null.
  */
 export function model3DFromConfig(camera, floorWidth, floorDepth) {
@@ -239,32 +241,4 @@ function invert3x3(M) {
     [(f * g - d * i) * invDet, (a * i - c * g) * invDet, (c * d - a * f) * invDet],
     [(d * h - e * g) * invDet, (b * g - a * h) * invDet, (a * e - b * d) * invDet],
   ]
-}
-
-/**
- * Unified projection function that uses3D model when available, falls back to homography.
- */
-export function projectPoint(camera, x, y = 0, z) {
-  if (camera.model_3d?.enabled && camera._model3d) {
-    return project3D(camera._model3d.projection, x, y, z)
-  }
-  // Fallback to 2D homography
-  if (camera._inverseHomography) {
-    return projectFloor(camera._inverseHomography, x, z)
-  }
-  return null
-}
-
-/**
- * Unified unprojection function that uses3D model when available.
- */
-export function unprojectPoint(camera, u, v, height = 0) {
-  if (camera.model_3d?.enabled && camera._model3d) {
-    return unprojectToFloor3D(camera._model3d.inverse_projection, u, v, height)
-  }
-  // Fallback to 2D homography
-  if (camera._homography) {
-    return projectFloor(camera._homography, u, v)
-  }
-  return null
 }

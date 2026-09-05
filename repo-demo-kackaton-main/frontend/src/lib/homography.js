@@ -1,14 +1,11 @@
-import {
-  buildProjectionMatrix,
-  buildInverseProjection,
-  projectFloor3D,
-  unprojectToFloor3D,
-  model3DFromConfig,
-  DEFAULT_CAMERA_HEIGHT_M,
-  DEFAULT_PITCH_DEG,
-  DEFAULT_FOCAL_LENGTH_PX,
-  DEFAULT_PRINCIPAL_POINT,
-} from './camera3d'
+/**
+ * Proyección 2D usada por todos los overlays de video.
+ *
+ * La calibración visual (source → target en metros) que el usuario traza sobre el frame
+ * define LA homografía de proyección. Todo contorno/dibujo en el video pasa por aquí.
+ * La matemática 3D de cámara (lib/camera3d.js) queda como referencia para cámaras con
+ * modelo 3D configurado (`camera.model_3d`) y no altera lo que el usuario calibró.
+ */
 
 export function solveHomography(pairs) {
   const a = []
@@ -61,8 +58,7 @@ export function gondolaCorners(gondola) {
 }
 
 export const forwardHomography = (camera) => {
-  // Always compute the 2D homography from the visual calibration points. This is the base
-  // projection for all video overlays - it matches exactly what the user traced on the frame.
+  // image (normalized) -> floor (meters)
   const source = camera?.source_normalized
   const target = camera?.target_meters
   if (!source || !target || source.length !== 4 || target.length !== 4) return null
@@ -70,66 +66,9 @@ export const forwardHomography = (camera) => {
 }
 
 export const inverseHomography = (camera) => {
-  // Always compute the 2D inverse homography for video overlay projection.
+  // floor (meters) -> image (normalized)
   const source = camera?.source_normalized
   const target = camera?.target_meters
   if (!source || !target || source.length !== 4 || target.length !== 4) return null
   return solveHomography(target.map(([tx, tz], index) => [tx, tz, source[index][0], source[index][1]]))
-}
-
-/**
- * Check if3D camera model is available and enabled.
- */
-export const has3DModel = (camera) => {
-  return camera?.model_3d?.enabled === true && camera?.model_3d_projection != null
-}
-
-/**
- * Build3D projection matrices from camera config.
- * Returns { projection, inverse_projection } or null.
- */
-export const build3DProjection = (camera, floorWidth, floorDepth) => {
-  if (!camera?.model_3d?.enabled) return null
-  return model3DFromConfig(camera, floorWidth, floorDepth)
-}
-
-/**
- * Project a point using the best available method.
- * Uses3D model when enabled, falls back to homography.
- * Returns [u, v] in normalized coords (0..1).
- */
-export const projectPoint = (camera, x, y = 0, z) => {
-  if (has3DModel(camera)) {
-    const model = model3DFromConfig(camera, 10, 8) // Default floor, should be passed from context
-    if (model) {
-      const result = projectFloor3D(model.projection, x, z, y)
-      if (result) return result
-    }
-  }
-  // Fallback to 2D homography
-  const matrix = forwardHomography(camera)
-  if (matrix) {
-    return projectFloor(matrix, x, z)
-  }
-  return null
-}
-
-/**
- * Unproject a normalized image point to floor coordinates.
- * Uses3D model when enabled, falls back to homography.
- * Returns [x, z] in floor meters.
- */
-export const unprojectPoint = (camera, u, v, height = 0) => {
-  if (has3DModel(camera)) {
-    const model = model3DFromConfig(camera, 10, 8) // Default floor, should be passed from context
-    if (model?.inverse_projection) {
-      return unprojectToFloor3D(model.inverse_projection, u, v, height)
-    }
-  }
-  // Fallback to 2D homography
-  const matrix = inverseHomography(camera)
-  if (matrix) {
-    return projectFloor(matrix, u, v)
-  }
-  return null
 }

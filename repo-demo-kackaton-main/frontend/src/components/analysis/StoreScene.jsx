@@ -2,12 +2,10 @@ import { createRef, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { Billboard, Grid, Line, OrbitControls, Text, useTexture } from '@react-three/drei'
-import { artifactUrl } from '../api/client'
+import { artifactUrl } from '../../api/client'
+import { ROWS as productRows, COLUMNS as productColumns } from '../../lib/constants'
 
 const metricField = { traffic: 'traffic', dwell: 'dwell_seconds', interaction: 'interactions', pickup: 'pickups' }
-
-const productRows = ['Superior', 'Media', 'Inferior']
-const productColumns = ['Izquierda', 'Centro', 'Derecha']
 
 const ZONE_COLORS = {
   'Entrada': '#5b9dff',

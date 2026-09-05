@@ -1,14 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { gondolaCorners, projectFloor, forwardHomography, inverseHomography } from '../../lib/homography'
 import { drawFloorOutline } from '../../lib/floorOutline'
-
-function hexToRgba(hex, alpha) {
-  const normalized = hex.replace('#', '')
-  const full = normalized.length === 3 ? normalized.split('').map((c) => c + c).join('') : normalized
-  const num = parseInt(full, 16)
-  if (Number.isNaN(num)) return `rgba(97, 222, 192, ${alpha})`
-  return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`
-}
+import { hexToRgba } from '../../lib/color'
 
 export function MiniMap({ configuration, interactive, onMoveGondola, selectedId, onSelect }) {
   const floor = configuration.floor || {}

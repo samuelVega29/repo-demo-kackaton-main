@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { gondolaCorners } from '../lib/homography'
+import { gondolaCorners } from '../../lib/homography'
+import { hexToRgba } from '../../lib/color'
 
 const project = (configuration, x, z) => {
   const matrix = configuration.camera?.homography_inv
@@ -8,14 +9,6 @@ const project = (configuration, x, z) => {
   const denominator = flat[6] * x + flat[7] * z + flat[8]
   if (!denominator) return null
   return [(flat[0] * x + flat[1] * z + flat[2]) / denominator, (flat[3] * x + flat[4] * z + flat[5]) / denominator]
-}
-
-const hexToRgba = (hex, alpha) => {
-  const normalized = hex.replace('#', '')
-  const full = normalized.length === 3 ? normalized.split('').map((c) => c + c).join('') : normalized
-  const num = parseInt(full, 16)
-  if (Number.isNaN(num)) return `rgba(212, 255, 112, ${alpha})`
-  return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`
 }
 
 export default function VideoOverlay({ preview, configuration, onClose }) {
