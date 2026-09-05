@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { gondolaCorners, projectFloor, forwardHomography, inverseHomography } from '../../lib/homography'
 import { drawFloorOutline } from '../../lib/floorOutline'
 
@@ -91,13 +91,16 @@ export function MiniMap({ configuration, interactive, onMoveGondola, selectedId,
   )
 }
 
-export default function LiveAlignment({ frameCapture, configuration, interactive, onMoveGondola, selectedId, onSelect }) {
+export default function LiveAlignment({ frameCapture, configuration, interactive, onMoveGondola, selectedId, onSelect, drawMode, onDrawCommit, onDrawCancel }) {
   const canvasRef = useRef(null)
   const floor = configuration.floor || {}
   const camera = configuration.camera || {}
   const inverse = inverseHomography(camera) || null
   const forward = forwardHomography(camera) || null
   const drag = useRef(null)
+  const [drawPoints, setDrawPoints] = useState([])
+
+  useEffect(() => { if (!drawMode) setDrawPoints([]) }, [drawMode])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -161,9 +164,27 @@ export default function LiveAlignment({ frameCapture, configuration, interactive
       })
       const traced = (configuration.floor || {}).outline
       if (traced && traced.length > 1) drawFloorOutline(ctx, traced, toPx)
+      if (drawPoints.length > 1) drawFloorOutline(ctx, drawPoints, toPx)
+      drawPoints.forEach(([x, z], index) => {
+        const p = toPx(x, z)
+        if (!p) return
+        ctx.beginPath()
+        ctx.arc(p[0], p[1], 5, 0, Math.PI * 2)
+        ctx.fillStyle = '#5b9dff'
+        ctx.fill()
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 1.5
+        ctx.stroke()
+        ctx.fillStyle = 'rgba(6, 14, 12, .85)'
+        const label = String(index + 1)
+        ctx.fillRect(p[0] + 6, p[1] - 9, ctx.measureText(label).width + 8, 16)
+        ctx.fillStyle = '#e8f2ed'
+        ctx.font = '11px ui-monospace, monospace'
+        ctx.fillText(label, p[0] + 10, p[1] + 3)
+      })
     }
     image.src = frameCapture.dataUrl
-  }, [frameCapture, configuration, inverse, floor.width, floor.depth, interactive, selectedId])
+  }, [frameCapture, configuration, inverse, floor.width, floor.depth, interactive, selectedId, drawPoints, drawMode])
 
   const centerPx = (gondola) => {
     const cx = gondola.x + gondola.width / 2
@@ -178,7 +199,18 @@ export default function LiveAlignment({ frameCapture, configuration, interactive
     return [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height]
   }
 
+  const addDrawPoint = (event) => {
+    if (!drawMode || !forward || !frameCapture) return
+    const [nx, ny] = toNormalizedFromEvent(event)
+    const meters = projectFloor(forward, nx, ny)
+    if (!meters) return
+    const x = Math.round(Math.min(floor.width, Math.max(0, meters[0])) * 100) / 100
+    const z = Math.round(Math.min(floor.depth, Math.max(0, meters[1])) * 100) / 100
+    setDrawPoints((current) => [...current, [x, z]])
+  }
+
   const pointerDown = (event) => {
+    if (drawMode) return
     if (!interactive || !onMoveGondola || !frameCapture) return
     const rect = canvasRef.current.getBoundingClientRect()
     const px = (event.clientX - rect.left) / rect.width * frameCapture.width
@@ -202,7 +234,7 @@ export default function LiveAlignment({ frameCapture, configuration, interactive
 
   const pointerMove = (event) => {
     const d = drag.current
-    if (!d || !d.active || !forward) return
+    if (!d || !d.active || !forward || drawMode) return
     const [nx, ny] = toNormalizedFromEvent(event)
     const meters = projectFloor(forward, nx, ny)
     if (!meters) return
@@ -218,18 +250,39 @@ export default function LiveAlignment({ frameCapture, configuration, interactive
 
   const endDrag = () => { if (drag.current) drag.current.active = false; drag.current = null }
 
+  const xExtent = drawPoints.length ? Math.max(...drawPoints.map((p) => p[0])) - Math.min(...drawPoints.map((p) => p[0])) : 0
+  const zExtent = drawPoints.length ? Math.max(...drawPoints.map((p) => p[1])) - Math.min(...drawPoints.map((p) => p[1])) : 0
+
   return (
     <div className="live-frame">
       {frameCapture
-        ? <canvas
-            ref={canvasRef}
-            className={`live-canvas${interactive ? ' interactive' : ''}`}
-            style={{ aspectRatio: `${frameCapture.width}/${frameCapture.height}` }}
-            onPointerDown={pointerDown}
-            onPointerMove={pointerMove}
-            onPointerUp={endDrag}
-            onPointerCancel={endDrag}
-          />
+        ? <>
+            <canvas
+              ref={canvasRef}
+              className={`live-canvas${interactive ? ' interactive' : ''}${drawMode ? ' drawing' : ''}`}
+              style={{ aspectRatio: `${frameCapture.width}/${frameCapture.height}` }}
+              onClick={addDrawPoint}
+              onPointerDown={pointerDown}
+              onPointerMove={pointerMove}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
+            />
+            {drawMode && (
+              <>
+                <p className="draw-hint">Hacé clic sobre el video alineado para trazar el contorno del piso ({drawPoints.length} puntos). Con 3+ puntos se cierra el trazo.</p>
+                <div className="draw-video-actions">
+                  <button onClick={() => setDrawPoints((current) => current.slice(0, -1))} disabled={!drawPoints.length}>Deshacer</button>
+                  <button disabled={drawPoints.length < 3} onClick={() => { if (onDrawCommit) onDrawCommit(drawPoints); setDrawPoints([]) }}>Cerrar contorno</button>
+                  <button onClick={() => { setDrawPoints([]); if (onDrawCancel) onDrawCancel() }}>Cancelar</button>
+                </div>
+                {drawPoints.length >= 3 && (
+                  <div className="outline-measurements">
+                    <span><b>≈ {xExtent.toFixed(2)} × {zExtent.toFixed(2)} m</b>contorno del piso (señaliza la zona recorrida)</span>
+                  </div>
+                )}
+              </>
+            )}
+          </>
         : <div className="calib-empty">Captura un frame en “Calibrar cámara” para ver la proyección.</div>}
     </div>
   )

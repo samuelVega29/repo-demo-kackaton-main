@@ -50,13 +50,14 @@ function PreviewShelf({ item, floor, selected, onSelect }) {
   const x = item.x + item.width / 2 - floor.width / 2
   const z = item.z + item.depth / 2 - floor.depth / 2
   const accent = selected ? '#d9ff6b' : '#3c665c'
+  const rotationY = -THREE.MathUtils.degToRad(item.rotation || 0)
   const facade = useMemo(() => {
     if (!selected) return null
     const products = item.products || [[]]
     return { front: buildFacadeTexture(products), back: buildFacadeTexture(products, true) }
   }, [selected, item.products, item.id])
   return (
-    <group position={[x, 0, z]} onClick={(event) => { event.stopPropagation(); onSelect(item.id) }}>
+    <group position={[x, 0, z]} rotation={[0, rotationY, 0]} onClick={(event) => { event.stopPropagation(); onSelect(item.id) }}>
       <mesh position={[0, 0.76, 0]} castShadow>
         <boxGeometry args={[item.width, 1.45, item.depth]} />
         <meshStandardMaterial color="#18312b" emissive={accent} emissiveIntensity={selected ? 0.35 : 0.15} />

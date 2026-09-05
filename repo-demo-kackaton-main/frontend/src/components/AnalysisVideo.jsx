@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { artifactUrl, videoUrl } from '../api/client'
+import { gondolaCorners } from '../lib/homography'
 
 const solveHomography = (pairs) => {
   const a = []
@@ -54,6 +55,7 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
   const [showHeat, setShowHeat] = useState(false)
+  const [showGeo, setShowGeo] = useState(false)
   const [heatMode, setHeatMode] = useState('traffic')
   const [heatMatrix, setHeatMatrix] = useState(null)
   const [heatDims, setHeatDims] = useState(null)
@@ -94,12 +96,12 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
         ctx.setLineDash([])
       }
 
-      if (matrix) {
+      if (matrix && showGeo) {
         quad([[0, 0], [floor.width, 0], [floor.width, floor.depth || 0], [0, floor.depth || 0]], null, 'rgba(126, 154, 143, .75)', 2, [8, 6])
       }
 
-      ;(config.gondolas || []).forEach((gondola) => {
-        const corners = [[gondola.x, gondola.z], [gondola.x + gondola.width, gondola.z], [gondola.x + gondola.width, gondola.z + gondola.depth], [gondola.x, gondola.z + gondola.depth]]
+      ;(showGeo ? config.gondolas || [] : []).forEach((gondola) => {
+        const corners = gondolaCorners(gondola)
         const selected = gondola.id === selectedRef.current
         const p0 = px(gondola.x, gondola.z)
         quad(corners, selected ? 'rgba(212, 255, 112, .30)' : 'rgba(97, 222, 192, .06)', selected ? '#d9fe6b' : '#65dfc2', selected ? 6 : 3, selected ? null : [5, 5])
@@ -112,7 +114,7 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
         }
       })
 
-      ;(config.zones || []).forEach((zone) => {
+      ;(showGeo ? config.zones || [] : []).forEach((zone) => {
         quad(zone.polygon || [], 'rgba(97, 222, 192, .05)', 'rgba(97, 222, 192, .4)', 2, [4, 4])
       })
     }
@@ -123,7 +125,7 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
     }
     loop()
     return () => cancelAnimationFrame(frame)
-  }, [floor.width, floor.depth])
+  }, [floor.width, floor.depth, showGeo])
 
   useEffect(() => {
     if (!showHeat) return
@@ -180,7 +182,7 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
 
   return (
     <section className="analysis-video">
-      <div className="section-title"><span className="eyebrow">REPRODUCCIÓN DEL ANÁLISIS</span><h2>El video, con geografía</h2><p>Reproduce el video real con las góndolas y zonas proyectadas. Enciende el calor para ver el mapa espacial superpuesto.</p></div>
+      <div className="section-title"><span className="eyebrow">REPRODUCCIÓN DEL ANÁLISIS</span><h2>El video, con geografía</h2><p>Reproduce el video real. El mapa de góndolas y zonas es opcional: activalo con «Geografía», y encendé «Calor» para ver el mapa espacial superpuesto.</p></div>
       <div className="analysis-video-layout">
         <div className="analysis-video-stage">
           <video
@@ -205,6 +207,7 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
             <strong>{formatTime(time)}</strong>
             <span>/</span>
             <b>{formatTime(duration)}</b>
+            <label className="heat-toggle"><input type="checkbox" checked={showGeo} onChange={(event) => setShowGeo(event.target.checked)} />Geografía</label>
             <label className="heat-toggle"><input type="checkbox" checked={showHeat} onChange={(event) => setShowHeat(event.target.checked)} />Calor superpuesto</label>
             {showHeat && <select className="heat-mode" value={heatMode} onChange={(event) => setHeatMode(event.target.value)}>{heatOptions.map((mode) => <option value={mode} key={mode}>{mode.charAt(0).toUpperCase() + mode.slice(1)}</option>)}</select>}
           </div>
