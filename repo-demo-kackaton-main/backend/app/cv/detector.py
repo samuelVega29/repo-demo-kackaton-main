@@ -82,10 +82,15 @@ class PersonDetector:
                 "confidence": round(float(confidence), 3),
                 "image_point": [(x1 + x2) / 2, y2],
                 "body_center_y": (y1 + y2) / 2,
+                "hand_points": [
+                    [x1 + 0.25 * (x2 - x1), y1 + 0.45 * (y2 - y1)],
+                    [x2 - 0.25 * (x2 - x1), y1 + 0.45 * (y2 - y1)],
+                ],
             }
             # Extract pose keypoints if available
             if not self.detection_only and result.keypoints is not None:
                 detection["keypoints"] = self._extract_keypoints(result.keypoints, idx)
+            detection["hand_points_real"] = self._real_wrists(detection.get("keypoints"))
             detections.append(detection)
         return result, detections
 
@@ -106,3 +111,18 @@ class PersonDetector:
             else:
                 result.append(None)
         return result
+
+    @staticmethod
+    def _real_wrists(keypoints) -> list[list[int]] | None:
+        """Returns [left_wrist, right_wrist] pixels when real pose keypoints exist.
+
+        Keypoint indices 9 and 10 are the COCO left/right wrists. They refine the hand-reach
+        heuristic for shelf pick-ups when the pose model is available.
+        """
+        if not keypoints or len(keypoints) <= 10:
+            return None
+        left = keypoints[9]
+        right = keypoints[10]
+        if left is None or right is None:
+            return None
+        return [[int(left[0]), int(left[1])], [int(right[0]), int(right[1])]]

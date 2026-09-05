@@ -11,7 +11,7 @@ import VideoOverlay from './components/VideoOverlay'
 import AnalysisVideo from './components/AnalysisVideo'
 import LoginPage from './pages/LoginPage'
 
-const modes = [['traffic', 'Tráfico'], ['dwell', 'Permanencia'], ['interaction', 'Interacción']]
+const modes = [['traffic', 'Tráfico'], ['dwell', 'Permanencia'], ['interaction', 'Interacción'], ['pickup', 'Pick-up']]
 
 function Header({ user, logout, retailer, site, goHome }) {
   return (
@@ -75,7 +75,7 @@ function OverlayViewer({ analysis }) {
   const [mode, setMode] = useState('traffic')
   const overlays = analysis.result?.heatmaps?.overlays || {}
   const files = overlays[mode] || []
-  const order = ['traffic', 'dwell', 'interaction']
+  const order = ['traffic', 'dwell', 'interaction', 'pickup']
   if (!order.some((key) => (overlays[key] || []).length)) return null
   return (
     <section className="overlay-viewer">
@@ -194,10 +194,11 @@ function ResultsView({ analysis, mode, setMode, selectedId, setSelectedId, close
   const selected = result.gondolas.find((item) => item.id === selectedId)
   const heatmapUrl = artifactUrl(analysis.id, `${mode}.png`)
   const interactionAvailable = Boolean(result.heatmaps.interaction)
+  const pickupAvailable = Boolean(result.heatmaps.pickup)
   return (
     <section className="results-page">
-      <div className="results-header"><div><span className="eyebrow">ANÁLISIS COMPLETADO · {result.model.tracker.toUpperCase()}</span><h1>Spatial <em>Lens.</em></h1></div><div className="video-facts"><span><b>{result.metrics.tracked_presences ?? result.metrics.people_detected}</b>Presencias rastreadas</span><span><b>{result.video.duration_seconds}s</b>Duración</span><span><b>{result.video.processed_frames}</b>Frames</span><span><b>{result.metrics.interaction_events}</b>Interacciones inferidas</span><span><b>{result.metrics.average_speed_m_s ?? 0} m/s</b>Velocidad media</span><span><b>{result.metrics.flow_per_minute ?? 0}/min</b>Flujo</span><span><b>{result.metrics.peak_presence ?? 0}</b>Pico simultáneo</span></div></div>
-      <div className="lens-tabs" role="tablist">{modes.map(([value, label]) => <button role="tab" aria-selected={mode === value} className={mode === value ? 'selected' : ''} onClick={() => setMode(value)} key={value}>{label}{value === 'interaction' && !interactionAvailable && <small>evidencia insuficiente</small>}</button>)}</div>
+      <div className="results-header"><div><span className="eyebrow">ANÁLISIS COMPLETADO · {result.model.tracker.toUpperCase()}</span><h1>Spatial <em>Lens.</em></h1></div><div className="video-facts"><span><b>{result.metrics.tracked_presences ?? result.metrics.people_detected}</b>Presencias rastreadas</span><span><b>{result.video.duration_seconds}s</b>Duración</span><span><b>{result.video.processed_frames}</b>Frames</span><span><b>{result.metrics.interaction_events}</b>Interacciones inferidas</span><span><b>{result.metrics.pickup_events ?? 0}</b>Pick-ups inferidos</span><span><b>{result.metrics.average_speed_m_s ?? 0} m/s</b>Velocidad media</span><span><b>{result.metrics.flow_per_minute ?? 0}/min</b>Flujo</span><span><b>{result.metrics.peak_presence ?? 0}</b>Pico simultáneo</span></div></div>
+      <div className="lens-tabs" role="tablist">{modes.map(([value, label]) => <button role="tab" aria-selected={mode === value} className={mode === value ? 'selected' : ''} onClick={() => setMode(value)} key={value}>{label}{value === 'interaction' && !interactionAvailable && <small>evidencia insuficiente</small>}{value === 'pickup' && !pickupAvailable && <small>sin pick-ups</small>}</button>)}</div>
       <div className="spatial-layout">
         <div className="spatial-main">
           <StoreScene result={result} mode={mode} selectedId={selectedId} onSelect={setSelectedId} heatmapUrl={heatmapUrl} slices={result.heatmaps?.slices} analysisId={analysis.id} />
@@ -206,7 +207,7 @@ function ResultsView({ analysis, mode, setMode, selectedId, setSelectedId, close
         <aside className={`detail-panel ${selected ? 'open' : ''}`}>
           <button className="sheet-close" onClick={closeDetail}>×</button>
           <ShelfMatrix gondola={selected} mode={mode} events={result.interaction_events_log || []} />
-          {selected && <div className="gondola-stats"><span><b>{selected.visitors}</b>visitantes</span><span><b>{selected.dwell_seconds}s</b>permanencia</span><span><b>{selected.interactions}</b>eventos inferidos</span><span><b>{selected.conversion_percent ?? 0}%</b>conversión</span></div>}
+          {selected && <div className="gondola-stats"><span><b>{selected.visitors}</b>visitantes</span><span><b>{selected.dwell_seconds}s</b>permanencia</span><span><b>{selected.interactions}</b>eventos inferidos</span><span><b>{selected.pickups ?? 0}</b>pick-ups</span><span><b>{selected.conversion_percent ?? 0}%</b>conversión</span></div>}
         </aside>
       </div>
       <div className="evidence-layout">
@@ -232,10 +233,9 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null)
 const [frameCapture, setFrameCapture] = useState(null)
   const inputRef = useRef(null)
-  const siteRef = useRef(site)
 
   useEffect(() => { if (user) api('/api/retailers').then(setRetailers).catch(() => logout()) }, [user])
-  useEffect(() => { if (retailer) api(`/api/retailers/${retailer.id}/sites`).then(setSites) }, [retailer])
+  useEffect(() => { if (retailer) api(`/api/retailers/${retailer.id}/sites`).then((items) => setSites(items.map((item) => ({ ...item, configuration: { ...(item.configuration || {}), floor: { ...(item.configuration?.floor || {}), outline: undefined } } })))) }, [retailer])
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview) }, [preview])
   useEffect(() => {
     if (!job?.id || ['completed', 'failed'].includes(job.status)) return
@@ -264,10 +264,19 @@ const [frameCapture, setFrameCapture] = useState(null)
   }
   const updateConfiguration = (configuration) => setSite((current) => ({ ...current, configuration }))
   const handleFrameCapture = (dataUrl, width, height) => setFrameCapture({ dataUrl, width, height })
+  const stripOutline = (configurationValue) => ({ ...configurationValue, floor: configurationValue.floor ? { ...configurationValue.floor, outline: undefined } : configurationValue.floor })
   const saveConfiguration = async (configuration) => {
-    const payload = configuration ?? siteRef.current.configuration
-    const saved = await api(`/api/sites/${siteRef.current.id}/configuration`, { method: 'PUT', body: JSON.stringify({ configuration: payload }) })
-    setSite(saved)
+    const current = configuration ?? site?.configuration
+    const payload = stripOutline(current)
+    const saved = await api(`/api/sites/${site?.id}/configuration`, { method: 'PUT', body: JSON.stringify({ configuration: payload }) })
+    // El contorno del piso es solo visual: nunca llega al backend. Se re-inyecta en memoria
+    // para que siga visible durante la sesión y desaparezca al re-entrar a la sede.
+    const currentFloor = current.floor || {}
+    if (currentFloor.outline) {
+      setSite({ ...saved, configuration: { ...saved.configuration, floor: { ...saved.configuration.floor, outline: currentFloor.outline } } })
+    } else {
+      setSite(saved)
+    }
     return saved
   }
   const goHome = () => { setRetailer(null); setSite(null); setJob(null); setFile(null); setSelectedId(null); setFrameCapture(null) }

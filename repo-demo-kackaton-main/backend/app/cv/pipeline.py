@@ -134,7 +134,43 @@ def update_analysis(analysis_id: str, **values) -> None:
             database.commit()
 
 
-def build_findings(gondolas: list[dict], zones: list[dict], interactions: int) -> list[dict]:
+def project_hand(spatial: SpatialEngine, detection: dict) -> tuple[list[float] | None, bool]:
+    """Projects the estimated hand points to the floor and returns the one closest to a gondola.
+
+    When real wrist keypoints from the pose model are available they are preferred over the
+    geometric estimate. The second element of the tuple reports whether the point comes from
+    real pose keypoints (True) or the lateral bounding-box heuristic (False). Returns
+    (point | None, pose_verified).
+    """
+    car = detection.get("floor_point")
+    if not car or not spatial.configuration.get("gondolas"):
+        return None, False
+    active = min(
+        spatial.configuration["gondolas"],
+        key=lambda item: SpatialEngine.distance_to_gondola(car, item),
+    )
+    real_hands = detection.get("hand_points_real")
+    if real_hands:
+        real_candidates = []
+        for hand in real_hands:
+            if hand[0] <= 0 or hand[1] <= 0:
+                continue
+            projected = spatial.project(hand)
+            if projected:
+                real_candidates.append((SpatialEngine.distance_to_gondola(projected, active), projected))
+        real_candidates.sort(key=lambda item: item[0])
+        if real_candidates:
+            return real_candidates[0][1], True
+    candidates = []
+    for hand in detection.get("hand_points", []):
+        projected = spatial.project(hand)
+        if projected:
+            candidates.append((SpatialEngine.distance_to_gondola(projected, active), projected))
+    candidates.sort(key=lambda item: item[0])
+    return (candidates[0][1] if candidates else None), False
+
+
+def build_findings(gondolas: list[dict], zones: list[dict], interactions: int, pickups: int = 0) -> list[dict]:
     findings = []
     active = max(gondolas, key=lambda item: item["dwell_seconds"], default=None)
     if active and active["dwell_seconds"] > 0:
@@ -142,6 +178,10 @@ def build_findings(gondolas: list[dict], zones: list[dict], interactions: int) -
     zone = max(zones, key=lambda item: item["dwell_seconds"], default=None)
     if zone and zone["dwell_seconds"] > 0:
         findings.append({"type": "evidence", "title": f"Zona dominante: {zone['name']}", "detail": f"Concentra {zone['dwell_seconds']:.1f} segundos de ocupación rastreada."})
+    if pickups == 0:
+        findings.append({"type": "quality", "title": "Sin pick-ups inferidos", "detail": "Ninguna mano estimada se acercó a las góndolas durante los engagement detectados. Solo presencia y posible revisión, sin extensión de brazo hacia el producto."})
+    elif active:
+        findings.append({"type": "recommendation", "title": f"{pickups} pick-ups probables detectados", "detail": f"Prevalecen en {active['name']}; revisar disposición, señalética y stock de los productos con más aproximaciones de mano."})
     if interactions == 0:
         findings.append({"type": "quality", "title": "Sin interacción inferible", "detail": "Ninguna trayectoria cumplió simultáneamente los umbrales configurados de proximidad, velocidad y tiempo."})
     elif active:
@@ -214,7 +254,9 @@ def run_analysis(analysis_id: str) -> None:
         traffic_points: list[dict] = []
         dwell_points: list[dict] = []
         interaction_points: list[dict] = []
+        pickup_points: list[dict] = []
         interaction_events: list[dict] = []
+        pickup_events: list[dict] = []
         last_interaction: dict[int, bool] = defaultdict(bool)
         gondola_names = {item["id"]: item.get("name", item["id"]) for item in configuration.get("gondolas", [])}
         frame_samples: list[dict] = []
@@ -231,6 +273,7 @@ def run_analysis(analysis_id: str) -> None:
             "traffic": [[] for _ in range(slice_count)],
             "dwell": [[] for _ in range(slice_count)],
             "interaction": [[] for _ in range(slice_count)],
+            "pickup": [[] for _ in range(slice_count)],
         }
 
         # Black-bar exclusion zone (pixels where there is no real content). Detections whose
@@ -270,7 +313,9 @@ def run_analysis(analysis_id: str) -> None:
             for detection in valid_detections:
                 detection["track_id"] = detection["person_id"]
             for detection in valid_detections:
-                behavior = interactions.observe(detection, timestamp, dt, height)
+                hand_point, pose_verified = project_hand(spatial, detection)
+                detection["hand_pose_verified"] = pose_verified
+                behavior = interactions.observe(detection, timestamp, dt, height, hand_point=hand_point)
                 total_detections += 1
                 active_this_frame.add(detection["track_id"])
                 track_frames[detection["track_id"]] += 1
@@ -309,6 +354,18 @@ def run_analysis(analysis_id: str) -> None:
                     slice_buckets["interaction"][min(slice_count - 1, int(frame_index / slice_size))].append({"x": detection["floor_point"][0], "z": detection["floor_point"][1], "weight": 1})
                 else:
                     last_interaction[detection["track_id"]] = False
+                if behavior["pickup"] and hand_point is not None:
+                    pickup_points.append({"x": hand_point[0], "z": hand_point[1], "weight": 1, "t": round(timestamp, 2)})
+                    slice_buckets["pickup"][min(slice_count - 1, int(frame_index / slice_size))].append({"x": hand_point[0], "z": hand_point[1], "weight": 1})
+                    pickup_events.append({
+                        "t": round(timestamp, 2),
+                        "track_id": detection["track_id"],
+                        "x": hand_point[0],
+                        "z": hand_point[1],
+                        "gondola_id": behavior["gondola_id"],
+                        "gondola_name": gondola_names.get(behavior["gondola_id"], behavior["gondola_id"]),
+                        "pose_verified": bool(pose_verified),
+                    })
 
             peak_presence = max(peak_presence, len(active_this_frame))
             if sample_detections:
@@ -327,6 +384,7 @@ def run_analysis(analysis_id: str) -> None:
         create_floor_heatmap(traffic_points, configuration["floor"], result_dir / "traffic.png")
         create_floor_heatmap(dwell_points, configuration["floor"], result_dir / "dwell.png")
         create_floor_heatmap(interaction_points, configuration["floor"], result_dir / "interaction.png")
+        create_floor_heatmap(pickup_points, configuration["floor"], result_dir / "pickup.png")
 
         homography_inv = spatial.homography_norm_inv.round(6).tolist()
         overlay_names: dict[str, list[str]] = {}
@@ -335,8 +393,9 @@ def run_analysis(analysis_id: str) -> None:
                 ("traffic", traffic_points),
                 ("dwell", dwell_points),
                 ("interaction", interaction_points),
+                ("pickup", pickup_points),
             ):
-                if mode == "interaction" and not interaction_points:
+                if mode in ("interaction", "pickup") and not point_source:
                     continue
                 blended = overlay_heatmap_on_frame(point_source, configuration["floor"], homography_inv, raw_frame)
                 filename = f"overlay_{mode}_{index}.jpg"
@@ -348,7 +407,7 @@ def run_analysis(analysis_id: str) -> None:
             start = round(index * slice_size / fps, 1)
             end = round(min((index + 1) * slice_size, total_frames) / fps, 1)
             entry = {"index": index, "start": start, "end": end}
-            for mode in ("traffic", "dwell", "interaction"):
+            for mode in ("traffic", "dwell", "interaction", "pickup"):
                 filename = f"time_{index}_{mode}.png"
                 create_floor_heatmap(slice_buckets[mode][index], configuration["floor"], result_dir / filename)
                 entry[mode] = filename if slice_buckets[mode][index] else None
@@ -393,6 +452,24 @@ def run_analysis(analysis_id: str) -> None:
         interaction_events.sort(key=lambda event: event["t"])
         interaction_events_log = interaction_events[:400]
 
+        pickup_count = sum(item["pickups"] for item in gondolas)
+        pickup_histogram = None
+        if pickup_events:
+            bucket_s = max(10, round(duration_seconds / 12))
+            bucket_count = max(1, math.ceil(duration_seconds / bucket_s))
+            counts = [0] * bucket_count
+            for event in pickup_events:
+                counts[min(bucket_count - 1, int(event["t"] // bucket_s))] += 1
+            pickup_histogram = {
+                "bucket_seconds": bucket_s,
+                "buckets": [
+                    {"index": index, "start": index * bucket_s, "end": min((index + 1) * bucket_s, duration_seconds), "count": count}
+                    for index, count in enumerate(counts)
+                ],
+            }
+        pickup_events.sort(key=lambda event: event["t"])
+        pickup_events_log = pickup_events[:400]
+
         sample_dt = payload_every / fps
         track_speeds = []
         for points in trajectories.values():
@@ -407,7 +484,7 @@ def run_analysis(analysis_id: str) -> None:
         result = {
             "site": {"id": site.id, "name": site.name, "city": site.city, "configuration": with_homographies(configuration)},
             "video": {"fps": round(fps, 2), "duration_seconds": round(total_frames / fps, 2), "width": width, "height": height, "total_frames": total_frames, "processed_frames": frame_index},
-            "model": {"detector": "YOLO11n COCO person", "tracker": "ByteTrack", "privacy": "temporary_ids_only", "custom_behavior_model": False, "has_pose": has_pose},
+            "model": {"detector": "YOLO11n COCO person", "pose": "yolov8n-pose" if has_pose else None, "tracker": "ByteTrack", "privacy": "temporary_ids_only", "custom_behavior_model": False, "has_pose": has_pose},
             "metrics": {
                 "people_detected": len(valid_track_ids),
                 "tracked_presences": len(valid_track_ids),
@@ -416,6 +493,7 @@ def run_analysis(analysis_id: str) -> None:
                 "detections": total_detections,
                 "trajectories": len(trajectory_payload),
                 "interaction_events": interaction_count,
+                "pickup_events": pickup_count,
                 "average_speed_m_s": average_speed,
                 "flow_per_minute": round(len(valid_track_ids) / duration_minutes, 1),
                 "peak_presence": peak_presence,
@@ -425,16 +503,19 @@ def run_analysis(analysis_id: str) -> None:
             "frame_detections": frame_samples,
             "interaction_events_log": interaction_events_log,
             "interaction_histogram": histogram,
+            "pickup_events_log": pickup_events_log,
+            "pickup_histogram": pickup_histogram,
             "gondolas": gondolas,
             "zones": zones,
             "heatmaps": {
                 "traffic": "traffic.png", "dwell": "dwell.png", "interaction": "interaction.png" if interaction_points else None,
+                "pickup": "pickup.png" if pickup_points else None,
                 "overlays": overlay_names,
                 "slices": slices_meta,
             },
             "annotated_frames": evidence,
-            "findings": build_findings(gondolas, zones, interaction_count),
-            "quality": {"calibration": configuration["camera"].get("calibration_status", "unknown"), "vertical_analysis": "low_confidence_until_custom_model", "interaction": "inferred_from_proximity_speed_and_time" if interaction_points else "insufficient_evidence"},
+            "findings": build_findings(gondolas, zones, interaction_count, pickup_count),
+            "quality": {"calibration": configuration["camera"].get("calibration_status", "unknown"), "vertical_analysis": "pose_refined_when_available", "interaction": "inferred_from_proximity_speed_and_time" if interaction_points else "insufficient_evidence", "pickup": "hand_reach_with_pose_keypoints_when_available"},
         }
         update_analysis(analysis_id, status="completed", stage="results", progress=100, message="Análisis espacial completado", result=result, duration_seconds=result["video"]["duration_seconds"])
     except Exception as exc:

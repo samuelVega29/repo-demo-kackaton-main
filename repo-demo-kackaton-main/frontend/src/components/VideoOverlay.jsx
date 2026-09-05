@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { gondolaCorners } from '../lib/homography'
 
 const project = (configuration, x, z) => {
   const matrix = configuration.camera?.homography_inv
@@ -63,7 +64,7 @@ export default function VideoOverlay({ preview, configuration, onClose }) {
 
       ;(config.gondolas || []).forEach((gondola) => {
         const color = gondola.color || '#d4ff70'
-        const corners = [[gondola.x, gondola.z], [gondola.x + gondola.width, gondola.z], [gondola.x + gondola.width, gondola.z + gondola.depth], [gondola.x, gondola.z + gondola.depth]]
+        const corners = gondolaCorners(gondola)
         const pixels = corners.map(([x, z]) => pointPx(x, z)).filter(Boolean)
         if (pixels.length < 4) return
         ctx.beginPath()

@@ -34,6 +34,10 @@ def empty_site_configuration(width: float, depth: float, camera_name: str) -> di
             "engaged_m": 0.8,
             "engaged_seconds": 2.0,
             "interaction_seconds": 4.0,
+            "minimum_track_seconds": 2.0,
+            "pickup_reach_m": 0.5,
+            "pickup_min_seconds": 0.6,
+            "pickup_cooldown_s": None,
         },
     }
 

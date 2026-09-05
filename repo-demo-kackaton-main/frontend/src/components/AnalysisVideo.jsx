@@ -41,7 +41,9 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
   const floor = configuration.floor || {}
   const duration = result.video.duration_seconds || 0
   const events = result.interaction_events_log || []
+  const pickups = result.pickup_events_log || []
   const histogram = result.interaction_histogram
+  const pickupHistogram = result.pickup_histogram
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const heatRef = useRef(null)
@@ -52,6 +54,7 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
   const [showHeat, setShowHeat] = useState(false)
+  const [heatMode, setHeatMode] = useState('traffic')
   const [heatMatrix, setHeatMatrix] = useState(null)
   const [heatDims, setHeatDims] = useState(null)
 
@@ -171,6 +174,9 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
   }
 
   const maxCount = histogram ? Math.max(1, ...histogram.buckets.map((bucket) => bucket.count)) : 1
+  const maxPickupCount = pickupHistogram ? Math.max(1, ...pickupHistogram.buckets.map((bucket) => bucket.count)) : 1
+  const heatArtifact = result.heatmaps?.[heatMode]
+  const heatOptions = ['traffic', 'dwell', 'interaction', 'pickup'].filter((mode) => result.heatmaps?.[mode])
 
   return (
     <section className="analysis-video">
@@ -187,10 +193,10 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
             onEnded={() => setPlaying(false)}
           />
           <canvas ref={canvasRef} className="analysis-overlay" />
-          {showHeat && <img
+          {showHeat && heatArtifact && <img
             ref={heatRef}
             className="analysis-heat"
-            src={artifactUrl(analysis.id, result.heatmaps.traffic)}
+            src={artifactUrl(analysis.id, heatArtifact)}
             style={heatDims ? { width: heatDims[0], height: heatDims[1], transform: `matrix3d(${heatMatrix.join(',')})` } : undefined}
             alt=""
           />}
@@ -200,11 +206,15 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
             <span>/</span>
             <b>{formatTime(duration)}</b>
             <label className="heat-toggle"><input type="checkbox" checked={showHeat} onChange={(event) => setShowHeat(event.target.checked)} />Calor superpuesto</label>
+            {showHeat && <select className="heat-mode" value={heatMode} onChange={(event) => setHeatMode(event.target.value)}>{heatOptions.map((mode) => <option value={mode} key={mode}>{mode.charAt(0).toUpperCase() + mode.slice(1)}</option>)}</select>}
           </div>
           <div className="video-timeline">
             <input type="range" min="0" max={Math.max(1, duration)} step="0.1" value={Math.min(time, duration)} onChange={(event) => seek(Number(event.target.value))} />
             {events.map((event, index) => (
               <button key={`${event.t}-${index}`} className="event-tick" style={{ left: `${Math.min(100, event.t / Math.max(1, duration) * 100)}%` }} title={`${event.gondola_name} · ${formatTime(event.t)}`} onClick={() => seekToEvent(event)} />
+            ))}
+            {pickups.map((event, index) => (
+              <button key={`${event.t}-${index}`} className="event-tick pickup" style={{ left: `${Math.min(100, event.t / Math.max(1, duration) * 100)}%` }} title={`Pick-up · ${event.gondola_name} · ${formatTime(event.t)}`} onClick={() => seekToEvent(event)} />
             ))}
           </div>
           <small className="analysis-video-note">Overlay fijo: la cámara estática mantiene la proyección alineada durante toda la reproducción.</small>
@@ -212,7 +222,7 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
         <aside className="interaction-panel">
           <div className="interaction-heading">
             <span className="eyebrow">FLUJO DE INTERACCIÓN</span>
-            <b>{events.length} eventos</b>
+            <b>{events.length} eventos · {pickups.length} pick-ups</b>
           </div>
           {histogram && histogram.buckets.some((bucket) => bucket.count > 0)
             ? <div className="interaction-histogram">{histogram.buckets.map((bucket) => (
@@ -221,9 +231,21 @@ export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
                 <small>{formatTime(bucket.start)}</small>
               </div>))}</div>
             : <p className="interaction-empty">Sin eventos de interacción inferidos en este video.</p>}
+          {pickupHistogram && pickupHistogram.buckets.some((bucket) => bucket.count > 0)
+            ? <div className="interaction-histogram pickup">{pickupHistogram.buckets.map((bucket) => (
+              <div key={bucket.index} className="hist-column" title={`Pick-ups ${formatTime(bucket.start)}–${formatTime(bucket.end)} · ${bucket.count}`}>
+                <i style={{ height: `${Math.max(4, bucket.count / maxPickupCount * 100)}%` }} />
+                <small>{formatTime(bucket.start)}</small>
+              </div>))}</div>
+            : null}
           <div className="interaction-list">
-            {events.length > 0
-              ? <div className="interaction-scroll">{[...events].reverse().map((event, index) => (
+            {events.length > 0 || pickups.length > 0
+              ? <div className="interaction-scroll">{[...pickups].reverse().map((event, index) => (
+                <button className="interaction-event pickup" key={`pick-${event.t}-${index}`} onClick={() => seekToEvent(event)}>
+                  <b>{formatTime(event.t)}</b>
+                  <span>{event.gondola_name}</span>
+                  <i>⚡</i>
+                </button>))}{[...events].reverse().map((event, index) => (
                 <button className="interaction-event" key={`${event.t}-${index}`} onClick={() => seekToEvent(event)}>
                   <b>{formatTime(event.t)}</b>
                   <span>{event.gondola_name}</span>

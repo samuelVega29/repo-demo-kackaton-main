@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { projectFloor, forwardHomography, inverseHomography } from '../../lib/homography'
+import { gondolaCorners, projectFloor, forwardHomography, inverseHomography } from '../../lib/homography'
+import { drawFloorOutline } from '../../lib/floorOutline'
 
 function hexToRgba(hex, alpha) {
   const normalized = hex.replace('#', '')
@@ -137,7 +138,7 @@ export default function LiveAlignment({ frameCapture, configuration, interactive
       }
       ;(configuration.gondolas || []).forEach((gondola) => {
         const color = gondola.color || '#61dec0'
-        const corners = [[gondola.x, gondola.z], [gondola.x + gondola.width, gondola.z], [gondola.x + gondola.width, gondola.z + gondola.depth], [gondola.x, gondola.z + gondola.depth]]
+        const corners = gondolaCorners(gondola)
         const pixels = corners.map(([x, z]) => toPx(x, z)).filter(Boolean)
         if (pixels.length < 4) return
         ctx.beginPath()
@@ -158,6 +159,8 @@ export default function LiveAlignment({ frameCapture, configuration, interactive
           ctx.fillText(gondola.name, pixels[0][0] + 9, pixels[0][1] - 5)
         }
       })
+      const traced = (configuration.floor || {}).outline
+      if (traced && traced.length > 1) drawFloorOutline(ctx, traced, toPx)
     }
     image.src = frameCapture.dataUrl
   }, [frameCapture, configuration, inverse, floor.width, floor.depth, interactive, selectedId])

@@ -125,6 +125,28 @@ class SpatialEngine:
         cv = max(abs(local_v) - gondola["depth"] / 2, 0.0)
         return math.hypot(cu, cv)
 
+    @classmethod
+    def nearest_point_on_gondola(cls, point: list[float], gondola: dict) -> list[float]:
+        """Clamps a floor point to the closest point on the gondola footprint (in meters).
+
+        Works in the gondola's own rotated frame so a pick-up inside an inclined gondola
+        anchors to its real footprint. An inside point is returned unchanged; otherwise the
+        nearest boundary point is returned.
+        """
+        x, z = point
+        cx = gondola["x"] + gondola["width"] / 2
+        cz = gondola["z"] + gondola["depth"] / 2
+        theta = math.radians(gondola.get("rotation") or 0)
+        dx, dz = x - cx, z - cz
+        cos_t, sin_t = math.cos(theta), math.sin(theta)
+        u = dx * cos_t + dz * sin_t
+        v = -dx * sin_t + dz * cos_t
+        cu = min(max(u, -gondola["width"] / 2), gondola["width"] / 2)
+        cv = min(max(v, -gondola["depth"] / 2), gondola["depth"] / 2)
+        rx = cx + cu * cos_t - cv * sin_t
+        rz = cz + cu * sin_t + cv * cos_t
+        return [round(float(rx), 3), round(float(rz), 3)]
+
     # ---- 3D projection methods ----
 
     @property

@@ -10,6 +10,7 @@ export default function ShelfMatrix({ gondola, mode, events = [] }) {
     traffic: `${gondola.traffic} visitantes`,
     dwell: `${gondola.dwell_seconds} s`,
     interaction: `${gondola.interactions} eventos`,
+    pickup: `${gondola.pickups ?? 0} pick-ups`,
   }
   const peak = Math.max(...matrix.flat(), 1)
   const cellTotal = (gondola.products || []).flat().length || 9
@@ -50,6 +51,7 @@ export default function ShelfMatrix({ gondola, mode, events = [] }) {
         <span><b>{gondola.dwell_avg_seconds ?? 0}s</b>perman. media</span>
         <span><b>{gondola.engagement_avg_seconds ?? 0}s</b>atención media</span>
         <span><b>{gondolaEvents.length}</b>interacciones</span>
+        <span><b>{gondola.pickups ?? 0}</b>pick-ups</span>
       </div>
       <div className="tagging-progress">
         <span>Etiquetado de productos</span>

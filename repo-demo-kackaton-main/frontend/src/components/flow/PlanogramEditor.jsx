@@ -1,5 +1,7 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import LiveAlignment from './LiveAlignment'
+import { forwardHomography, projectFloor } from '../../lib/homography'
+import { drawFloorOutline } from '../../lib/floorOutline'
 
 const rows = ['Superior', 'Media', 'Inferior']
 const columns = ['Izquierda', 'Centro', 'Derecha']
@@ -11,11 +13,94 @@ function snapToGrid(value, gridSize = GRID_SNAP) {
   return Math.round(value / gridSize) * gridSize
 }
 
+function DrawFloorOutline({ frameCapture, configuration, onCommit, onCancel }) {
+  const canvasRef = useRef(null)
+  const [points, setPoints] = useState([])
+  const floor = configuration.floor || {}
+  const forward = forwardHomography(configuration.camera || {})
+
+  const toMeters = (event) => {
+    const canvas = canvasRef.current
+    if (!canvas || !forward) return null
+    const rect = canvas.getBoundingClientRect()
+    const meters = projectFloor(forward, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height)
+    if (!meters) return null
+    return [
+      Math.round(Math.min(floor.width, Math.max(0, meters[0])) * 100) / 100,
+      Math.round(Math.min(floor.depth, Math.max(0, meters[1])) * 100) / 100,
+    ]
+  }
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    const width = canvas.width = frameCapture.width
+    const height = canvas.height = frameCapture.height
+    const image = new Image()
+    image.onload = () => {
+      ctx.clearRect(0, 0, width, height)
+      ctx.drawImage(image, 0, 0, width, height)
+      const toPx = (x, z) => {
+        const normalized = projectFloor(forward, x, z)
+        if (!normalized) return null
+        return [normalized[0] * width, normalized[1] * height]
+      }
+      if (points.length > 1) {
+        drawFloorOutline(ctx, points, toPx)
+      }
+      points.forEach(([x, z], index) => {
+        const p = toPx(x, z)
+        if (!p) return
+        ctx.beginPath()
+        ctx.arc(p[0], p[1], 5, 0, Math.PI * 2)
+        ctx.fillStyle = '#5b9dff'
+        ctx.fill()
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 1.5
+        ctx.stroke()
+        ctx.fillStyle = 'rgba(6, 14, 12, .85)'
+        const label = String(index + 1)
+        ctx.fillRect(p[0] + 6, p[1] - 9, ctx.measureText(label).width + 8, 16)
+        ctx.fillStyle = '#e8f2ed'
+        ctx.font = '11px ui-monospace, monospace'
+        ctx.fillText(label, p[0] + 10, p[1] + 3)
+      })
+    }
+    image.src = frameCapture.dataUrl
+  }, [points, frameCapture, forward])
+
+  const xExtent = points.length ? Math.max(...points.map((p) => p[0])) - Math.min(...points.map((p) => p[0])) : 0
+  const zExtent = points.length ? Math.max(...points.map((p) => p[1])) - Math.min(...points.map((p) => p[1])) : 0
+
+  return (
+    <div className="draw-video">
+      <canvas
+        ref={canvasRef}
+        style={{ aspectRatio: `${frameCapture.width}/${frameCapture.height}` }}
+        onClick={(event) => { const p = toMeters(event); if (p) setPoints((current) => [...current, p]) }}
+      />
+      <p className="draw-hint">Hacé clic sobre el video para trazar el contorno del piso ({points.length} puntos). Con 3+ puntos se cierra el trazo.</p>
+      <div className="draw-video-actions">
+        <button onClick={() => setPoints((current) => current.slice(0, -1))} disabled={!points.length}>Deshacer</button>
+        <button disabled={points.length < 3} onClick={() => onCommit(points)}>Cerrar contorno</button>
+        <button onClick={onCancel}>Cancelar</button>
+      </div>
+      {points.length >= 3 && (
+        <div className="outline-measurements">
+          <span><b>≈ {xExtent.toFixed(2)} × {zExtent.toFixed(2)} m</b>contorno del piso (señaliza la zona recorrida)</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PlanogramEditor({ configuration, onChange, onSave, frameCapture }) {
   const [selectedId, setSelectedId] = useState(configuration.gondolas[0]?.id || null)
   const [saving, setSaving] = useState(false)
   const [saveState, setSaveState] = useState('')
   const [snapEnabled, setSnapEnabled] = useState(true)
+  const [floorDrawMode, setFloorDrawMode] = useState(false)
   const [dragInfo, setDragInfo] = useState(null)
   const canvasRef = useRef(null)
   const pointer = useRef(null)
@@ -109,6 +194,14 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture }) {
     updateGondola(selected.id, { products })
   }
 
+  const commitOutline = (pointsMeters) => {
+    onChange({ ...configuration, floor: { ...floor, outline: pointsMeters } })
+    setFloorDrawMode(false)
+  }
+  const clearOutline = () => {
+    onChange({ ...configuration, floor: { ...floor, outline: undefined } })
+  }
+
   const save = async () => {
     setSaving(true); setSaveState('')
     try {
@@ -129,6 +222,7 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture }) {
         <div className="editor-actions">
           <button className={snapEnabled ? 'active' : ''} onClick={() => setSnapEnabled((value) => !value)} title="Snap a cuadrícula de 0.25m">⊞ Snap</button>
           <button onClick={addGondola}>＋ Añadir góndola</button>
+          <button className={floorDrawMode ? 'active' : ''} onClick={() => setFloorDrawMode((value) => !value)} title="Traza el contorno del piso a mano (no se guarda)">▱ Dibujar el piso</button>
           <button className="save-layout" onClick={save} disabled={saving}>{saving ? 'Guardando…' : 'Guardar plano'}</button>
         </div>
       </div>
@@ -137,7 +231,11 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture }) {
         <LiveAlignment frameCapture={frameCapture} configuration={configuration} />
         <p className="flow-note">Vista en vivo del planograma sobre el frame capturado. Las góndolas se editan en el plano de abajo.</p>
       </div>
+      {floorDrawMode && (frameCapture
+        ? <DrawFloorOutline frameCapture={frameCapture} configuration={configuration} onCommit={commitOutline} onCancel={() => setFloorDrawMode(false)} />
+        : <div className="suggest-error">Captura un frame en el paso 03 para poder trazar el contorno sobre el video.</div>)}
       {saveState && <div className="suggest-error ok">{saveState}</div>}
+      {floor.outline?.length >= 3 && <div className="suggest-error ok"><b>Contorno del piso trazado ({floor.outline.length} puntos)</b><span>solo referencia visual, no se guarda — al cerrar o salir de la sede desaparece.</span><button className="dismiss" onClick={clearOutline}>Borrar contorno</button></div>}
       <div className="editor-content">
         <div
           className="floor-editor"
@@ -162,6 +260,12 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture }) {
             const xs = zone.polygon.map(([x]) => x); const zs = zone.polygon.map(([, z]) => z)
             return <div className="editor-zone" key={zone.id} style={{ left: `${Math.min(...xs) / floor.width * 100}%`, top: `${Math.min(...zs) / floor.depth * 100}%`, width: `${(Math.max(...xs) - Math.min(...xs)) / floor.width * 100}%`, height: `${(Math.max(...zs) - Math.min(...zs)) / floor.depth * 100}%` }}><span>{zone.name}</span></div>
           })}
+          {floor.outline?.length >= 3 && (
+            <svg className="floor-outline-overlay" viewBox={`0 0 ${floor.width} ${floor.depth}`} preserveAspectRatio="none">
+              <polygon points={floor.outline.map(([x, z]) => `${x},${z}`).join(' ')} fill="rgba(91,157,255,.12)" stroke="#5b9dff" strokeWidth="0.07" strokeDasharray="0.18 0.1" strokeLinejoin="round" />
+              <text x={floor.outline[0][0]} y={floor.outline[0][1]}>PISO</text>
+            </svg>
+          )}
           {configuration.gondolas.map((item) => {
             const isSelected = selectedId === item.id
             const isDragging = dragInfo && pointer.current?.item?.id === item.id
