@@ -84,7 +84,7 @@ export function MiniMap({ configuration, interactive, onMoveGondola, selectedId,
   )
 }
 
-export default function LiveAlignment({ frameCapture, configuration, interactive, onMoveGondola, selectedId, onSelect, drawMode, onDrawCommit, onDrawCancel }) {
+export default function LiveAlignment({ frameCapture, configuration, interactive, onMoveGondola, selectedId, onSelect, drawMode, onDrawCommit, onDrawCancel, addMode, onAddAt }) {
   const canvasRef = useRef(null)
   const floor = configuration.floor || {}
   const camera = configuration.camera || {}
@@ -192,18 +192,35 @@ export default function LiveAlignment({ frameCapture, configuration, interactive
     return [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height]
   }
 
-  const addDrawPoint = (event) => {
-    if (!drawMode || !forward || !frameCapture) return
+  const metersAt = (event) => {
+    if (!forward || !frameCapture) return null
     const [nx, ny] = toNormalizedFromEvent(event)
     const meters = projectFloor(forward, nx, ny)
+    if (!meters) return null
+    return [
+      Math.round(Math.min(floor.width, Math.max(0, meters[0])) * 100) / 100,
+      Math.round(Math.min(floor.depth, Math.max(0, meters[1])) * 100) / 100,
+    ]
+  }
+
+  const addDrawPoint = (event) => {
+    if (!drawMode) return
+    const meters = metersAt(event)
     if (!meters) return
-    const x = Math.round(Math.min(floor.width, Math.max(0, meters[0])) * 100) / 100
-    const z = Math.round(Math.min(floor.depth, Math.max(0, meters[1])) * 100) / 100
-    setDrawPoints((current) => [...current, [x, z]])
+    setDrawPoints((current) => [...current, meters])
+  }
+
+  const handleClick = (event) => {
+    if (addMode) {
+      const meters = metersAt(event)
+      if (meters && onAddAt) onAddAt(meters[0], meters[1])
+      return
+    }
+    addDrawPoint(event)
   }
 
   const pointerDown = (event) => {
-    if (drawMode) return
+    if (drawMode || addMode) return
     if (!interactive || !onMoveGondola || !frameCapture) return
     const rect = canvasRef.current.getBoundingClientRect()
     const px = (event.clientX - rect.left) / rect.width * frameCapture.width
@@ -227,7 +244,7 @@ export default function LiveAlignment({ frameCapture, configuration, interactive
 
   const pointerMove = (event) => {
     const d = drag.current
-    if (!d || !d.active || !forward || drawMode) return
+    if (!d || !d.active || !forward || drawMode || addMode) return
     const [nx, ny] = toNormalizedFromEvent(event)
     const meters = projectFloor(forward, nx, ny)
     if (!meters) return
@@ -252,14 +269,17 @@ export default function LiveAlignment({ frameCapture, configuration, interactive
         ? <>
             <canvas
               ref={canvasRef}
-              className={`block h-auto max-h-[46vh] w-full touch-none border border-[#315148] bg-[#050a09] object-contain${interactive ? ' cursor-grab active:cursor-grabbing' : ''}${drawMode ? ' cursor-crosshair' : ''}`}
+              className={`block h-auto max-h-[46vh] w-full touch-none border border-[#315148] bg-[#050a09] object-contain${interactive ? ' cursor-grab active:cursor-grabbing' : ''}${drawMode || addMode ? ' cursor-crosshair' : ''}`}
               style={{ aspectRatio: `${frameCapture.width}/${frameCapture.height}` }}
-              onClick={addDrawPoint}
+              onClick={handleClick}
               onPointerDown={pointerDown}
               onPointerMove={pointerMove}
               onPointerUp={endDrag}
               onPointerCancel={endDrag}
             />
+            {addMode && (
+              <p className="m-0 text-[10px] leading-[1.6] text-[#d4ff70]">Hacé clic sobre el video para colocar una góndola nueva en esa posición.</p>
+            )}
             {drawMode && (
               <>
                 <p className="m-0 text-[10px] leading-[1.6] text-[#6c8179]">Hacé clic sobre el video alineado para trazar el contorno del piso ({drawPoints.length} puntos). Con 3+ puntos se cierra el trazo.</p>

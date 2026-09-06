@@ -4,6 +4,14 @@ import { ROWS as rows, COLUMNS as columns, emptyProducts } from '../../utils/con
 
 const GRID_SNAP = 0.25
 
+const TIERS = [
+  ['Nivel 1 (bajo)', 0, 1.5, 0.25],
+  ['Nivel 2 (medio)', 0, 2.0, 0.73],
+  ['Nivel 3 (alto)', 0, 2.5, 1.20],
+]
+
+const DEFAULT_TIER_HEIGHTS = TIERS.map(([, , , fallback]) => fallback)
+
 function snapToGrid(value, gridSize = GRID_SNAP) {
   return Math.round(value / gridSize) * gridSize
 }
@@ -14,6 +22,7 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture }) {
   const [saveState, setSaveState] = useState('')
   const [snapEnabled, setSnapEnabled] = useState(true)
   const [floorDrawMode, setFloorDrawMode] = useState(false)
+  const [addMode, setAddMode] = useState(false)
   const [dragInfo, setDragInfo] = useState(null)
   const canvasRef = useRef(null)
   const pointer = useRef(null)
@@ -22,8 +31,20 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture }) {
 
   const replaceGondolas = (gondolas) => onChange({ ...configuration, gondolas })
   const updateGondola = (id, values) => replaceGondolas(configuration.gondolas.map((item) => item.id === id ? { ...item, ...values } : item))
+  const addGondolaAt = (x, z) => {
+    const width = Math.min(3, floor.width - 0.5)
+    const depth = 0.7
+    const item = {
+      id: `g-${Date.now()}`,
+      name: `Góndola ${configuration.gondolas.length + 1}`,
+      x: Math.round(Math.min(floor.width - width, Math.max(0, x)) * 100) / 100,
+      z: Math.round(Math.min(floor.depth - depth, Math.max(0, z)) * 100) / 100,
+      width, depth, rotation: 0,
+      segments: { rows, columns }, products: emptyProducts(),
+    }
+    replaceGondolas([...configuration.gondolas, item]); setSelectedId(item.id); setAddMode(false)
+  }
   const addGondola = () => {
-    const id = `g-${Date.now()}`
     const width = Math.min(3, floor.width - 0.5)
     const depth = 0.7
     // Cascada en fila para que cada góndola nueva no nazca exactamente encima de la
@@ -33,14 +54,10 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture }) {
     const stepZ = depth + 0.4
     const perRow = Math.max(1, Math.floor((floor.width - 0.5) / stepX))
     const index = configuration.gondolas.length
-    const x = Math.round(Math.min(Math.max(0, floor.width - width), 0.5 + (index % perRow) * stepX) * 100) / 100
-    const z = Math.round(Math.min(Math.max(0, floor.depth - depth), 0.5 + Math.floor(index / perRow) * stepZ) * 100) / 100
-    const item = {
-      id, name: `Góndola ${configuration.gondolas.length + 1}`,
-      x, z, width, depth, rotation: 0,
-      segments: { rows, columns }, products: emptyProducts(),
-    }
-    replaceGondolas([...configuration.gondolas, item]); setSelectedId(id)
+    addGondolaAt(
+      Math.min(Math.max(0, floor.width - width), 0.5 + (index % perRow) * stepX),
+      Math.min(Math.max(0, floor.depth - depth), 0.5 + Math.floor(index / perRow) * stepZ),
+    )
   }
   const removeGondola = () => {
     replaceGondolas(configuration.gondolas.filter((item) => item.id !== selectedId))
@@ -134,17 +151,18 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture }) {
         <div className="grid grid-cols-2 gap-2"><label className="relative grid gap-[5px] uppercase text-[8px] text-[#71877e]">Ancho<input className="min-w-0 w-full border border-[rgba(206,236,221,.14)] bg-[#101e1a] p-[10px] pr-[24px] text-[#eaf3ee] outline-none max-[760px]:w-full" type="number" min="2" step="0.5" value={floor.width} onChange={(event) => changeFloor('width', event.target.value)} /><small className="absolute right-2 bottom-[11px] text-[#61dec0]">m</small></label><label className="relative grid gap-[5px] uppercase text-[8px] text-[#71877e]">Fondo<input className="min-w-0 w-full border border-[rgba(206,236,221,.14)] bg-[#101e1a] p-[10px] pr-[24px] text-[#eaf3ee] outline-none max-[760px]:w-full" type="number" min="2" step="0.5" value={floor.depth} onChange={(event) => changeFloor('depth', event.target.value)} /><small className="absolute right-2 bottom-[11px] text-[#61dec0]">m</small></label></div>
         <div className="col-span-full flex flex-wrap justify-start gap-[7px]">
           <button className={`cursor-pointer border border-[#3e5b51] bg-transparent p-[11px] px-[13px] text-[9px] whitespace-nowrap text-[#b4c7bf] max-[760px]:flex-1 max-[760px]:p-[12px] max-[760px]:px-[7px] ${snapEnabled ? 'border-[#d4ff70] bg-[#d4ff70] text-[#07100e]' : ''}`} onClick={() => setSnapEnabled((value) => !value)} title="Snap a cuadrícula de 0.25m">⊞ Snap</button>
-          <button className="cursor-pointer border border-[#3e5b51] bg-transparent p-[11px] px-[13px] text-[9px] whitespace-nowrap text-[#b4c7bf] hover:border-[#d4ff70] hover:text-[#d4ff70] max-[760px]:flex-1 max-[760px]:p-[12px] max-[760px]:px-[7px]" onClick={addGondola}>＋ Añadir góndola</button>
-          <button className={`cursor-pointer border border-[#3e5b51] bg-transparent p-[11px] px-[13px] text-[9px] whitespace-nowrap text-[#b4c7bf] max-[760px]:flex-1 max-[760px]:p-[12px] max-[760px]:px-[7px] ${floorDrawMode ? 'border-[#5b9dff] bg-[rgba(91,157,255,.12)] text-[#5b9dff]' : 'hover:border-[#5b9dff] hover:text-[#5b9dff]'}`} onClick={() => setFloorDrawMode((value) => !value)} title="Traza el contorno del piso a mano (no se guarda)">▱ Dibujar el piso</button>
+          <button className={`cursor-pointer border border-[#3e5b51] bg-transparent p-[11px] px-[13px] text-[9px] whitespace-nowrap text-[#b4c7bf] max-[760px]:flex-1 max-[760px]:p-[12px] max-[760px]:px-[7px] ${addMode ? 'border-[#d4ff70] bg-[#d4ff70] text-[#07100e]' : 'hover:border-[#d4ff70] hover:text-[#d4ff70]'}`} onClick={() => { setFloorDrawMode(false); setAddMode((value) => !value) }} title="Hacé clic sobre el plano o el video para colocarla">＋ Añadir góndola</button>
+          <button className={`cursor-pointer border border-[#3e5b51] bg-transparent p-[11px] px-[13px] text-[9px] whitespace-nowrap text-[#b4c7bf] max-[760px]:flex-1 max-[760px]:p-[12px] max-[760px]:px-[7px] ${floorDrawMode ? 'border-[#5b9dff] bg-[rgba(91,157,255,.12)] text-[#5b9dff]' : 'hover:border-[#5b9dff] hover:text-[#5b9dff]'}`} onClick={() => { setAddMode(false); setFloorDrawMode((value) => !value) }} title="Traza el contorno del piso a mano (no se guarda)">▱ Dibujar el piso</button>
           <button className="cursor-pointer border border-[#3e5b51] bg-transparent p-[11px] px-[13px] text-[9px] whitespace-nowrap text-[#b4c7bf] max-[760px]:flex-1 max-[760px]:p-[12px] max-[760px]:px-[7px] border-[#d4ff70] text-[#d4ff70] disabled:opacity-40 disabled:cursor-not-allowed" onClick={save} disabled={saving}>{saving ? 'Guardando…' : 'Guardar plano'}</button>
         </div>
       </div>
       <div className="mb-5 flex w-full flex-col gap-2">
-        <span className="text-[9px] font-semibold font-[ui-monospace,monospace] uppercase tracking-[.08em] text-[#d4ff70]">Sobre el frame · proyección del plano en metros</span>
-        <LiveAlignment frameCapture={frameCapture} configuration={configuration} drawMode={floorDrawMode && Boolean(frameCapture)} onDrawCommit={commitOutline} onDrawCancel={() => setFloorDrawMode(false)} />
-        <p className="m-0 text-[10px] leading-[1.6] text-[#789087]">Vista en vivo del planograma sobre el frame capturado. Las góndolas se editan en el plano de abajo. Con «▱ Dibujar el piso» trazás el contorno directo sobre este video (no se guarda).</p>
+        <span className="text-[9px] font-semibold font-[ui-monospace,monospace] uppercase tracking-[.08em] text-[#d4ff70]">Sobre el frame · plano en vivo — arrastrá y colocá góndolas sobre el video</span>
+        <LiveAlignment frameCapture={frameCapture} configuration={configuration} drawMode={floorDrawMode && Boolean(frameCapture)} onDrawCommit={commitOutline} onDrawCancel={() => setFloorDrawMode(false)} interactive onMoveGondola={(id, values) => updateGondola(id, values)} selectedId={selectedId} onSelect={setSelectedId} addMode={addMode} onAddAt={(x, z) => addGondolaAt(x, z)} />
+        <p className="m-0 text-[10px] leading-[1.6] text-[#789087]">Calibrá las góndolas arrastrándolas sobre el video proyectado o colocá una nueva haciendo clic en «＋ Añadir góndola». Con «▱ Dibujar el piso» trazás el contorno directo sobre este video (no se guarda).</p>
       </div>
       {floorDrawMode && !frameCapture && <div className="mb-3 border border-[rgba(255,196,84,.4)] bg-[rgba(255,196,84,.07)] p-3 px-[12px] text-[10px] text-[#ffc454]">Captura un frame en el paso 03 para poder trazar el contorno sobre el video.</div>}
+      {addMode && <div className="mb-3 border border-[rgba(212,255,112,.4)] bg-[rgba(212,255,112,.07)] p-3 px-[12px] text-[10px] text-[#d4ff70]">Modo añadir: hacé clic en el video (arriba) o en el plano (abajo) para colocar una góndola. Pulsa el botón de nuevo para salir.</div>}
       {saveState && <div className="mt-3 text-[10px] text-[#d4ff70]">{saveState}</div>}
       {floor.outline?.length >= 3 && <div className="mb-3 mt-3 flex items-center gap-3 border border-[rgba(91,157,255,.35)] bg-[rgba(91,157,255,.07)] p-3 px-[12px] text-[9px] text-[#9db8d4]"><b className="text-[#5b9dff]">Contorno del piso trazado ({floor.outline.length} puntos)</b><span className="flex-1">solo referencia visual, no se guarda — al cerrar o salir de la sede desaparece.</span><button className="cursor-pointer border border-[rgba(91,157,255,.4)] bg-transparent p-2 px-[10px] text-[9px] text-[#9db8d4] hover:border-[#5b9dff] hover:text-[#5b9dff]" onClick={clearOutline}>Borrar contorno</button></div>}
       <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_280px] max-[980px]:grid-cols-[minmax(0,1fr)]">
@@ -152,6 +170,11 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture }) {
           className="relative my-[18px] h-auto w-[calc(100%-20px)] min-h-[460px] max-h-none overflow-hidden border border-[#315148] bg-[repeating-linear-gradient(0deg,transparent_0_31px,rgba(111,177,150,.07)_32px),repeating-linear-gradient(90deg,transparent_0_31px,rgba(111,177,150,.07)_32px),#091512] self-center touch-none select-none max-[760px]:my-3 max-[760px]:mx-auto max-[760px]:w-[calc(100%-24px)]"
           ref={canvasRef}
           style={{ aspectRatio: `${floor.width}/${floor.depth}` }}
+          onPointerDown={(event) => {
+            if (!addMode) return
+            const rect = canvasRef.current.getBoundingClientRect()
+            addGondolaAt((event.clientX - rect.left) / rect.width * floor.width, (event.clientY - rect.top) / rect.height * floor.depth)
+          }}
           onPointerMove={movePointer}
           onPointerUp={() => { pointer.current = null; setDragInfo(null) }}
           onPointerCancel={() => { pointer.current = null; setDragInfo(null) }}
@@ -223,57 +246,25 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture }) {
         </label>
       </div>
       <div className="my-0 mb-[24px] grid grid-cols-3 gap-2">
-        <label className="relative grid gap-[5px] uppercase text-[8px] text-[#71877e]">
-          Nivel 1 (bajo)
-          <input
-            className="min-w-0 w-full border border-[rgba(206,236,221,.14)] bg-[#101e1a] py-2 px-[6px] pr-[22px] text-[#eaf3ee] outline-none"
-            type="number"
-            step="0.05"
-            min="0"
-            max="1.5"
-            value={selected.tier_heights?.[0] ?? 0.25}
-            onChange={(event) => {
-              const tier_heights = [...(selected.tier_heights || [0.25, 0.73, 1.20])]
-              tier_heights[0] = Number(event.target.value)
-              updateGondola(selected.id, { tier_heights })
-            }}
-          />
-          <small className="absolute right-2 bottom-[11px] text-[8px] text-[#61dec0]">m</small>
-        </label>
-        <label className="relative grid gap-[5px] uppercase text-[8px] text-[#71877e]">
-          Nivel 2 (medio)
-          <input
-            className="min-w-0 w-full border border-[rgba(206,236,221,.14)] bg-[#101e1a] py-2 px-[6px] pr-[22px] text-[#eaf3ee] outline-none"
-            type="number"
-            step="0.05"
-            min="0"
-            max="2.0"
-            value={selected.tier_heights?.[1] ?? 0.73}
-            onChange={(event) => {
-              const tier_heights = [...(selected.tier_heights || [0.25, 0.73, 1.20])]
-              tier_heights[1] = Number(event.target.value)
-              updateGondola(selected.id, { tier_heights })
-            }}
-          />
-          <small className="absolute right-2 bottom-[11px] text-[8px] text-[#61dec0]">m</small>
-        </label>
-        <label className="relative grid gap-[5px] uppercase text-[8px] text-[#71877e]">
-          Nivel 3 (alto)
-          <input
-            className="min-w-0 w-full border border-[rgba(206,236,221,.14)] bg-[#101e1a] py-2 px-[6px] pr-[22px] text-[#eaf3ee] outline-none"
-            type="number"
-            step="0.05"
-            min="0"
-            max="2.5"
-            value={selected.tier_heights?.[2] ?? 1.20}
-            onChange={(event) => {
-              const tier_heights = [...(selected.tier_heights || [0.25, 0.73, 1.20])]
-              tier_heights[2] = Number(event.target.value)
-              updateGondola(selected.id, { tier_heights })
-            }}
-          />
-          <small className="absolute right-2 bottom-[11px] text-[8px] text-[#61dec0]">m</small>
-        </label>
+        {TIERS.map(([label, min, max, fallback], index) => (
+          <label className="relative grid gap-[5px] uppercase text-[8px] text-[#71877e]" key={label}>
+            {label}
+            <input
+              className="min-w-0 w-full border border-[rgba(206,236,221,.14)] bg-[#101e1a] py-2 px-[6px] pr-[22px] text-[#eaf3ee] outline-none"
+              type="number"
+              step="0.05"
+              min={min}
+              max={max}
+              value={selected.tier_heights?.[index] ?? fallback}
+              onChange={(event) => {
+                const tier_heights = [...(selected.tier_heights || DEFAULT_TIER_HEIGHTS)]
+                tier_heights[index] = Number(event.target.value)
+                updateGondola(selected.id, { tier_heights })
+              }}
+            />
+            <small className="absolute right-2 bottom-[11px] text-[8px] text-[#61dec0]">m</small>
+          </label>
+        ))}
       </div>
 
       <span className="mb-3 block text-[10px] font-semibold font-[ui-monospace,monospace] tracking-[.17em] text-[#61dec0]">PRODUCTOS POR SEGMENTO</span><div className="mt-[10px] grid grid-cols-3 gap-[5px]">{rows.map((row, rowIndex) => columns.map((column, columnIndex) => <label className="relative grid max-[760px]:p-[5px] gap-[5px] border border-[rgba(206,236,221,.14)] bg-[#0d1a16] p-[7px] uppercase text-[8px] text-[#71877e]" key={`${row}-${column}`}><small className="h-[18px] text-[6px] leading-[1.35] text-[#60766d]">{row} · {column}</small><input className="min-w-0 w-full border border-[rgba(206,236,221,.14)] bg-[#101e1a] p-[7px] px-[5px] text-[8px] normal-case text-[#eaf3ee] outline-none max-[760px]:text-[7px]" value={selected.products?.[rowIndex]?.[columnIndex] || ''} placeholder="Producto" onChange={(event) => updateProduct(rowIndex, columnIndex, event.target.value)} /></label>))}</div></> : <div className="grid h-full place-items-center text-center text-[11px] leading-[1.7] text-[#6c8179]">Selecciona una góndola para configurar sus segmentos y productos.</div>}
