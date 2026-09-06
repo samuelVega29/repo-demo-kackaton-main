@@ -1,5 +1,7 @@
 import base64
 import binascii
+import shutil
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -14,6 +16,8 @@ from ..security import current_user, require_admin
 
 
 router = APIRouter(prefix="/api", tags=["catalog"])
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+RESULT_DIR = DATA_DIR / "results"
 
 
 def ensure_retailer_access(user: User, retailer_id: int) -> None:
@@ -113,6 +117,23 @@ def create_retailer(
     return {"id": retailer.id, "name": retailer.name, "code": retailer.code, "site_count": 0}
 
 
+@router.delete("/retailers/{retailer_id}", status_code=204)
+def delete_retailer(
+    retailer_id: int,
+    user: User = Depends(require_admin),
+    database: Session = Depends(get_db),
+) -> None:
+    retailer = database.get(Retailer, retailer_id)
+    if not retailer:
+        raise HTTPException(status_code=404, detail="Retailer no encontrado")
+    sites = database.scalars(select(Site).where(Site.retailer_id == retailer.id)).all()
+    for site in sites:
+        delete_site_data(site.id, database)
+        database.delete(site)
+    database.delete(retailer)
+    database.commit()
+
+
 class SiteCreateBody(BaseModel):
     name: str = Field(min_length=2, max_length=140)
     city: str = Field(min_length=2, max_length=100)
@@ -140,6 +161,20 @@ def create_site(
     return site_payload(site)
 
 
+def delete_site_data(site_id: int, database: Session) -> None:
+    from ..models import Analysis
+
+    analyses = database.scalars(select(Analysis).where(Analysis.site_id == site_id)).all()
+    for analysis in analyses:
+        video_path = Path(analysis.video_path)
+        if video_path.exists() and video_path.is_file():
+            video_path.unlink(missing_ok=True)
+        result_path = RESULT_DIR / analysis.id
+        if result_path.exists():
+            shutil.rmtree(result_path, ignore_errors=True)
+        database.delete(analysis)
+
+
 def get_site_or_403(user: User, site_id: int, database: Session) -> Site:
     site = database.get(Site, site_id)
     if not site:
@@ -151,6 +186,18 @@ def get_site_or_403(user: User, site_id: int, database: Session) -> Site:
 @router.get("/sites/{site_id}")
 def site_detail(site_id: int, user: User = Depends(current_user), database: Session = Depends(get_db)) -> dict:
     return site_payload(get_site_or_403(user, site_id, database))
+
+
+@router.delete("/sites/{site_id}", status_code=204)
+def delete_site(
+    site_id: int,
+    user: User = Depends(require_admin),
+    database: Session = Depends(get_db),
+) -> None:
+    site = get_site_or_403(user, site_id, database)
+    delete_site_data(site.id, database)
+    database.delete(site)
+    database.commit()
 
 
 class ConfigurationBody(BaseModel):
