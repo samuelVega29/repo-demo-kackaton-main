@@ -3,6 +3,23 @@ import { useEffect, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppProvider'
 
+const siteImagePool = [
+  'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?auto=format&fit=crop&w=900&q=85',
+  'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=900&q=85',
+  'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=900&q=85',
+  'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=85',
+]
+
+function getSiteImage(site, index) {
+  if (site.image_url) return site.image_url
+
+  const source = `${site.name || ''} ${site.city || ''}`.toLowerCase()
+  if (source.includes('olimp') || source.includes('centro')) return siteImagePool[0]
+  if (source.includes('exito') || source.includes('éxito')) return siteImagePool[1]
+  if (source.includes('carulla') || source.includes('premium')) return siteImagePool[2]
+  return siteImagePool[index % siteImagePool.length]
+}
+
 export default function SitePickerPage() {
   const { retailers, retailer, sites, selectSite, createSite, deleteSite, goHome, setRetailer } = useApp()
   const { retailerId } = useParams()
@@ -88,8 +105,16 @@ export default function SitePickerPage() {
                 const camera = configuration.camera ?? {}
 
                 return (
-                  <button className="rounded-lg border border-[#e5e7ee] bg-white shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)] group overflow-hidden p-0 text-left transition hover:-translate-y-1 hover:border-[#ff5b12]" key={site.id} onClick={() => selectSite(site)} type="button">
-                    <div className="relative h-40 bg-gradient-to-br from-[#263043] via-[#4a5364] to-[#ff5b12]">
+                  <button className="group [perspective:1200px]" key={site.id} onClick={() => selectSite(site)} type="button">
+                    <div className="overflow-hidden rounded-lg border border-[#e5e7ee] bg-white text-left shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)] transition duration-500 [transform-style:preserve-3d] group-hover:-translate-y-1 group-hover:[transform:rotateX(3deg)_rotateY(-4deg)] group-hover:border-[#ff5b12]">
+                    <div className="relative h-40 overflow-hidden bg-gradient-to-br from-[#263043] via-[#4a5364] to-[#ff5b12]">
+                      <img
+                        src={getSiteImage(site, index)}
+                        alt={`Interior de ${site.name}`}
+                        className="absolute inset-0 h-full w-full object-cover opacity-90 transition duration-700 group-hover:scale-105"
+                        onError={(event) => { event.currentTarget.style.display = 'none' }}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#111522]/80 via-transparent to-[#111522]/10" />
                       <span className="absolute left-4 top-4 rounded-md bg-white px-3 py-2 text-sm font-black text-[#ff5b12]">{String(index + 1).padStart(2, '0')}</span>
                       <span
                         className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-md bg-white/90 text-[#b43b1d] opacity-0 transition hover:bg-[#fff1eb] group-hover:opacity-100"
@@ -107,6 +132,7 @@ export default function SitePickerPage() {
                       <p className="mt-1 flex items-center gap-1 text-sm font-semibold text-[#7d8392]"><MapPin size={14} /> {site.city || 'Sin ciudad'}</p>
                       <p className="mt-3 text-xs font-bold text-[#7d8392]">{gondolas.length} gondolas · {zones.length} zonas{camera.name ? ` · ${camera.name}` : ''}</p>
                       <span className="mt-5 inline-flex items-center gap-2 text-sm font-black text-[#ff5b12]">Ver sede <ArrowRight size={16} /></span>
+                    </div>
                     </div>
                   </button>
                 )
