@@ -107,6 +107,7 @@ export function AppProvider({ children }) {
     setFile(candidate)
     setPreview(URL.createObjectURL(candidate))
     setJob(null)
+    setAnalysisArea(null)
   }
 
   const updateConfiguration = (configuration) => setSite((current) => ({ ...current, configuration }))
