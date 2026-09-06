@@ -1,7 +1,11 @@
+import { Clock, Flame, MessageCircle, Users } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { artifactUrl, getAnalysisHeatmap, getAnalysisTrajectories, getAnalysisZones, videoUrl } from '../services/analyses'
 import { inverseHomography, projectFloor } from '../utils/homography'
+import { pointInPolygon } from '../utils/floorOutline'
 import { formatTime } from '../utils/format'
+
+const findingDotColor = { evidence: '#ff6b3d', recommendation: '#22c55e', quality: '#151323' }
 
 const VIEW_MODES = [['original', 'Original'], ['heatmap', 'Mapa de calor'], ['pickup', 'Pick-ups'], ['zones', 'Zonas'], ['trajectories', 'Trayectorias']]
 const zoneStyles = {
@@ -105,8 +109,83 @@ export default function AnalysisVideo({ analysis }) {
   const heatmapSrc = overlayFrame || (coordinateSystem === 'normalized' ? floorHeatmap : null)
   const trajectories = trajectoryData?.trajectories || result.trajectories || []
   const zones = zoneData?.zones || result.zones || []
+  const findings = result.findings || []
+  const peopleTotal = result.metrics?.tracked_presences ?? result.metrics?.people_detected ?? 0
+  const interactionsTotal = result.metrics?.interaction_events ?? 0
+  const hotZonesTotal = zones.filter((zone) => zone.classification === 'hot').length
+  const zoneVisits = zones.reduce((sum, zone) => sum + (zone.visits || 0), 0)
+  const zoneDwellSeconds = zones.reduce((sum, zone) => sum + (zone.dwell_seconds || 0), 0)
+  const avgDwellTotal = zoneVisits ? zoneDwellSeconds / zoneVisits : 0
   const pickupEvents = result.pickup_events_log || []
   const interactionEvents = result.interaction_events_log || []
+
+  // Metricas principales dinamicas: se recalculan segun el instante actual del video.
+  // - Personas detectadas   -> presentes AHORA (track_id unicos en la ultima muestra <= time)
+  // - Permanencia promedio  -> duracion media de presencia de las personas vistas hasta el instante
+  // - Zonas calientes       -> zonas con actividad caliente (interaccion/pick-up) hasta el instante
+  // - Interacciones         -> eventos de interaccion (+ pick-ups) ocurridos hasta el instante
+  // Si no hay muestreo en vivo (sin frame_detections) se cae a los totales del analisis.
+  const liveMetrics = useMemo(() => {
+    const samples = result.frame_detections || []
+    if (!samples.length) {
+      return {
+        people: peopleTotal,
+        avgDwell: avgDwellTotal,
+        hotZones: hotZonesTotal,
+        interactions: interactionsTotal,
+      }
+    }
+
+    let lastPeople = 0
+    const firstSeen = {}
+    const lastSeen = {}
+    let seenCount = 0
+    for (let index = 0; index < samples.length && samples[index].timestamp <= time; index++) {
+      const sample = samples[index]
+      const present = new Set()
+      for (const detection of sample.detections || []) {
+        const id = detection.track_id
+        if (id === undefined || id === null) continue
+        present.add(id)
+        if (!(id in firstSeen)) {
+          firstSeen[id] = sample.timestamp
+          seenCount++
+        }
+        lastSeen[id] = sample.timestamp
+      }
+      lastPeople = present.size
+    }
+
+    const avgDwell = (() => {
+      if (!seenCount) return avgDwellTotal
+      let total = 0
+      for (const id of Object.keys(firstSeen)) {
+        total += (lastSeen[id] ?? firstSeen[id]) - firstSeen[id]
+      }
+      return total / seenCount
+    })()
+
+    const hotZoneIds = new Set()
+    const eventSources = [...(result.interaction_events_log || []), ...(result.pickup_events_log || [])]
+    for (const event of eventSources) {
+      if (typeof event.t !== 'number' || event.t > time) continue
+      if (typeof event.x !== 'number' || typeof event.z !== 'number') continue
+      for (const zone of zones) {
+        if (!hotZoneIds.has(zone.id) && pointInPolygon(event.x, event.z, zone.polygon)) hotZoneIds.add(zone.id)
+      }
+    }
+
+    let interactions = 0
+    for (const event of interactionEvents) if (typeof event.t === 'number' && event.t <= time) interactions++
+    for (const event of pickupEvents) if (typeof event.t === 'number' && event.t <= time) interactions++
+
+    return {
+      people: lastPeople,
+      avgDwell,
+      hotZones: hotZoneIds.size,
+      interactions,
+    }
+  }, [time, result, zones, peopleTotal, avgDwellTotal, hotZonesTotal, interactionsTotal, interactionEvents, pickupEvents])
   const visibleEvents = eventFilter === 'pickup' ? pickupEvents : eventFilter === 'interaction' ? interactionEvents : [...pickupEvents, ...interactionEvents].sort((a, b) => (a.t || 0) - (b.t || 0))
   const projectionMatrix = useMemo(() => flat(camera.homography_inv) || invert3x3(camera.homography) || inverseHomography(camera), [camera])
 
@@ -398,7 +477,32 @@ export default function AnalysisVideo({ analysis }) {
         </div>
 
         <aside className="border-t border-white/10 bg-white p-4 xl:border-l xl:border-t-0">
-          <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="mb-5">
+            <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-[#7d8392]">Metricas principales</h3>
+            <div className="grid grid-cols-2 gap-2">
+              <Metric icon={<Users size={18} />} label="Personas detectadas" value={liveMetrics.people} />
+              <Metric icon={<Clock size={18} />} label="Permanencia promedio" value={`${liveMetrics.avgDwell.toFixed(1)} s`} />
+              <Metric icon={<Flame size={18} />} label="Zonas calientes" value={liveMetrics.hotZones} />
+              <Metric icon={<MessageCircle size={18} />} label="Interacciones" value={liveMetrics.interactions} />
+            </div>
+          </div>
+
+          {findings.length > 0 && (
+            <div className="mb-5 border-t border-[#e5e7ee] pt-4">
+              <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-[#7d8392]">Hallazgos clave</h3>
+              <ul className="grid gap-2">
+                {findings.slice(0, 4).map((finding, index) => (
+                  <li key={`${finding.title}-${index}`} className="flex items-start gap-2 text-xs leading-snug text-[#3f4858]">
+                    <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: findingDotColor[finding.type] || '#ff6b3d' }} />
+                    <span>{finding.title}</span>
+                  </li>
+                ))}
+              </ul>
+              <a href="#hallazgos" className="mt-3 inline-block text-[11px] font-bold text-[#ff6b3d] hover:underline">Ver recomendaciones →</a>
+            </div>
+          )}
+
+          <div className="mb-4 flex items-start justify-between gap-3 border-t border-[#e5e7ee] pt-4">
             <div>
               <h3 className="text-lg font-black text-[#151323]">Eventos del video</h3>
               <p className="mt-1 text-xs text-[#7d8392]">Salta al segundo exacto detectado por el analisis.</p>
@@ -428,5 +532,17 @@ export default function AnalysisVideo({ analysis }) {
         </aside>
       </div>
     </section>
+  )
+}
+
+function Metric({ icon, label, value }) {
+  return (
+    <article className="flex items-center gap-2 rounded-lg border border-[#e5e7ee] bg-white p-3">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#fff1eb] text-[#ff5b12]">{icon}</span>
+      <span className="min-w-0">
+        <b className="block truncate text-lg font-black text-[#151323]">{value}</b>
+        <span className="block text-[10px] font-bold leading-tight text-[#7d8392]">{label}</span>
+      </span>
+    </article>
   )
 }

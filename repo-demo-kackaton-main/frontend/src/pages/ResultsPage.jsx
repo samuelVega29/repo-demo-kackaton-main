@@ -32,6 +32,10 @@ export default function ResultsPage() {
   const interactionAvailable = Boolean(result.heatmaps?.interaction)
   const metrics = result.metrics || {}
   const video = result.video || {}
+  const zones = result.zones || []
+  const hotZones = zones.filter((zone) => zone.classification === 'hot')
+  const coldZones = zones.filter((zone) => zone.classification === 'cold')
+  const recommendations = result.recommendations || []
 
   return (
     <section className="mx-auto w-[min(1480px,calc(100%-36px))] pb-[100px] pt-[72px] max-[760px]:w-[calc(100%-28px)] max-[760px]:pb-[75px] max-[760px]:pt-[55px]">
@@ -84,11 +88,98 @@ export default function ResultsPage() {
           <div className="mb-7"><span className="font-[ui-monospace,monospace] text-[10px] font-semibold tracking-[.17em] text-[#1f6feb]">EVIDENCIA VISUAL</span><h2 className="mt-[9px] text-[clamp(33px,4vw,52px)] tracking-[-.045em] text-[#151323]">Frames y detecciones</h2></div>
           <div className="grid grid-cols-3 gap-[7px] max-[980px]:grid-cols-3 max-[760px]:grid-cols-2 max-[390px]:grid-cols-1">{(result.annotated_frames || []).map((filename, index) => <figure key={filename} className="relative m-0 aspect-video overflow-hidden rounded-lg bg-[#0e1916]"><img className="h-full w-full object-cover" src={artifactUrl(analysis.id, filename)} alt={`Frame procesado ${index + 1}`} /><figcaption className="absolute bottom-[7px] left-[7px] bg-[rgba(5,10,8,.83)] px-[7px] p-[5px] font-[ui-monospace,monospace] text-[7px] font-medium text-[#aac0b7]">FRAME {index + 1}</figcaption></figure>)}</div>
         </section>
-        <section>
+        <section id="hallazgos">
           <div className="mb-7"><span className="font-[ui-monospace,monospace] text-[10px] font-semibold tracking-[.17em] text-[#ff6b3d]">HALLAZGOS CALCULADOS</span><h2 className="mt-[9px] text-[clamp(33px,4vw,52px)] tracking-[-.045em] text-[#151323]">Que indican los datos</h2></div>
+
+          {(hotZones.length > 0 || coldZones.length > 0) && (
+            <div className="mb-8">
+              <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-[#151323]">Zonas de calor y frio <span className="text-[#7d8392]">· según clasificacion del analisis</span></h3>
+              <div className="grid grid-cols-2 gap-[7px] max-[980px]:grid-cols-2 max-[400px]:grid-cols-1">
+                {hotZones.map((zone, index) => (
+                  <ZoneCard key={`hot-${zone.zone_id || index}`} zone={zone} kind="hot" />
+                ))}
+                {coldZones.map((zone, index) => (
+                  <ZoneCard key={`cold-${zone.zone_id || index}`} zone={zone} kind="cold" />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {recommendations.length > 0 && (
+            <div className="mb-8">
+              <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-[#151323]">Recomendaciones</h3>
+              <div className="grid gap-[7px]">
+                {recommendations.map((recommendation, index) => (
+                  <RecommendationCard key={`${recommendation.rule}-${index}`} recommendation={recommendation} />
+                ))}
+              </div>
+            </div>
+          )}
+
           {(result.findings || []).map((finding, index) => <article key={`${finding.title}-${index}`} className="grid grid-cols-[34px_1fr] gap-[14px] border-t border-[#e5e7ee] py-[19px]"><span className="font-[ui-monospace,monospace] text-[9px] font-semibold text-[#ff6b3d]">{String(index + 1).padStart(2, '0')}</span><div><h3 className="m-0 mb-[7px] text-[14px] text-[#151323]">{finding.title}</h3><p className="m-0 text-[10px] leading-[1.6] text-[#7d8392]">{finding.detail}</p></div></article>)}
         </section>
       </div>
     </section>
+  )
+}
+
+function ZoneCard({ zone, kind }) {
+  const value = Number(zone.heat_index || 0)
+  const accent = kind === 'hot' ? '#ff6b3d' : '#1f6feb'
+  const label = kind === 'hot' ? 'Caliente' : 'Fria'
+  return (
+    <article className={`rounded-lg border bg-white p-[15px] ${kind === 'hot' ? 'border-[#ffd9c4] bg-[#fff9f5]' : 'border-[#cdddf7] bg-[#f6f9ff]'}`}>
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <h4 className="m-0 text-[12px] font-black leading-tight text-[#151323]">{zone.name}</h4>
+        <span className={`shrink-0 rounded-full px-2 py-[3px] text-[8px] font-black uppercase tracking-wide ${kind === 'hot' ? 'bg-[#ff6b3d] text-white' : 'bg-[#1f6feb] text-white'}`}>{label}</span>
+      </div>
+      <div className="mb-3">
+        <div className="mb-1 flex items-center justify-between gap-2 text-[9px] font-bold text-[#7d8392]"><span>Heat index</span><span className="font-[ui-monospace,monospace] text-[#151323]">{(value * 100).toFixed(1)}%</span></div>
+        <div className="h-[6px] overflow-hidden rounded-full bg-[#ececf0]"><div className="h-full rounded-full" style={{ width: `${Math.max(2, value * 100)}%`, background: accent }} /></div>
+      </div>
+      <dl className="m-0 grid grid-cols-2 gap-x-[14px] gap-y-[9px]">
+        <MetricCell label="Visitas" value={String(zone.visits ?? 0)} />
+        <MetricCell label="Densidad" value={`${zone.density ?? 0}/min`} />
+        <MetricCell label="Permanencia total" value={`${zone.dwell_seconds ?? 0}s`} />
+        <MetricCell label="Permanencia media" value={`${zone.avg_dwell_seconds ?? 0}s`} />
+        <MetricCell label="Interacciones" value={String(zone.interactions ?? 0)} />
+        <MetricCell label="Fuente" value={zone.source === 'configured' ? 'Configurada' : 'Grilla auto'} />
+      </dl>
+    </article>
+  )
+}
+
+function MetricCell({ label, value }) {
+  return <div><dt className="text-[8px] font-bold text-[#7d8392]">{label}</dt><dd className="m-0 font-[ui-monospace,monospace] text-[11px] font-semibold text-[#151323]">{value}</dd></div>
+}
+
+function RecommendationCard({ recommendation }) {
+  const severityStyles = {
+    high: { label: 'Alta', className: 'bg-[#ff3b30] text-white' },
+    medium: { label: 'Media', className: 'bg-[#ff6b3d] text-white' },
+    low: { label: 'Baja', className: 'bg-[#1f6feb] text-white' },
+  }
+  const severity = severityStyles[recommendation.severity] || severityStyles.medium
+  const trace = recommendation.trace || {}
+  return (
+    <article className="rounded-lg border border-[#ffe6d8] bg-white p-[15px]">
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <h4 className="m-0 max-w-[75%] text-[12px] font-black leading-tight text-[#151323]">{recommendation.title}</h4>
+        <span className={`shrink-0 rounded-full px-2 py-[3px] text-[8px] font-black uppercase tracking-wide ${severity.className}`}>{severity.label}</span>
+      </div>
+      <p className="m-0 mb-3 text-[10px] leading-[1.6] text-[#7d8392]">{recommendation.detail}</p>
+      {(typeof trace.heat_index === 'number' || typeof trace.visits === 'number' || typeof trace.classification === 'string') && (
+        <dl className="m-0 grid grid-cols-2 gap-x-[14px] gap-y-[9px] border-t border-[#eef0f3] pt-3">
+          {trace.zone_name && <MetricCell label="Zona" value={trace.zone_name} />}
+          {typeof trace.heat_index === 'number' && <MetricCell label="Heat index" value={(Number(trace.heat_index) * 100).toFixed(1) + '%'} />}
+          {typeof trace.visits === 'number' && <MetricCell label="Visitas" value={String(trace.visits)} />}
+          {typeof trace.avg_dwell_seconds === 'number' && <MetricCell label="Permanencia media" value={`${trace.avg_dwell_seconds}s`} />}
+          {typeof trace.interactions === 'number' && <MetricCell label="Interacciones" value={String(trace.interactions)} />}
+          {typeof trace.density === 'number' && <MetricCell label="Densidad" value={`${trace.density}/min`} />}
+          {typeof trace.hot_zones === 'number' && <MetricCell label="Zonas calientes" value={String(trace.hot_zones)} />}
+          {typeof trace.active_zones === 'number' && <MetricCell label="Zonas activas" value={String(trace.active_zones)} />}
+        </dl>
+      )}
+    </article>
   )
 }
