@@ -60,6 +60,7 @@ export default function AnalysisVideo({ analysis }) {
   const [trajectoryData, setTrajectoryData] = useState(null)
   const [zoneData, setZoneData] = useState(null)
   const [eventFilter, setEventFilter] = useState('all')
+  const [showZoneBoundaries, setShowZoneBoundaries] = useState(true)
 
   useEffect(() => {
     let active = true
@@ -97,7 +98,10 @@ export default function AnalysisVideo({ analysis }) {
     return slices.find((slice) => time >= slice.start && time <= slice.end) || slices[slices.length - 1]
   }, [slices, time])
   const floorHeatmap = activeSlice?.[overlayMetric] || heatmaps[overlayMetric]
-  const overlayFrame = overlays.length ? overlays[Math.min(overlays.length - 1, Math.floor(time / Math.max(1, duration) * overlays.length))] : null
+  // El overlay acumula los puntos de TODO el video: cualquier frame de evidencia sirve de
+  // fondo, asi que se fija uno solo (el del medio) en vez de recalcularlo con el scrubber -
+  // eso era lo que producia el efecto fantasma al mezclar el overlay con el video en marcha.
+  const overlayFrame = overlays.length ? overlays[Math.floor((overlays.length - 1) / 2)] : null
   const heatmapSrc = overlayFrame || (coordinateSystem === 'normalized' ? floorHeatmap : null)
   const trajectories = trajectoryData?.trajectories || result.trajectories || []
   const zones = zoneData?.zones || result.zones || []
@@ -105,6 +109,65 @@ export default function AnalysisVideo({ analysis }) {
   const interactionEvents = result.interaction_events_log || []
   const visibleEvents = eventFilter === 'pickup' ? pickupEvents : eventFilter === 'interaction' ? interactionEvents : [...pickupEvents, ...interactionEvents].sort((a, b) => (a.t || 0) - (b.t || 0))
   const projectionMatrix = useMemo(() => flat(camera.homography_inv) || invert3x3(camera.homography) || inverseHomography(camera), [camera])
+
+  // Acumulador en vivo del mapa de calor: mientras el video corre se van sumando
+  // los puntos de contacto ya vistos (calientes = interacción/engagement, fríos =
+  // tránsito de paso). Al hacer seek hacia atrás se rellena desde t=0 hasta el
+  // tiempo actual para que el resultado sea siempre la densidad acumulada real.
+  const heatAccum = useRef({
+    calibrated: false,
+    hot: { size: 0, filled: 0, points: [], events: [] },
+    cold: { size: 0, filled: 0, points: [], events: [] },
+  })
+
+  const buildLiveHeatmap = (until) => {
+    const acc = heatAccum.current
+    if (!acc.calibrated) {
+      const frameSamples = result.frame_detections || []
+      acc.hot.size = frameSamples.length
+      acc.cold.size = frameSamples.length
+      acc.hot.points = new Array(frameSamples.length)
+      acc.cold.points = new Array(frameSamples.length)
+      acc.calibrated = true
+    }
+    acc.hot.filled = 0
+    acc.cold.filled = 0
+    const samples = result.frame_detections || []
+    for (let index = 0; index < samples.length && samples[index].timestamp <= until; index++) {
+      const sample = samples[index]
+      const hot = []
+      const cold = []
+      for (const detection of sample.detections || []) {
+        const state = detection.state || 'PASS'
+        if (!detection.floor_point) continue
+        if (state === 'INTERACTION' || state === 'ENGAGED') hot.push(detection.floor_point)
+        else cold.push(detection.floor_point)
+      }
+      acc.hot.points[index] = hot
+      acc.cold.points[index] = cold
+      acc.hot.filled = index + 1
+      acc.cold.filled = index + 1
+    }
+    // Picos calientes de interacción/pick-up ya ocurridos hasta el instante actual:
+    // son la señal mas fuerte de que hubo contacto con una gondola o producto.
+    const hotEvents = []
+    const eventSources = [...(result.pickup_events_log || []), ...(result.interaction_events_log || [])]
+    for (const event of eventSources) {
+      if (typeof event.t !== 'number' || event.t > until) continue
+      if (typeof event.x === 'number' && typeof event.z === 'number') hotEvents.push([event.x, event.z])
+    }
+    acc.hot.events = hotEvents
+  }
+
+  const collectLiveHeat = (until) => {
+    const acc = heatAccum.current
+    buildLiveHeatmap(until)
+    return acc
+  }
+
+  useEffect(() => {
+    if (viewMode === 'heatmap') buildLiveHeatmap(time)
+  }, [time, viewMode])
 
   const projectPoint = (point) => {
     if (!box) return null
@@ -129,21 +192,56 @@ export default function AnalysisVideo({ analysis }) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, rect.width, rect.height)
 
-    if ((viewMode === 'heatmap' || viewMode === 'pickup') && !heatmapSrc) {
-      trajectories.forEach((trajectory) => {
-        ;(trajectory.points || []).forEach((point) => {
-          const px = projectPoint(point)
-          if (!px) return
-          const gradient = ctx.createRadialGradient(px[0], px[1], 0, px[0], px[1], 46)
-          gradient.addColorStop(0, `rgba(255, 107, 61, ${opacity * 0.42})`)
-          gradient.addColorStop(0.55, `rgba(255, 209, 102, ${opacity * 0.2})`)
-          gradient.addColorStop(1, 'rgba(255, 107, 61, 0)')
-          ctx.fillStyle = gradient
-          ctx.beginPath()
-          ctx.arc(px[0], px[1], 46, 0, Math.PI * 2)
-          ctx.fill()
+    if (viewMode === 'heatmap') {
+      const frameSamples = result.frame_detections || []
+      const live = frameSamples.length > 0
+      if (live) {
+        const acc = collectLiveHeat(time)
+        // Calientes primero (arriba) y frías debajo: cada punto acumula peso por
+        // cada paso, asi las zonas donde hubo interacciones se ven mas intensas.
+        const paint = (points, colorCenter, colorMid, radius, maxWeight, baseAlpha) => {
+          for (const chunk of points) {
+            if (!chunk) continue
+            for (const point of chunk) {
+              const px = projectPoint(point)
+              if (!px) continue
+              const r = radius
+              const gradient = ctx.createRadialGradient(px[0], px[1], 0, px[0], px[1], r)
+              gradient.addColorStop(0, colorCenter)
+              gradient.addColorStop(0.55, colorMid)
+              gradient.addColorStop(1, 'rgba(255, 107, 61, 0)')
+              ctx.globalAlpha = Math.max(baseAlpha, opacity)
+              ctx.fillStyle = gradient
+              ctx.beginPath()
+              ctx.arc(px[0], px[1], r, 0, Math.PI * 2)
+              ctx.fill()
+            }
+          }
+          ctx.globalAlpha = 1
+        }
+        // Zonas frias: transito y aproximacion (cian/azul), menos calor.
+        paint(acc.cold.points.slice(0, acc.cold.filled), `rgba(97, 222, 192, ${(opacity) * 0.32})`, `rgba(64, 170, 210, ${(opacity) * 0.16})`, 34, opacity * 0.1)
+        // Zonas calientes: interacciones y pick-ups (naranja/rojo), mas calor y radio mayor.
+        paint(acc.hot.points.slice(0, acc.hot.filled), `rgba(255, 107, 61, ${Math.min(0.92, opacity + 0.28)})`, `rgba(255, 209, 102, ${(opacity) * 0.5})`, 58, opacity * 0.35)
+        // Picos calientes: un anillo mas amplio y brillante en cada contacto real
+        // con gondola/producto, para que se lea claramente como zona caliente.
+        paint([acc.hot.events || []], 'rgba(255, 82, 40, 0.9)', 'rgba(255, 168, 77, 0.55)', 82, opacity, opacity * 0.5)
+      } else if (!heatmapSrc) {
+        trajectories.forEach((trajectory) => {
+          ;(trajectory.points || []).forEach((point) => {
+            const px = projectPoint(point)
+            if (!px) return
+            const gradient = ctx.createRadialGradient(px[0], px[1], 0, px[0], px[1], 46)
+            gradient.addColorStop(0, `rgba(255, 107, 61, ${opacity * 0.42})`)
+            gradient.addColorStop(0.55, `rgba(255, 209, 102, ${opacity * 0.2})`)
+            gradient.addColorStop(1, 'rgba(255, 107, 61, 0)')
+            ctx.fillStyle = gradient
+            ctx.beginPath()
+            ctx.arc(px[0], px[1], 46, 0, Math.PI * 2)
+            ctx.fill()
+          })
         })
-      })
+      }
     }
 
     if (viewMode === 'pickup') {
@@ -171,7 +269,8 @@ export default function AnalysisVideo({ analysis }) {
       })
     }
 
-    if (viewMode === 'zones') {
+    if (viewMode === 'zones' || (viewMode === 'heatmap' && showZoneBoundaries)) {
+      const onHeatmap = viewMode === 'heatmap'
       zones.forEach((zone) => {
         const points = (zone.polygon || []).map(projectPoint).filter(Boolean)
         if (points.length < 3) return
@@ -180,12 +279,22 @@ export default function AnalysisVideo({ analysis }) {
         ctx.moveTo(...points[0])
         points.slice(1).forEach((point) => ctx.lineTo(...point))
         ctx.closePath()
-        ctx.fillStyle = fill
-        ctx.strokeStyle = stroke
-        ctx.lineWidth = 2
-        ctx.fill()
-        ctx.stroke()
-        if (showLabels && zone.name) {
+        if (onHeatmap) {
+          // Sobre la foto del calor solo interesa el contorno con el nombre; el
+          // relleno de color competiria con la escala de calor ya pintada.
+          ctx.setLineDash([6, 4])
+          ctx.strokeStyle = 'rgba(11,17,26,.85)'
+          ctx.lineWidth = 1.5
+          ctx.stroke()
+          ctx.setLineDash([])
+        } else {
+          ctx.fillStyle = fill
+          ctx.strokeStyle = stroke
+          ctx.lineWidth = 2
+          ctx.fill()
+          ctx.stroke()
+        }
+        if ((showLabels || onHeatmap) && zone.name) {
           const [x, y] = centroid(points)
           const label = `${zone.name}${zone.classification ? ` · ${zone.classification}` : ''}`
           ctx.font = '600 12px Poppins, system-ui, sans-serif'
@@ -214,7 +323,7 @@ export default function AnalysisVideo({ analysis }) {
         ctx.stroke()
       })
     }
-  }, [box, coordinateSystem, heatmapSrc, opacity, pickupEvents, projectionMatrix, showLabels, trajectories, viewMode, zones])
+  }, [box, coordinateSystem, heatmapSrc, opacity, pickupEvents, projectionMatrix, result, showLabels, showZoneBoundaries, time, trajectories, viewMode, zones])
 
   const seek = (seconds) => {
     const video = videoRef.current
@@ -245,19 +354,47 @@ export default function AnalysisVideo({ analysis }) {
         <div className="min-w-0">
         <div className="relative mx-auto max-h-[72vh] bg-black">
           <video ref={videoRef} src={videoUrl(analysis.id)} playsInline className="block h-auto max-h-[72vh] w-full bg-black object-contain" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
-          {viewMode === 'heatmap' && heatmapSrc && box && <img src={artifactUrl(analysis.id, heatmapSrc)} alt="" className="pointer-events-none absolute object-fill mix-blend-screen" style={{ left: box.x, top: box.y, width: box.width, height: box.height, opacity }} />}
+          {viewMode === 'heatmap' && !(result.frame_detections || []).length && heatmapSrc && box && <img src={artifactUrl(analysis.id, heatmapSrc)} alt="Densidad acumulada de movimiento sobre la camara" className="pointer-events-none absolute object-fill" style={{ left: box.x, top: box.y, width: box.width, height: box.height }} />}
           <canvas ref={canvasRef} className="pointer-events-none absolute inset-0" />
         </div>
 
-        <div className="grid gap-3 border-t border-white/10 bg-[#101722] p-4 text-white md:grid-cols-[auto_1fr_auto_auto] md:items-center">
-          <div className="flex items-center gap-3">
-            <button className="grid h-10 w-10 place-items-center rounded-full border border-[#ff6b3d] bg-[#ff6b3d] text-[13px] font-bold text-white" onClick={() => { const video = videoRef.current; if (!video) return; video.paused ? video.play().catch(() => {}) : video.pause() }}>{playing ? 'II' : '▶'}</button>
-            <span className="font-[ui-monospace,monospace] text-[12px]">{formatTime(time)} / {formatTime(duration)}</span>
+        {viewMode === 'heatmap' ? (
+          <div className="text-white">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#101722] p-4">
+              <span className="text-[11px] text-white/60">Mapa de calor en vivo · corre el video y se acumulan las zonas calientes (interacción) y frías (tránsito)</span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 text-[10px] text-white/80">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#ff6b3d]" />Zona caliente
+                  <span className="ml-2 inline-block h-2.5 w-2.5 rounded-full bg-[#42aac9]" />Zona fría
+                </div>
+                {zones.length > 0 && (
+                  <button className="text-[11px] font-bold text-[#ff6b3d] underline underline-offset-2" onClick={() => setShowZoneBoundaries((value) => !value)}>
+                    {showZoneBoundaries ? 'Ocultar' : 'Mostrar'} limites de gondola
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="grid gap-3 bg-[#101722] p-4 text-white md:grid-cols-[auto_1fr_auto_auto] md:items-center">
+              <div className="flex items-center gap-3">
+                <button className="grid h-10 w-10 place-items-center rounded-full border border-[#ff6b3d] bg-[#ff6b3d] text-[13px] font-bold text-white" onClick={() => { const video = videoRef.current; if (!video) return; video.paused ? video.play().catch(() => {}) : video.pause() }}>{playing ? 'II' : '▶'}</button>
+                <span className="font-[ui-monospace,monospace] text-[12px]">{formatTime(time)} / {formatTime(duration)}</span>
+              </div>
+              <input className="w-full accent-[#ff6b3d]" type="range" min="0" max={Math.max(1, duration)} step="0.1" value={Math.min(time, duration)} onChange={(event) => seek(Number(event.target.value))} />
+              <label className="flex items-center gap-2 text-[11px] text-white/75">Opacidad<input className="w-28 accent-[#ff6b3d]" type="range" min="0.15" max="0.9" step="0.05" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /></label>
+              <label className="flex items-center gap-2 text-[11px] text-white/75"><input className="accent-[#ff6b3d]" type="checkbox" checked={showLabels} onChange={(event) => setShowLabels(event.target.checked)} />Etiquetas</label>
+            </div>
           </div>
-          <input className="w-full accent-[#ff6b3d]" type="range" min="0" max={Math.max(1, duration)} step="0.1" value={Math.min(time, duration)} onChange={(event) => seek(Number(event.target.value))} />
-          <label className="flex items-center gap-2 text-[11px] text-white/75">Opacidad<input className="w-28 accent-[#ff6b3d]" type="range" min="0.15" max="0.9" step="0.05" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /></label>
-          <label className="flex items-center gap-2 text-[11px] text-white/75"><input className="accent-[#ff6b3d]" type="checkbox" checked={showLabels} onChange={(event) => setShowLabels(event.target.checked)} />Etiquetas</label>
-        </div>
+        ) : (
+          <div className="grid gap-3 border-t border-white/10 bg-[#101722] p-4 text-white md:grid-cols-[auto_1fr_auto_auto] md:items-center">
+            <div className="flex items-center gap-3">
+              <button className="grid h-10 w-10 place-items-center rounded-full border border-[#ff6b3d] bg-[#ff6b3d] text-[13px] font-bold text-white" onClick={() => { const video = videoRef.current; if (!video) return; video.paused ? video.play().catch(() => {}) : video.pause() }}>{playing ? 'II' : '▶'}</button>
+              <span className="font-[ui-monospace,monospace] text-[12px]">{formatTime(time)} / {formatTime(duration)}</span>
+            </div>
+            <input className="w-full accent-[#ff6b3d]" type="range" min="0" max={Math.max(1, duration)} step="0.1" value={Math.min(time, duration)} onChange={(event) => seek(Number(event.target.value))} />
+            <label className="flex items-center gap-2 text-[11px] text-white/75">Opacidad<input className="w-28 accent-[#ff6b3d]" type="range" min="0.15" max="0.9" step="0.05" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /></label>
+            <label className="flex items-center gap-2 text-[11px] text-white/75"><input className="accent-[#ff6b3d]" type="checkbox" checked={showLabels} onChange={(event) => setShowLabels(event.target.checked)} />Etiquetas</label>
+          </div>
+        )}
         </div>
 
         <aside className="border-t border-white/10 bg-white p-4 xl:border-l xl:border-t-0">
