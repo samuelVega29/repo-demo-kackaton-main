@@ -11,8 +11,10 @@
   "dependencies": {
     "@react-three/drei": "^10.7.4",
     "@react-three/fiber": "^9.3.0",
+    "lucide-react": "^1.41.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-router-dom": "^7.18.3",
     "three": "^0.179.1"
   },
   "devDependencies": {

@@ -5,7 +5,15 @@ import numpy as np
 
 
 def floor_pixel_size(floor: dict) -> tuple[int, int]:
-    """Chooses a floor top-down resolution that scales with the configured dimensions."""
+    """Chooses a floor top-down resolution that scales with the configured dimensions.
+
+    Meter floors (advanced mode) scale towards the 1280px target edge. Pixel-unit
+    floors (fast mode) use their real resolution: the internal projection is the
+    identity, so a larger canvas would be a memory blow-up AND would misalign the
+    frame overlays.
+    """
+    if floor.get("unit") == "pixels":
+        return int(floor["width"]), int(floor["depth"])
     target_edge = 1280.0
     scale = max(32.0, min(96.0, target_edge / max(floor["width"], floor["depth"])))
     return max(32, round(floor["width"] * scale)), max(32, round(floor["depth"] * scale))

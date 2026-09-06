@@ -29,7 +29,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(180), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(120))
     password_hash: Mapped[str] = mapped_column(String(300))
-    role: Mapped[str] = mapped_column(String(30), default="retailer")
+    role: Mapped[str] = mapped_column(String(30), default="admin")
     retailer_id: Mapped[int | None] = mapped_column(ForeignKey("retailers.id"), nullable=True)
 
 

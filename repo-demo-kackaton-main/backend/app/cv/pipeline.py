@@ -9,12 +9,14 @@ import numpy as np
 
 from ..database import SessionLocal
 from ..models import Analysis, Site
-from .detector import PersonDetector
+from .detector import get_person_detector, inference_lock
 from .heatmaps import create_floor_heatmap, overlay_heatmap_on_frame
 from .interaction import InteractionEngine
+from .recommendations import build_recommendations
 from .spatial import SpatialEngine, with_homographies
 from .track_stab import TrackStabilizer
 from .video_utils import detect_black_bars
+from .zones import compute_zone_metrics
 
 
 # Keypoint index → estimated height fraction (0=floor, 1=standing height ~1.75m)
@@ -40,6 +42,11 @@ KEYPOINT_HEIGHT_FRACTION: dict[int, float] = {
 }
 
 STANDING_HEIGHT_M = 1.75
+
+# Fast-mode automatic spatial grid density (rows x cols). Configurable here on
+# purpose: these are NOT camera-specific thresholds, just the grid granularity.
+FAST_ZONE_ROWS = 3
+FAST_ZONE_COLS = 3
 
 
 def project_keypoints_to_3d(
@@ -125,6 +132,153 @@ def project_keypoints_to_3d_v2(
     return project_keypoints_to_3d(keypoints, image_point, bbox, spatial)
 
 
+def _valid_four_points(points: list | None) -> bool:
+    """True when ``points`` are 4 finite, non-degenerate 2D coordinates.
+
+    Used as a sanity gate for homography inputs; degeneracy is measured by the
+    polygon area (shoelace). Points spanning the full frame edges are still valid
+    calibrations, so identity is NOT treated as a business criterion.
+    """
+    if not points or not isinstance(points, (list, tuple)) or len(points) != 4:
+        return False
+    coords = []
+    for point in points:
+        if not isinstance(point, (list, tuple)) or len(point) != 2:
+            return False
+        try:
+            coords.append((float(point[0]), float(point[1])))
+        except (TypeError, ValueError):
+            return False
+    for px, py in coords:
+        if not (math.isfinite(px) and math.isfinite(py)):
+            return False
+    area = abs(
+        sum(coords[i][0] * coords[(i + 1) % 4][1] - coords[(i + 1) % 4][0] * coords[i][1] for i in range(4))
+    ) / 2.0
+    return area > 1e-6
+
+
+def camera_is_calibrated(configuration: dict) -> bool:
+    """True when a real homography can be built from the persisted camera config.
+
+    Advanced mode requires ``calibration_status == "calibrated"`` plus four
+    non-degenerate source points, four non-degenerate target points and a
+    computable perspective transform. Everything else falls back to fast mode.
+    """
+    camera = (configuration or {}).get("camera") or {}
+    if camera.get("calibration_status") != "calibrated":
+        return False
+    if not _valid_four_points(camera.get("source_normalized")):
+        return False
+    if not _valid_four_points(camera.get("target_meters")):
+        return False
+    try:
+        source = np.float32(camera["source_normalized"])
+        target = np.float32(camera["target_meters"])
+        cv2.getPerspectiveTransform(source, target)
+        return True
+    except cv2.error:
+        return False
+
+
+def analysis_mode(configuration: dict) -> str:
+    """Decides ``"advanced"`` (real homography) or ``"fast"`` (normalized coords)."""
+    return "advanced" if camera_is_calibrated(configuration) else "fast"
+
+
+def _auto_fast_zones(width: int, height: int, rows: int = FAST_ZONE_ROWS, cols: int = FAST_ZONE_COLS) -> list[dict]:
+    """Builds the default fast-mode zone grid in internal pixel space."""
+    zones = []
+    for row in range(rows):
+        for column in range(cols):
+            x1 = width * column / cols
+            x2 = width * (column + 1) / cols
+            y1 = height * row / rows
+            y2 = height * (row + 1) / rows
+            zones.append({
+                "id": f"auto-{row * cols + column}",
+                "name": f"Zona {row + 1}-{column + 1}",
+                "polygon": [[x1, y1], [x2, y1], [x2, y2], [x1, y2]],
+                "source": "auto_grid",
+            })
+    return zones
+
+
+def _fast_process_configuration(configuration: dict, width: int, height: int) -> dict:
+    """Pixel-space working config for fast mode (identity projection, no false calibration).
+
+    This exists ONLY so the existing heatmap/zone/dwell pipeline can run unchanged.
+    Nothing here is exposed as meters or 3D; external contracts stay normalized 0..1.
+    """
+    camera_name = (configuration.get("camera") or {}).get("name", "Cámara")
+    thresholds = dict(configuration.get("thresholds") or {
+        "approach_m": 1.5, "engaged_m": 0.8, "engaged_seconds": 2.0,
+        "interaction_seconds": 4.0, "minimum_track_seconds": 2.0,
+        "pickup_reach_m": 0.5, "pickup_min_seconds": 0.6, "pickup_cooldown_s": None,
+    })
+    return {
+        "version": configuration.get("version", 1),
+        "units": "normalized",
+        "analysis_mode": "fast",
+        "floor": {"width": float(width), "depth": float(height), "unit": "pixels", "normalized": True},
+        "camera": {
+            "name": camera_name,
+            "source_normalized": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            "target_meters": [[0.0, 0.0], [float(width), 0.0], [float(width), float(height)], [0.0, float(height)]],
+            "calibration_status": "fast",
+            "model_3d": None,
+        },
+        "zones": _auto_fast_zones(width, height),
+        "gondolas": [],
+        "thresholds": thresholds,
+        "auto_zones": True,
+    }
+
+
+def _fast_output_configuration(process_config: dict, width: int, height: int) -> dict:
+    """Normalized 0..1 copy of the fast config for external contracts.
+
+    Never presents pixel width/height as if they were meters; floor is 1x1,
+    zones are re-normalized and 3D is absent.
+    """
+    zones = []
+    for zone in process_config.get("zones", []):
+        polygon = zone.get("polygon") or []
+        zones.append({
+            **zone,
+            "polygon": [[round(x / width, 6), round(y / height, 6)] for x, y in polygon],
+        })
+    return {
+        "version": process_config.get("version", 1),
+        "units": "normalized",
+        "analysis_mode": "fast",
+        "floor": {"width": 1.0, "depth": 1.0, "units": "normalized"},
+        "camera": {
+            "name": (process_config.get("camera") or {}).get("name", "Cámara"),
+            "source_normalized": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            "target_meters": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            "calibration_status": "fast",
+            "model_3d": None,
+        },
+        "zones": zones,
+        "gondolas": [],
+        "thresholds": process_config.get("thresholds", {}),
+        "auto_zones": True,
+    }
+
+
+def _roi_to_pixel_polygon(roi: list[list[float]], width: int, height: int) -> np.ndarray:
+    """Converts a normalized ROI polygon (0..1) into pixel coordinates."""
+    return np.float32([[x * width, y * height] for x, y in roi])
+
+
+def _exposed_point(point: list[float], mode: str, width: int, height: int) -> list[float]:
+    """Point space for external contracts: normalized 0..1 in fast, meters in advanced."""
+    if mode == "fast":
+        return [round(float(point[0]) / width, 6), round(float(point[1]) / height, 6)]
+    return [float(point[0]), float(point[1])]
+
+
 def update_analysis(analysis_id: str, **values) -> None:
     with SessionLocal() as database:
         analysis = database.get(Analysis, analysis_id)
@@ -180,16 +334,12 @@ def build_findings(gondolas: list[dict], zones: list[dict], interactions: int, p
         findings.append({"type": "evidence", "title": f"Zona dominante: {zone['name']}", "detail": f"Concentra {zone['dwell_seconds']:.1f} segundos de ocupación rastreada."})
     if pickups == 0:
         findings.append({"type": "quality", "title": "Sin pick-ups inferidos", "detail": "Ninguna mano estimada se acercó a las góndolas durante los engagement detectados. Solo presencia y posible revisión, sin extensión de brazo hacia el producto."})
-    elif active:
-        findings.append({"type": "recommendation", "title": f"{pickups} pick-ups probables detectados", "detail": f"Prevalecen en {active['name']}; revisar disposición, señalética y stock de los productos con más aproximaciones de mano."})
     if interactions == 0:
         findings.append({"type": "quality", "title": "Sin interacción inferible", "detail": "Ninguna trayectoria cumplió simultáneamente los umbrales configurados de proximidad, velocidad y tiempo."})
-    elif active:
-        findings.append({"type": "recommendation", "title": "Validar exhibición de mayor engagement", "detail": f"Revisar productos y reposición en {active['name']}; la recomendación se basa en permanencia e interacciones inferidas."})
     return findings
 
 
-def run_analysis(analysis_id: str) -> None:
+def run_analysis(analysis_id: str, roi: list[list[float]] | None = None) -> None:
     capture = None
     try:
         with SessionLocal() as database:
@@ -211,14 +361,25 @@ def run_analysis(analysis_id: str) -> None:
         if fps <= 0 or total_frames <= 0 or width <= 0 or height <= 0:
             raise ValueError("El video no contiene FPS, duración o resolución válidos")
 
-        update_analysis(analysis_id, stage="model", progress=5, message="Cargando YOLO y ByteTrack")
-        # Try pose model first; fall back to detection-only if unavailable
+        # Decide the real analysis mode from the persisted camera configuration.
+        # Fast mode never fabricates a physical calibration: it works on the full
+        # frame with normalized coordinates and an internal auto grid.
+        mode = analysis_mode(configuration)
+        advanced = mode == "advanced"
+        process_config = configuration if advanced else _fast_process_configuration(configuration, width, height)
+        output_config = configuration if advanced else _fast_output_configuration(process_config, width, height)
+        roi_pixels = _roi_to_pixel_polygon(roi, width, height) if roi else None
+
+        update_analysis(analysis_id, stage="model", progress=5, message="Preparando detección y seguimiento (YOLO + ByteTrack)")
+        # Reuse the process-wide detector: weights are loaded once per process instead of
+        # once per analysis. The pose model is preferred; fall back to detection-only.
         try:
-            detector = PersonDetector(detection_only=False)
+            detector = get_person_detector(detection_only=False)
             has_pose = True
         except Exception:
-            detector = PersonDetector(detection_only=True)
+            detector = get_person_detector(detection_only=True)
             has_pose = False
+        detector.reset_tracker()
 
         # Detect black bars only to remember where the "real" content is, so detections that
         # land inside the black bars (where there is no real person) can be ignored. We do NOT
@@ -235,14 +396,16 @@ def run_analysis(analysis_id: str) -> None:
                     progress=7,
                     message=f"Márgenes negros detectados: {bars_info['top']}/{bars_info['bottom']}/{bars_info['left']}/{bars_info['right']}px - se ignorarán las detecciones en los márgenes"
                 )
-                configuration = {
-                    **configuration,
-                    "camera": {**configuration["camera"], "crop_info": bars_info},
+                process_config = {
+                    **process_config,
+                    "camera": {**process_config["camera"], "crop_info": bars_info},
                 }
+                if advanced:
+                    output_config = process_config
             capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-        spatial = SpatialEngine(configuration, width, height)
-        interactions = InteractionEngine(configuration)
+        spatial = SpatialEngine(process_config, width, height)
+        interactions = InteractionEngine(process_config)
         # Stabilizer merges fragmented ByteTrack ids into stable people identities.
         track_stabilizer = TrackStabilizer()
         result_dir = Path(__file__).resolve().parents[2] / "data" / "results" / analysis_id
@@ -250,7 +413,10 @@ def run_analysis(analysis_id: str) -> None:
 
         trajectories: dict[int, list[list[float]]] = defaultdict(list)
         track_frames: dict[int, int] = defaultdict(int)
-        zone_dwell: dict[str, float] = defaultdict(float)
+        zone_stats: dict[str, dict] = {
+            zone["id"]: {"track_ids": set(), "dwell_seconds": 0.0, "interactions": 0}
+            for zone in process_config.get("zones", [])
+        }
         traffic_points: list[dict] = []
         dwell_points: list[dict] = []
         interaction_points: list[dict] = []
@@ -258,7 +424,7 @@ def run_analysis(analysis_id: str) -> None:
         interaction_events: list[dict] = []
         pickup_events: list[dict] = []
         last_interaction: dict[int, bool] = defaultdict(bool)
-        gondola_names = {item["id"]: item.get("name", item["id"]) for item in configuration.get("gondolas", [])}
+        gondola_names = {item["id"]: item.get("name", item["id"]) for item in process_config.get("gondolas", [])}
         frame_samples: list[dict] = []
         evidence: list[str] = []
         evidence_frames: list = []
@@ -278,163 +444,178 @@ def run_analysis(analysis_id: str) -> None:
 
         # Black-bar exclusion zone (pixels where there is no real content). Detections whose
         # bottom-center lands inside these bars are ignored - they are spurious/stretched.
-        crop_info = configuration["camera"].get("crop_info")
+        crop_info = process_config["camera"].get("crop_info")
         bar_left = crop_info["left"] if crop_info and crop_info["has_bars"] else 0
         bar_right = (width - crop_info["right"]) if crop_info and crop_info["has_bars"] else width
         bar_top = crop_info["top"] if crop_info and crop_info["has_bars"] else 0
         bar_bottom = (height - crop_info["bottom"]) if crop_info and crop_info["has_bars"] else height
 
         frame_index = 0
-        while True:
-            ok, frame = capture.read()
-            if not ok:
-                break
+        with inference_lock:
+            while True:
+                ok, frame = capture.read()
+                if not ok:
+                    break
 
-            prediction, detections = detector.track(frame)
-            timestamp = frame_index / fps
-            dt = 1 / fps
-            active_this_frame = set()
-            sample_detections = []
-            # First pass: project floor points for every valid detection, skipping any whose
-            # feet fall inside the black bars (those have no real content).
-            valid_detections = []
-            for detection in detections:
-                feet_x, feet_y = detection["image_point"]
-                if not (bar_left < feet_x < bar_right and bar_top < feet_y < bar_bottom):
-                    continue
-                floor_point = spatial.project(detection["image_point"])
-                if not floor_point:
-                    continue
-                detection["floor_point"] = floor_point
-                valid_detections.append(detection)
-            # Second pass: unify fragmented ByteTrack ids into stable people identities
-            # and rewrite track_id so all downstream state is keyed by the stable person.
-            track_stabilizer.update(valid_detections, timestamp, frame_index, frame)
-            for detection in valid_detections:
-                detection["track_id"] = detection["person_id"]
-            for detection in valid_detections:
-                hand_point, pose_verified = project_hand(spatial, detection)
-                detection["hand_pose_verified"] = pose_verified
-                behavior = interactions.observe(detection, timestamp, dt, height, hand_point=hand_point)
-                total_detections += 1
-                active_this_frame.add(detection["track_id"])
-                track_frames[detection["track_id"]] += 1
-                zone = spatial.zone_at(detection["floor_point"])
-                if zone:
-                    zone_dwell[zone["id"]] += dt
-                if frame_index % payload_every == 0:
-                    timestamped = {**{"x": detection["floor_point"][0], "z": detection["floor_point"][1]}}
-                    trajectories[detection["track_id"]].append(detection["floor_point"])
-                    traffic_points.append({**timestamped, "weight": 1})
-                    dwell_points.append({**timestamped, "weight": max(dt, 0.01) * (1.5 if behavior["speed"] < 0.6 else 0.5)})
-                    slice_index = min(slice_count - 1, int(frame_index / slice_size))
-                    slice_buckets["traffic"][slice_index].append({**timestamped, "weight": 1})
-                    slice_buckets["dwell"][slice_index].append({**timestamped, "weight": max(dt, 0.01) * (1.5 if behavior["speed"] < 0.6 else 0.5)})
-                    sample_detections.append({
-                        "track_id": detection["track_id"], "bbox": detection["bbox"],
-                        "confidence": detection["confidence"], "floor_point": detection["floor_point"],
-                        "state": behavior["state"], "gondola_id": behavior["gondola_id"],
-                        "keypoints_3d": project_keypoints_to_3d_v2(
+                prediction, detections = detector.track(frame)
+                timestamp = frame_index / fps
+                dt = 1 / fps
+                active_this_frame = set()
+                sample_detections = []
+                # First pass: project floor points for every valid detection, skipping any whose
+                # feet fall inside the black bars (those have no real content).
+                valid_detections = []
+                for detection in detections:
+                    feet_x, feet_y = detection["image_point"]
+                    if not (bar_left < feet_x < bar_right and bar_top < feet_y < bar_bottom):
+                        continue
+                    if roi_pixels is not None and cv2.pointPolygonTest(roi_pixels, (feet_x, feet_y), False) < 0:
+                        continue
+                    floor_point = spatial.project(detection["image_point"])
+                    if not floor_point:
+                        continue
+                    detection["floor_point"] = floor_point
+                    valid_detections.append(detection)
+                # Second pass: unify fragmented ByteTrack ids into stable people identities
+                # and rewrite track_id so all downstream state is keyed by the stable person.
+                track_stabilizer.update(valid_detections, timestamp, frame_index, frame)
+                for detection in valid_detections:
+                    detection["track_id"] = detection["person_id"]
+                for detection in valid_detections:
+                    if has_pose and mode == "advanced":
+                        detection["keypoints_3d"] = project_keypoints_to_3d_v2(
                             detection.get("keypoints"), detection["image_point"],
                             detection["bbox"], spatial,
-                        ) if has_pose else None,
-                    })
-                if behavior["interaction"]:
-                    interaction_points.append({"x": detection["floor_point"][0], "z": detection["floor_point"][1], "weight": 1, "t": round(timestamp, 2)})
-                    if not last_interaction[detection["track_id"]]:
-                        interaction_events.append({
+                        )
+                    else:
+                        detection["keypoints_3d"] = None
+                    hand_point, pose_verified = project_hand(spatial, detection)
+                    detection["hand_pose_verified"] = pose_verified
+                    behavior = interactions.observe(detection, timestamp, dt, height, hand_point=hand_point)
+                    total_detections += 1
+                    active_this_frame.add(detection["track_id"])
+                    track_frames[detection["track_id"]] += 1
+                    zone = spatial.zone_at(detection["floor_point"])
+                    if zone:
+                        zone_entry = zone_stats.setdefault(zone["id"], {"track_ids": set(), "dwell_seconds": 0.0, "interactions": 0})
+                        zone_entry["dwell_seconds"] += dt
+                        zone_entry["track_ids"].add(detection["track_id"])
+                    if frame_index % payload_every == 0:
+                        timestamped = {**{"x": detection["floor_point"][0], "z": detection["floor_point"][1]}}
+                        trajectories[detection["track_id"]].append(detection["floor_point"])
+                        traffic_points.append({**timestamped, "weight": 1})
+                        dwell_points.append({**timestamped, "weight": max(dt, 0.01) * (1.5 if behavior["speed"] < 0.6 else 0.5)})
+                        slice_index = min(slice_count - 1, int(frame_index / slice_size))
+                        slice_buckets["traffic"][slice_index].append({**timestamped, "weight": 1})
+                        slice_buckets["dwell"][slice_index].append({**timestamped, "weight": max(dt, 0.01) * (1.5 if behavior["speed"] < 0.6 else 0.5)})
+                        sample_detections.append({
+                            "track_id": detection["track_id"], "bbox": detection["bbox"],
+                            "confidence": detection["confidence"],
+                            "floor_point": _exposed_point(detection["floor_point"], mode, width, height),
+                            "state": behavior["state"], "gondola_id": behavior["gondola_id"],
+                            "keypoints_3d": detection["keypoints_3d"],
+                        })
+                    if behavior["interaction"]:
+                        if zone:
+                            zone_stats.setdefault(zone["id"], {"track_ids": set(), "dwell_seconds": 0.0, "interactions": 0})["interactions"] += 1
+                        interaction_points.append({"x": detection["floor_point"][0], "z": detection["floor_point"][1], "weight": 1, "t": round(timestamp, 2)})
+                        if not last_interaction[detection["track_id"]]:
+                            interaction_events.append({
+                                "t": round(timestamp, 2),
+                                "track_id": detection["track_id"],
+                                "x": detection["floor_point"][0],
+                                "z": detection["floor_point"][1],
+                                "gondola_id": behavior["gondola_id"],
+                                "gondola_name": gondola_names.get(behavior["gondola_id"], behavior["gondola_id"]),
+                            })
+                        last_interaction[detection["track_id"]] = True
+                        slice_buckets["interaction"][min(slice_count - 1, int(frame_index / slice_size))].append({"x": detection["floor_point"][0], "z": detection["floor_point"][1], "weight": 1})
+                    else:
+                        last_interaction[detection["track_id"]] = False
+                    if behavior["pickup"] and hand_point is not None:
+                        pickup_points.append({"x": hand_point[0], "z": hand_point[1], "weight": 1, "t": round(timestamp, 2)})
+                        slice_buckets["pickup"][min(slice_count - 1, int(frame_index / slice_size))].append({"x": hand_point[0], "z": hand_point[1], "weight": 1})
+                        pickup_events.append({
                             "t": round(timestamp, 2),
                             "track_id": detection["track_id"],
-                            "x": detection["floor_point"][0],
-                            "z": detection["floor_point"][1],
+                            "x": hand_point[0],
+                            "z": hand_point[1],
                             "gondola_id": behavior["gondola_id"],
                             "gondola_name": gondola_names.get(behavior["gondola_id"], behavior["gondola_id"]),
+                            "pose_verified": bool(pose_verified),
                         })
-                    last_interaction[detection["track_id"]] = True
-                    slice_buckets["interaction"][min(slice_count - 1, int(frame_index / slice_size))].append({"x": detection["floor_point"][0], "z": detection["floor_point"][1], "weight": 1})
-                else:
-                    last_interaction[detection["track_id"]] = False
-                if behavior["pickup"] and hand_point is not None:
-                    pickup_points.append({"x": hand_point[0], "z": hand_point[1], "weight": 1, "t": round(timestamp, 2)})
-                    slice_buckets["pickup"][min(slice_count - 1, int(frame_index / slice_size))].append({"x": hand_point[0], "z": hand_point[1], "weight": 1})
-                    pickup_events.append({
-                        "t": round(timestamp, 2),
-                        "track_id": detection["track_id"],
-                        "x": hand_point[0],
-                        "z": hand_point[1],
-                        "gondola_id": behavior["gondola_id"],
-                        "gondola_name": gondola_names.get(behavior["gondola_id"], behavior["gondola_id"]),
-                        "pose_verified": bool(pose_verified),
-                    })
 
-            peak_presence = max(peak_presence, len(active_this_frame))
-            if sample_detections:
-                frame_samples.append({"frame": frame_index, "timestamp": round(timestamp, 2), "detections": sample_detections})
-            if frame_index in evidence_targets:
-                name = f"frame_{len(evidence) + 1}.jpg"
-                cv2.imwrite(str(result_dir / name), prediction.plot())
-                evidence.append(name)
-                evidence_frames.append(frame.copy())
-            if frame_index % max(1, round(fps)) == 0:
-                progress = min(88, 8 + int((frame_index + 1) / total_frames * 80))
-                update_analysis(analysis_id, stage="tracking", progress=progress, message=f"YOLO + ByteTrack · frame {frame_index + 1}/{total_frames}")
-            frame_index += 1
+                peak_presence = max(peak_presence, len(active_this_frame))
+                if sample_detections:
+                    frame_samples.append({"frame": frame_index, "timestamp": round(timestamp, 2), "detections": sample_detections})
+                if frame_index in evidence_targets:
+                    name = f"frame_{len(evidence) + 1}.jpg"
+                    cv2.imwrite(str(result_dir / name), prediction.plot())
+                    evidence.append(name)
+                    evidence_frames.append(frame.copy())
+                if frame_index % max(1, round(fps)) == 0:
+                    progress = min(88, 8 + int((frame_index + 1) / total_frames * 80))
+                    update_analysis(analysis_id, stage="tracking", progress=progress, message=f"YOLO + ByteTrack · frame {frame_index + 1}/{total_frames}")
+                frame_index += 1
 
         update_analysis(analysis_id, stage="heatmaps", progress=92, message="Generando mapas espaciales")
-        create_floor_heatmap(traffic_points, configuration["floor"], result_dir / "traffic.png")
-        create_floor_heatmap(dwell_points, configuration["floor"], result_dir / "dwell.png")
-        create_floor_heatmap(interaction_points, configuration["floor"], result_dir / "interaction.png")
-        create_floor_heatmap(pickup_points, configuration["floor"], result_dir / "pickup.png")
+        create_floor_heatmap(traffic_points, process_config["floor"], result_dir / "traffic.png")
+        create_floor_heatmap(dwell_points, process_config["floor"], result_dir / "dwell.png")
+        create_floor_heatmap(interaction_points, process_config["floor"], result_dir / "interaction.png")
+        create_floor_heatmap(pickup_points, process_config["floor"], result_dir / "pickup.png")
 
         homography_inv = spatial.homography_norm_inv.round(6).tolist()
         overlay_names: dict[str, list[str]] = {}
         for index, raw_frame in enumerate(evidence_frames, start=1):
-            for mode, point_source in (
+            for metric, point_source in (
                 ("traffic", traffic_points),
                 ("dwell", dwell_points),
                 ("interaction", interaction_points),
                 ("pickup", pickup_points),
             ):
-                if mode in ("interaction", "pickup") and not point_source:
+                if metric in ("interaction", "pickup") and not point_source:
                     continue
-                blended = overlay_heatmap_on_frame(point_source, configuration["floor"], homography_inv, raw_frame)
-                filename = f"overlay_{mode}_{index}.jpg"
+                blended = overlay_heatmap_on_frame(point_source, process_config["floor"], homography_inv, raw_frame)
+                filename = f"overlay_{metric}_{index}.jpg"
                 cv2.imwrite(str(result_dir / filename), blended)
-                overlay_names.setdefault(mode, []).append(filename)
+                overlay_names.setdefault(metric, []).append(filename)
 
         slices_meta: list[dict] = []
         for index in range(slice_count):
             start = round(index * slice_size / fps, 1)
             end = round(min((index + 1) * slice_size, total_frames) / fps, 1)
             entry = {"index": index, "start": start, "end": end}
-            for mode in ("traffic", "dwell", "interaction", "pickup"):
-                filename = f"time_{index}_{mode}.png"
-                create_floor_heatmap(slice_buckets[mode][index], configuration["floor"], result_dir / filename)
-                entry[mode] = filename if slice_buckets[mode][index] else None
+            for metric in ("traffic", "dwell", "interaction", "pickup"):
+                filename = f"time_{index}_{metric}.png"
+                create_floor_heatmap(slice_buckets[metric][index], process_config["floor"], result_dir / filename)
+                entry[metric] = filename if slice_buckets[metric][index] else None
             slices_meta.append(entry)
 
         gondolas = interactions.results()
 
         # Add height and tier_heights to gondola results from configuration
-        gondola_config = {item["id"]: item for item in configuration.get("gondolas", [])}
+        gondola_config = {item["id"]: item for item in process_config.get("gondolas", [])}
         for gondola in gondolas:
             config = gondola_config.get(gondola["id"], {})
             gondola["height"] = config.get("height", 1.45)
             gondola["tier_heights"] = config.get("tier_heights", [0.25, 0.73, 1.20])
-        zones = [
-            {**zone, "dwell_seconds": round(zone_dwell[zone["id"]], 2)}
-            for zone in configuration.get("zones", [])
-        ]
-        minimum_track_frames = max(2, round(fps * configuration.get("thresholds", {}).get("minimum_track_seconds", 2.0)))
+
+        duration_seconds = total_frames / fps
+        zones = compute_zone_metrics(
+            zone_stats,
+            output_config.get("zones", []),
+            duration_seconds=duration_seconds,
+            mode=mode,
+        )
+        minimum_track_frames = max(2, round(fps * process_config.get("thresholds", {}).get("minimum_track_seconds", 2.0)))
         valid_track_ids = {track_id for track_id, count in track_frames.items() if count >= minimum_track_frames}
         trajectory_payload = [
-            {"track_id": track_id, "points": points}
+            {"track_id": track_id, "points": [_exposed_point(point, mode, width, height) for point in points]}
             for track_id, points in trajectories.items()
             if track_id in valid_track_ids and len(points) > 1
         ]
         interaction_count = sum(item["interactions"] for item in gondolas)
 
-        duration_seconds = total_frames / fps
         histogram = None
         if interaction_events:
             bucket_s = max(10, round(duration_seconds / 12))
@@ -479,10 +660,28 @@ def run_analysis(analysis_id: str) -> None:
             if speeds:
                 track_speeds.append(sum(speeds) / len(speeds))
         average_speed = round(sum(track_speeds) / len(track_speeds), 2) if track_speeds else 0.0
+        if mode == "fast":
+            # Pixels per second, normalized by the frame's largest edge. Real data, but
+            # explicitly NOT meters per second (no calibration exists to justify that).
+            average_speed_normalized = round(average_speed / max(width, height), 6) if average_speed else 0.0
+        else:
+            average_speed_normalized = None
         duration_minutes = max(0.01, (total_frames / fps) / 60.0)
 
+        recommendations = build_recommendations(
+            zones,
+            gondolas,
+            mode,
+            interaction_events_log=interaction_events_log,
+            pickup_events_log=pickup_events_log,
+        )
+        findings = build_findings(gondolas, zones, interaction_count, pickup_count) + list(recommendations)
+
         result = {
-            "site": {"id": site.id, "name": site.name, "city": site.city, "configuration": with_homographies(configuration)},
+            "analysis_mode": mode,
+            "coordinate_system": "normalized" if mode == "fast" else "meters",
+            "roi": roi,
+            "site": {"id": site.id, "name": site.name, "city": site.city, "configuration": with_homographies(output_config)},
             "video": {"fps": round(fps, 2), "duration_seconds": round(total_frames / fps, 2), "width": width, "height": height, "total_frames": total_frames, "processed_frames": frame_index},
             "model": {"detector": "YOLO11n COCO person", "pose": "yolov8n-pose" if has_pose else None, "tracker": "ByteTrack", "privacy": "temporary_ids_only", "custom_behavior_model": False, "has_pose": has_pose},
             "metrics": {
@@ -494,7 +693,8 @@ def run_analysis(analysis_id: str) -> None:
                 "trajectories": len(trajectory_payload),
                 "interaction_events": interaction_count,
                 "pickup_events": pickup_count,
-                "average_speed_m_s": average_speed,
+                "average_speed_m_s": average_speed if mode == "advanced" else 0.0,
+                "average_speed_normalized": average_speed_normalized if mode == "fast" else None,
                 "flow_per_minute": round(len(valid_track_ids) / duration_minutes, 1),
                 "peak_presence": peak_presence,
                 "time_slices": slice_count,
@@ -514,8 +714,9 @@ def run_analysis(analysis_id: str) -> None:
                 "slices": slices_meta,
             },
             "annotated_frames": evidence,
-            "findings": build_findings(gondolas, zones, interaction_count, pickup_count),
-            "quality": {"calibration": configuration["camera"].get("calibration_status", "unknown"), "vertical_analysis": "pose_refined_when_available", "interaction": "inferred_from_proximity_speed_and_time" if interaction_points else "insufficient_evidence", "pickup": "hand_reach_with_pose_keypoints_when_available"},
+            "recommendations": recommendations,
+            "findings": findings,
+            "quality": {"calibration": process_config["camera"].get("calibration_status", "unknown"), "analysis_mode": mode, "coordinate_system": "normalized" if mode == "fast" else "meters", "vertical_analysis": "pose_refined_when_available", "interaction": "inferred_from_proximity_speed_and_time" if interaction_points else "insufficient_evidence", "pickup": "hand_reach_with_pose_keypoints_when_available"},
         }
         update_analysis(analysis_id, status="completed", stage="results", progress=100, message="Análisis espacial completado", result=result, duration_seconds=result["video"]["duration_seconds"])
     except Exception as exc:

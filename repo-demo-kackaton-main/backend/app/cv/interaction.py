@@ -83,7 +83,7 @@ class InteractionEngine:
             speed = math.dist(point, previous[0]) / (timestamp - previous[1])
         self.track_motion[track_id] = (point, timestamp)
 
-        # Extract3D keypoint data for shelf-level detection if available
+        # Extract 3D keypoint data for shelf-level detection if available
         keypoints_3d = detection.get("keypoints_3d")
         wrist_height_3d = None
         if keypoints_3d:
@@ -139,11 +139,11 @@ class InteractionEngine:
         relative_x = (local_u + nearest["width"] / 2) / nearest["width"]
         column = min(2, max(0, int(relative_x * 3)))
 
-        # Determine shelf level (row) - use3D height if available, fallback to body proxy
+        # Determine shelf level (row) - use 3D height if available, fallback to body proxy
         row = 0  # default to bottom shelf
         row_pose_verified = False
         if wrist_height_3d is not None:
-            # Use3D wrist height to determine shelf level based on tier_heights
+            # Use 3D wrist height to determine shelf level based on tier_heights
             tier_heights = nearest.get("tier_heights", [0.25, 0.73, 1.20])
             shelf_height = nearest.get("height", 1.45)
 

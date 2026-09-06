@@ -23,8 +23,21 @@ def initialize_database() -> None:
                     configuration=empty_site_configuration(12.0, 8.0, "Cámara acceso principal"),
                 )
             )
-        if not database.scalar(select(User).where(User.email == "admin@scapder.ai")):
+        admin = database.scalar(select(User).where(User.email == "admin@scapder.ai"))
+        if not admin:
             database.add(User(email="admin@scapder.ai", name="Admin Scapder", password_hash=hash_password("Scapder2026!"), role="admin"))
-        if not database.scalar(select(User).where(User.email == "analista@retail.co")):
-            database.add(User(email="analista@retail.co", name="Ana Retail", password_hash=hash_password("Retail2026!"), role="retailer", retailer_id=retailer.id))
+        else:
+            admin.role = "admin"
+            admin.retailer_id = None
+        analyst = database.scalar(select(User).where(User.email == "analista@retail.co"))
+        if not analyst:
+            database.add(
+                User(
+                    email="analista@retail.co",
+                    name="Analista Retail",
+                    password_hash=hash_password("Retail2026!"),
+                    role="analista",
+                    retailer_id=retailer.id,
+                )
+            )
         database.commit()

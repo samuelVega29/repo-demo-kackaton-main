@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import os
+import threading
 from pathlib import Path
 
 from ultralytics import YOLO
@@ -43,6 +46,22 @@ def _find_model(detection_only: bool) -> Path:
     return bundled if bundled.exists() else Path("yolo11n.pt" if detection_only else "yolo11n-pose.pt")
 
 
+# Shared ultralytics ByteTrack state lives on the model's predictor, so all track()
+# calls must be serialized per analysis and the tracker reset between analyses.
+inference_lock = threading.RLock()
+_detector_cache: dict[bool, "PersonDetector"] = {}
+
+
+def get_person_detector(detection_only: bool = True) -> PersonDetector:
+    """Return the process-wide cached detector for the variant, loading once."""
+    with inference_lock:
+        detector = _detector_cache.get(detection_only)
+        if detector is None:
+            detector = PersonDetector(detection_only=detection_only)
+            _detector_cache[detection_only] = detector
+        return detector
+
+
 class PersonDetector:
     """Runs pretrained person detection and Ultralytics ByteTrack.
 
@@ -57,6 +76,15 @@ class PersonDetector:
         self.model_path = model_path
         print(f"[DETECTOR] Loading {'detection' if detection_only else 'pose'} model: {model_path}")
         self.model = YOLO(str(model_path))
+
+    def reset_tracker(self) -> None:
+        """Clears Ultralytics ByteTrack state so the next analysis starts with fresh track ids."""
+        predictor = getattr(self.model, "predictor", None)
+        trackers = getattr(predictor, "trackers", None)
+        if trackers:
+            for tracker in trackers:
+                tracker.reset()
+                type(tracker).reset_id()
 
     def track(self, frame):
         result = self.model.track(

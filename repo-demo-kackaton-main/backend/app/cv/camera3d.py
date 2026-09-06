@@ -122,28 +122,32 @@ def build_inverse_projection(P: np.ndarray) -> np.ndarray | None:
         return None
 
 
-def unproject_to_ray(P_inv: np.ndarray, u: float, v: float) -> tuple[np.ndarray, np.ndarray]:
+def unproject_to_ray(P: np.ndarray, u: float, v: float) -> tuple[np.ndarray, np.ndarray]:
     """Unproject a normalized image point to a 3D ray.
 
     Args:
-        P_inv: 4x3 pseudoinverse of projection matrix
+        P: 3x4 projection matrix
         u, v: normalized image coordinates
 
     Returns:
-        (origin, direction) where origin is camera center and direction is unit vector
+        (origin, direction) where origin is the real camera center and direction is a
+        unit vector pointing from the camera toward the projected world point.
     """
     pt = np.array([u, v, 1.0])
-    world_pt = P_inv @ pt
-    # world_pt is [X, Y, Z, 1] in homogeneous coords
-    origin = world_pt[:3] / world_pt[3] if abs(world_pt[3]) > 1e-10 else world_pt[:3]
+    world_pt = np.linalg.pinv(P) @ pt
+    point_on_ray = world_pt[:3] / world_pt[3] if abs(world_pt[3]) > 1e-10 else world_pt[:3]
 
-    # Camera center is the null space of P (last column of P inverse)
-    # Approximate: direction is from camera center toward the projected point
-    # For a proper implementation, we'd extract camera center from P分解
-    # Simplified: direction = normalize(world_pt[:3] - camera_center)
-    # But since we don't have camera center readily, use the point itself as direction
-    direction = world_pt[:3] / np.linalg.norm(world_pt[:3]) if np.linalg.norm(world_pt[:3]) > 1e-10 else np.array([0, -1, 0])
+    origin = get_camera_center(P)
+    if origin is None:
+        # Degenerate projection: fall back to a downward ray from the projected point.
+        return point_on_ray, np.array([0.0, -1.0, 0.0])
 
+    direction = point_on_ray - origin
+    norm = float(np.linalg.norm(direction))
+    if norm < 1e-10:
+        direction = np.array([0.0, -1.0, 0.0])
+    else:
+        direction = direction / norm
     return origin, direction
 
 
@@ -169,18 +173,18 @@ def ray_plane_intersection(origin: np.ndarray, direction: np.ndarray, plane_y: f
     return intersection
 
 
-def unproject_image_to_floor(P_inv: np.ndarray, u: float, v: float, floor_y: float = 0.0) -> tuple[float, float] | None:
+def unproject_image_to_floor(P: np.ndarray, u: float, v: float, floor_y: float = 0.0) -> tuple[float, float] | None:
     """Unproject a normalized image point to floor coordinates (x, z) at given height.
 
     Args:
-        P_inv: 4x3 pseudoinverse of projection matrix
+        P: 3x4 projection matrix
         u, v: normalized image coordinates
         floor_y: height of the plane to intersect with (default 0 = floor)
 
     Returns:
         (x, z) in floor meters, or None if intersection fails
     """
-    origin, direction = unproject_to_ray(P_inv, u, v)
+    origin, direction = unproject_to_ray(P, u, v)
     point_3d = ray_plane_intersection(origin, direction, floor_y)
     if point_3d is None:
         return None
@@ -211,11 +215,11 @@ def get_camera_center(P: np.ndarray) -> np.ndarray | None:
 
 
 def model_3d_from_config(camera: dict, floor_width: float, floor_depth: float) -> dict | None:
-    """Extract3D model from camera config, building projection matrix if enabled.
+    """Extract 3D model from camera config, building projection matrix if enabled.
 
     Returns:
         dict with keys: enabled, projection, inverse_projection, camera_center, params
-        or None if3D model is not enabled
+        or None if 3D model is not enabled
     """
     model = camera.get("model_3d")
     if not model or not model.get("enabled"):

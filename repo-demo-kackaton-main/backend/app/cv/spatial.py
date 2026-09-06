@@ -33,7 +33,7 @@ def with_homographies(configuration: dict) -> dict:
             "homography_inv": inverse.round(6).tolist(),
         }
 
-    # Include3D model data if enabled
+    # Include 3D model data if enabled
     model_3d = camera.get("model_3d")
     if model_3d and model_3d.get("enabled"):
         floor = configuration.get("floor", {})
@@ -52,7 +52,7 @@ def with_homographies(configuration: dict) -> dict:
 
 
 class SpatialEngine:
-    """Projects camera pixels into the configured site floor using a homography or3D model."""
+    """Projects camera pixels into the configured site floor using a homography or 3D model."""
 
     def __init__(self, configuration: dict, frame_width: int, frame_height: int) -> None:
         self.configuration = configuration
@@ -67,7 +67,7 @@ class SpatialEngine:
         target = np.float32(camera["target_meters"])
         self.homography = cv2.getPerspectiveTransform(source, target)
 
-        # Initialize3D model if enabled
+        # Initialize 3D model if enabled
         self.model_3d = model_3d_from_config(
             camera,
             self.floor.get("width", 10.0),
@@ -151,11 +151,11 @@ class SpatialEngine:
 
     @property
     def has_3d_model(self) -> bool:
-        """Check if3D camera model is available."""
+        """Check if 3D camera model is available."""
         return self.model_3d is not None and self.model_3d.get("enabled", False)
 
     def project_3d(self, x: float, y: float, z: float) -> tuple[float, float] | None:
-        """Project a3D world point to normalized image coordinates using the3D model.
+        """Project a 3D world point to normalized image coordinates using the 3D model.
 
         Args:
             x: floor coordinate (meters, right)
@@ -179,7 +179,7 @@ class SpatialEngine:
         return (round(u, 6), round(v, 6))
 
     def project_3d_to_pixel(self, x: float, y: float, z: float) -> list[float] | None:
-        """Project a3D world point to pixel coordinates (considering frame size)."""
+        """Project a 3D world point to pixel coordinates (considering frame size)."""
         result = self.project_3d(x, y, z)
         if result is None:
             return None
@@ -187,7 +187,7 @@ class SpatialEngine:
         return [round(u * self.frame_width, 2), round(v * self.frame_height, 2)]
 
     def unproject_to_floor_3d(self, u: float, v: float, height: float = 0.0) -> tuple[float, float] | None:
-        """Unproject normalized image coordinates to floor (x, z) at given height using3D model.
+        """Unproject normalized image coordinates to floor (x, z) at given height using the 3D model.
 
         Args:
             u, v: normalized image coordinates
@@ -200,7 +200,7 @@ class SpatialEngine:
             return None
 
         result = unproject_image_to_floor(
-            self.model_3d["inverse_projection"],
+            self.model_3d["projection"],
             u, v, height,
         )
         if result is None:
@@ -212,17 +212,17 @@ class SpatialEngine:
         return (round(x, 3), round(z, 3))
 
     def unproject_pixel_to_floor_3d(self, px: float, py: float, height: float = 0.0) -> tuple[float, float] | None:
-        """Unproject pixel coordinates to floor (x, z) at given height using3D model."""
+        """Unproject pixel coordinates to floor (x, z) at given height using the 3D model."""
         u = px / self.frame_width
         v = py / self.frame_height
         return self.unproject_to_floor_3d(u, v, height)
 
     def project_floor_3d(self, x: float, z: float, y: float = 0.0) -> tuple[float, float] | None:
-        """Project a floor point at given height to normalized image coordinates using3D model."""
+        """Project a floor point at given height to normalized image coordinates using the 3D model."""
         return self.project_3d(x, y, z)
 
     def project_floor_3d_to_pixel(self, x: float, z: float, y: float = 0.0) -> list[float] | None:
-        """Project a floor point at given height to pixel coordinates using3D model."""
+        """Project a floor point at given height to pixel coordinates using the 3D model."""
         return self.project_3d_to_pixel(x, y, z)
 
     def get_camera_position(self) -> tuple[float, float, float] | None:
