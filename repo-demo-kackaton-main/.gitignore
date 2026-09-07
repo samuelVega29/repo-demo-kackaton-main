@@ -6,3 +6,9 @@ training/annotations/*
 !training/annotations/.gitkeep
 models/exported/*.pt
 models/exported/*.onnx
+*.log
+*.log.err
+backend_out.log
+backend_err.log
+frontend_out.log
+frontend_err.log

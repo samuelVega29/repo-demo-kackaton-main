@@ -209,6 +209,11 @@ def _fast_process_configuration(configuration: dict, width: int, height: int) ->
 
     This exists ONLY so the existing heatmap/zone/dwell pipeline can run unchanged.
     Nothing here is exposed as meters or 3D; external contracts stay normalized 0..1.
+
+    Gondolas are carried over from the site (drawn planogram) and rescaled from the
+    physical floor (meters) into the internal pixel space proportionally, so interaction
+    and pick-up inference keep working for uncalibrated sites instead of silently
+    producing zeroes because ``gondolas`` was emptied.
     """
     camera_name = (configuration.get("camera") or {}).get("name", "Cámara")
     thresholds = dict(configuration.get("thresholds") or {
@@ -216,6 +221,23 @@ def _fast_process_configuration(configuration: dict, width: int, height: int) ->
         "interaction_seconds": 4.0, "minimum_track_seconds": 2.0,
         "pickup_reach_m": 0.5, "pickup_min_seconds": 0.6, "pickup_cooldown_s": None,
     })
+    floor_m = configuration.get("floor") or {}
+    floor_w = float(floor_m.get("width", 1.0) or 1.0)
+    floor_d = float(floor_m.get("depth", 1.0) or 1.0)
+    sx, sz = width / floor_w, height / floor_d
+    gondolas = []
+    for item in configuration.get("gondolas", []):
+        x, z, gwidth, gdepth = item["x"], item["z"], item.get("width", 1.0), item.get("depth", 1.0)
+        if x is None or z is None:
+            continue
+        gondolas.append({
+            **item,
+            "x": x * sx,
+            "z": z * sz,
+            "width": gwidth * sx,
+            "depth": gdepth * sz,
+            "tier_heights": [tier * sz for tier in (item.get("tier_heights") or [0.25, 0.73, 1.20])],
+        })
     return {
         "version": configuration.get("version", 1),
         "units": "normalized",
@@ -229,7 +251,7 @@ def _fast_process_configuration(configuration: dict, width: int, height: int) ->
             "model_3d": None,
         },
         "zones": _auto_fast_zones(width, height),
-        "gondolas": [],
+        "gondolas": gondolas,
         "thresholds": thresholds,
         "auto_zones": True,
     }
@@ -239,7 +261,7 @@ def _fast_output_configuration(process_config: dict, width: int, height: int) ->
     """Normalized 0..1 copy of the fast config for external contracts.
 
     Never presents pixel width/height as if they were meters; floor is 1x1,
-    zones are re-normalized and 3D is absent.
+    zones are re-normalized, gondolas are re-normalized and 3D is absent.
     """
     zones = []
     for zone in process_config.get("zones", []):
@@ -247,6 +269,16 @@ def _fast_output_configuration(process_config: dict, width: int, height: int) ->
         zones.append({
             **zone,
             "polygon": [[round(x / width, 6), round(y / height, 6)] for x, y in polygon],
+        })
+    gondolas = []
+    for gondola in process_config.get("gondolas", []):
+        gondolas.append({
+            **gondola,
+            "x": round(gondola["x"] / width, 6),
+            "z": round(gondola["z"] / height, 6),
+            "width": round(gondola["width"] / width, 6),
+            "depth": round(gondola["depth"] / height, 6),
+            "tier_heights": [round(tier / height, 6) for tier in gondola.get("tier_heights", [])],
         })
     return {
         "version": process_config.get("version", 1),
@@ -261,7 +293,7 @@ def _fast_output_configuration(process_config: dict, width: int, height: int) ->
             "model_3d": None,
         },
         "zones": zones,
-        "gondolas": [],
+        "gondolas": gondolas,
         "thresholds": process_config.get("thresholds", {}),
         "auto_zones": True,
     }
@@ -334,21 +366,29 @@ def build_findings(gondolas: list[dict], zones: list[dict], interactions: int, p
         findings.append({"type": "evidence", "title": f"Zona dominante: {zone['name']}", "detail": f"Concentra {zone['dwell_seconds']:.1f} segundos de ocupación rastreada."})
     if pickups == 0:
         findings.append({"type": "quality", "title": "Sin pick-ups inferidos", "detail": "Ninguna mano estimada se acercó a las góndolas durante los engagement detectados. Solo presencia y posible revisión, sin extensión de brazo hacia el producto."})
+    elif active:
+        findings.append({"type": "recommendation", "title": f"{pickups} pick-ups probables detectados", "detail": f"Prevalecen en {active['name']}; revisar disposición, señalética y stock de los productos con más aproximaciones de mano."})
     if interactions == 0:
         findings.append({"type": "quality", "title": "Sin interacción inferible", "detail": "Ninguna trayectoria cumplió simultáneamente los umbrales configurados de proximidad, velocidad y tiempo."})
     return findings
 
 
-def run_analysis(analysis_id: str, roi: list[list[float]] | None = None) -> None:
+def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: int | None = None, roi: list[list[float]] | None = None) -> None:
+    """Processes `analysis_id`. Optionally override the site configuration (useful to
+    replay an analysis with the layout that was in place when it was created), the site id
+    reported in the result payload, and/or restrict the processing to a region (roi).
+    """
     capture = None
     try:
         with SessionLocal() as database:
             analysis = database.get(Analysis, analysis_id)
-            site = database.get(Site, analysis.site_id) if analysis else None
-            if not analysis or not site:
+            sort_site = database.get(Site, site_id) if site_id else (database.get(Site, analysis.site_id) if analysis else None)
+            if not analysis or not sort_site:
                 raise ValueError("El análisis o la sede ya no existen")
             video_path = Path(analysis.video_path)
-            configuration = site.configuration
+            site = sort_site
+            site_configuration = configuration if configuration is not None else site.configuration
+            configuration = site_configuration
 
         update_analysis(analysis_id, status="processing", stage="metadata", progress=2, message="Leyendo metadatos del video")
         capture = cv2.VideoCapture(str(video_path))

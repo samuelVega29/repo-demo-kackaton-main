@@ -69,12 +69,21 @@ def overlay_heatmap_on_frame(
         return frame.copy()
     height, width = frame.shape[:2]
     colored, alpha = build_heatmap(points, floor)
+    canvas_height, canvas_width = colored.shape[:2]
     rgba = cv2.cvtColor(colored, cv2.COLOR_BGR2BGRA)
     rgba[:, :, 3] = np.maximum(alpha, np.uint8(150) * (alpha > 0).astype(np.uint8))
+    # build_heatmap scales floor units (meters in advanced mode) into a canvas whose
+    # resolution is independent of those units (see floor_pixel_size) - e.g. a 12x8m
+    # floor becomes a 1152x768px canvas. homography_inv expects floor units (meters),
+    # so canvas pixels must be converted back to floor units first, or the heatmap
+    # warps dozens of times outside the frame and the overlay looks unchanged.
+    to_floor_units = np.float32(
+        [[floor["width"] / canvas_width, 0.0, 0.0], [0.0, floor["depth"] / canvas_height, 0.0], [0.0, 0.0, 1.0]]
+    )
     scale = np.float32(
         [[float(width), 0.0, 0.0], [0.0, float(height), 0.0], [0.0, 0.0, 1.0]]
     )
-    homography = scale @ np.float32(homography_inv)
+    homography = scale @ np.float32(homography_inv) @ to_floor_units
     warped = cv2.warpPerspective(rgba, homography, (width, height), flags=cv2.INTER_LINEAR)
     alpha_f = (warped[:, :, 3].astype(np.float32) / 255.0) * strength
     bgr = warped[:, :, :3].astype(np.float32)

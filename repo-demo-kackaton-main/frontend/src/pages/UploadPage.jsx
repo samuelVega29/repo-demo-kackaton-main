@@ -32,7 +32,7 @@ export default function UploadPage() {
   const [metadata, setMetadata] = useState(null)
   const configured = isSiteConfigured(site)
   const nextPath = `/sedes/${siteId}/analisis/nuevo/siguiente`
-  const nextLabel = configured ? 'Continuar a zona' : 'Continuar a calibracion'
+  const nextLabel = 'Continuar a zona'
 
   useEffect(() => {
     if (!preview) {

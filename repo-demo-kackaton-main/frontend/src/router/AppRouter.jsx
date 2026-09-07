@@ -44,7 +44,7 @@ function SiteRouteGate({ resolve }) {
 }
 
 const analysisEntryRoute = (site, siteId) => isSiteConfigured(site) ? `/sedes/${siteId}/analisis/nuevo` : `/sites/${siteId}/video`
-const uploadNextRoute = (site, siteId) => isSiteConfigured(site) ? `/sedes/${siteId}/analisis/nuevo/area` : `/sites/${siteId}/captura`
+const uploadNextRoute = (site, siteId) => `/sedes/${siteId}/analisis/nuevo/area`
 
 export default function AppRouter() {
   return (

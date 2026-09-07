@@ -171,7 +171,7 @@ def create_analysis(
     )
     database.add(analysis)
     database.commit()
-    threading.Thread(target=run_analysis, args=(analysis_id, roi_polygon), daemon=True).start()
+    threading.Thread(target=run_analysis, args=(analysis_id,), kwargs={"roi": roi_polygon}, daemon=True).start()
     return {"id": analysis_id}
 
 
