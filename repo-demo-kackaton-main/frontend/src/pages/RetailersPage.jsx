@@ -169,7 +169,7 @@ export default function RetailersPage() {
                   <div className="mt-4 grid gap-2 text-[12px] font-semibold text-white/82">
                     <span className="inline-flex items-center gap-2"><MapPin size={15} className="text-white/70" /> {item.code || 'Ubicacion registrada'}</span>
                     <span className="inline-flex items-center gap-2"><Building2 size={15} className="text-white/70" /> {item.site_count ?? 0} sedes</span>
-                    <span className="inline-flex items-center gap-2"><BarChart3 size={15} className="text-white/70" /> Desempeno {formatPerformance(getPerformance(item))}</span>
+                    
                   </div>
                   <span className="absolute bottom-5 right-5 grid h-12 w-12 place-items-center rounded-full bg-white text-[#071d25] shadow-[0_18px_36px_-22px_rgba(0,0,0,.95)] transition group-hover:translate-x-1 group-hover:bg-[#ff7a1a] group-hover:text-white">
                     <ArrowRight size={19} />
