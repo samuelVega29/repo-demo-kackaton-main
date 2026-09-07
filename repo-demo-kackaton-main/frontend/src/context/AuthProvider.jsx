@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState } from 'react'
-import { api, getToken, setToken } from '../api/client'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { api, getToken, setToken } from '../services/client'
 
 const AuthContext = createContext(null)
 
@@ -12,13 +12,17 @@ export function AuthProvider({ children }) {
     api('/api/auth/me').then(setUser).catch(() => setToken(null)).finally(() => setChecking(false))
   }, [])
 
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     const response = await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
     setToken(response.access_token)
     setUser(response.user)
-  }
+  }, [])
 
-  const logout = () => { api('/api/auth/logout', { method: 'POST' }).catch(() => {}); setToken(null); setUser(null) }
+  const logout = useCallback(() => {
+    api('/api/auth/logout', { method: 'POST' }).catch(() => {})
+    setToken(null)
+    setUser(null)
+  }, [])
   return <AuthContext.Provider value={{ user, checking, login, logout }}>{children}</AuthContext.Provider>
 }
 

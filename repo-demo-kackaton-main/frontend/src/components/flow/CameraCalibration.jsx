@@ -1,45 +1,30 @@
 import { useEffect, useRef, useState } from 'react'
-import { solveHomography, projectFloor } from '../../lib/homography'
-import LiveAlignment, { MiniMap } from './LiveAlignment'
+import { gondolaCorners, solveHomography, projectFloor } from '../../utils/homography'
 
-const CORNERS = (floor) => [[0, 0], [floor.width ?? 1, 0], [floor.width ?? 1, floor.depth ?? 1], [0, floor.depth ?? 1]]
-
-function snapToSide([x, z], width, depth) {
-  const candidates = [
-    { dim: 'x', value: 0, norm: x / width },
-    { dim: 'x', value: width, norm: (width - x) / width },
-    { dim: 'z', value: 0, norm: z / depth },
-    { dim: 'z', value: depth, norm: (depth - z) / depth },
-  ]
-  const best = candidates.reduce((a, b) => (b.norm < a.norm ? b : a))
-  if (best.dim === 'z') return [Math.min(width, Math.max(0, x)), best.value]
-  return [best.value, Math.min(depth, Math.max(0, z))]
-}
-
-export default function CameraCalibration({ preview, frameCapture, configuration, onChange, onSave, onCapture, onClose }) {
+export default function CameraCalibration({ preview, configuration, onChange, onSave, onCapture, onClose, externalCapture }) {
   const floor = configuration.floor || {}
   const camera = configuration.camera || {}
-  const cornerTargets = CORNERS(floor)
+  const targets = camera.target_meters || [[0, 0], [floor.width ?? 1, 0], [floor.width ?? 1, floor.depth ?? 1], [0, floor.depth ?? 1]]
   const [points, setPoints] = useState((camera.source_normalized || [[0, 0], [1, 0], [1, 1], [0, 1]]).map((point) => [...point]))
-  const hasExtra = points.length >= 5
-  const forward4 = points.length >= 4
-    ? solveHomography(points.slice(0, 4).map(([nx, ny], index) => [nx, ny, cornerTargets[index][0], cornerTargets[index][1]]))
-    : null
-  const rawExtraFloor = (hasExtra && forward4) ? projectFloor(forward4, points[4][0], points[4][1]) : null
-  const extraFloor = rawExtraFloor ? snapToSide(rawExtraFloor, floor.width, floor.depth) : null
-  const targets = hasExtra && extraFloor ? [...cornerTargets, [extraFloor[0], extraFloor[1]]] : cornerTargets
-  const [captured, setCaptured] = useState(null)
+  // Snapshot of the calibration as it was when this panel opened — compared against at save
+  // time so we can warn if it changed while gondolas already exist (their x/z meters were
+  // computed under the OLD calibration, so a new one silently misaligns them from the video).
+  const openedWithRef = useRef(camera.source_normalized ? camera.source_normalized.map((point) => [...point]) : null)
+  const [internalCaptured, setInternalCaptured] = useState(null)
+  // When a frame is captured in a dedicated window (externalCapture), reuse it instead of
+  // taking a new one here — keeps the "tomar frame" step explicit and shared across panels.
+  const captured = externalCapture || internalCaptured
   const [saving, setSaving] = useState(false)
   const [saveState, setSaveState] = useState({ kind: 'idle', text: '' })
-  const [selectedId, setSelectedId] = useState(null)
+  // Crop info state
+  const [cropInfo, setCropInfo] = useState(camera.crop_info || null)
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const drag = useRef(-1)
 
-  const pairsForHomography = (hasExtra && extraFloor)
-    ? targets.map(([tx, tz], index) => [tx, tz, points[index][0], points[index][1]])
-    : cornerTargets.map(([tx, tz], index) => [tx, tz, points[index][0], points[index][1]])
-  const homography = points.length >= 4 ? solveHomography(pairsForHomography) : null
+  const homography = (targets.length === 4 && points.length === 4)
+    ? solveHomography(targets.map(([tx, tz], index) => [tx, tz, points[index][0], points[index][1]]))
+    : null
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -79,17 +64,16 @@ export default function CameraCalibration({ preview, frameCapture, configuration
       }
 
       ;(configuration.gondolas || []).forEach((gondola) => {
-        const color = gondola.color || '#61dec0'
-        const corners = [[gondola.x, gondola.z], [gondola.x + gondola.width, gondola.z], [gondola.x + gondola.width, gondola.z + gondola.depth], [gondola.x, gondola.z + gondola.depth]]
+        const corners = gondolaCorners(gondola)
         const pixels = corners.map(([x, z]) => toPx(x, z)).filter(Boolean)
         if (pixels.length < 4) return
         ctx.beginPath()
         ctx.moveTo(...pixels[0])
         pixels.slice(1).forEach((point) => ctx.lineTo(...point))
         ctx.closePath()
-        ctx.fillStyle = hexToRgba(color, .18)
+        ctx.fillStyle = 'rgba(97, 222, 192, .18)'
         ctx.fill()
-        ctx.strokeStyle = color
+        ctx.strokeStyle = '#61dec0'
         ctx.lineWidth = 3
         ctx.stroke()
         if (gondola.name) {
@@ -117,22 +101,16 @@ export default function CameraCalibration({ preview, frameCapture, configuration
         }
       }
 
-      const projected = targets.map(([tx, tz]) => {
-        const normalized = projectFloor(homography, tx, tz)
-        return normalized ? [normalized[0] * canvas.width, normalized[1] * canvas.height] : null
-      })
-      projected.forEach((point, index) => {
-        if (!point) return
-        const [px, py] = point
-        const isExtra = index >= 4
+      const projected = points.map(([nx, ny]) => [nx * canvas.width, ny * canvas.height])
+      projected.forEach(([px, py], index) => {
         ctx.beginPath()
-        ctx.arc(px, py, isExtra ? 13 : 16, 0, 2 * Math.PI)
+        ctx.arc(px, py, 16, 0, 2 * Math.PI)
         ctx.fillStyle = '#0c1714'
         ctx.fill()
-        ctx.strokeStyle = isExtra ? '#ff9ecb' : '#d4ff70'
+        ctx.strokeStyle = '#d4ff70'
         ctx.lineWidth = 3
         ctx.stroke()
-        ctx.fillStyle = isExtra ? '#ff9ecb' : '#d4ff70'
+        ctx.fillStyle = '#d4ff70'
         ctx.font = 'bold 16px ui-monospace, monospace'
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
@@ -140,7 +118,7 @@ export default function CameraCalibration({ preview, frameCapture, configuration
       })
     }
     image.src = captured.dataUrl
-  }, [captured, points, configuration, homography, floor.width, floor.depth])
+  }, [captured, points, configuration, homography])
 
   const capture = () => {
     const video = videoRef.current
@@ -152,9 +130,86 @@ export default function CameraCalibration({ preview, frameCapture, configuration
     canvas.height = height
     const ctx = canvas.getContext('2d')
     ctx.drawImage(video, 0, 0, width, height)
+
+    // Detect black bars in the captured frame
+    const sourceCanvas = document.createElement('canvas')
+    sourceCanvas.width = width
+    sourceCanvas.height = height
+    const sctx = sourceCanvas.getContext('2d')
+    sctx.drawImage(video, 0, 0, width, height)
+    const imageData = sctx.getImageData(0, 0, width, height)
+    const bars = detectBarsInImage(imageData, width, height)
+    setCropInfo((prev) => prev || bars)
+
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
-    setCaptured({ dataUrl, width, height })
+    setInternalCaptured({ dataUrl, width, height })
     if (onCapture) onCapture(dataUrl, width, height)
+  }
+
+  // Helper to detect black bars from ImageData pixel data
+  const detectBarsInImage = (imageData, width, height) => {
+    const data = imageData.data
+    const threshold = 20 // intensity threshold
+    const minBarRatio = 0.02
+
+    // Row means (average brightness per row)
+    const rowMeans = new Array(height).fill(0)
+    for (let y = 0; y < height; y++) {
+      let sum = 0
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4
+        sum += (data[idx] + data[idx + 1] + data[idx + 2]) / 3
+      }
+      rowMeans[y] = sum / width
+    }
+
+    // Col means
+    const colMeans = new Array(width).fill(0)
+    for (let x = 0; x < width; x++) {
+      let sum = 0
+      for (let y = 0; y < height; y++) {
+        const idx = (y * width + x) * 4
+        sum += (data[idx] + data[idx + 1] + data[idx + 2]) / 3
+      }
+      colMeans[x] = sum / height
+    }
+
+    // Detect top/bottom bars
+    let top = 0
+    for (let y = 0; y < height; y++) {
+      if (rowMeans[y] > threshold) { top = y; break }
+    }
+    let bottom = height
+    for (let y = height - 1; y >= 0; y--) {
+      if (rowMeans[y] > threshold) { bottom = y + 1; break }
+    }
+
+    // Detect left/right bars
+    let left = 0
+    for (let x = 0; x < width; x++) {
+      if (colMeans[x] > threshold) { left = x; break }
+    }
+    let right = width
+    for (let x = width - 1; x >= 0; x--) {
+      if (colMeans[x] > threshold) { right = x + 1; break }
+    }
+
+    const minBarPxH = height * minBarRatio
+    const minBarPxW = width * minBarRatio
+    const hasTop = top > minBarPxH
+    const hasBottom = (height - bottom) > minBarPxH
+    const hasLeft = left > minBarPxW
+    const hasRight = (width - right) > minBarPxW
+
+    return {
+      top: hasTop ? top : 0,
+      bottom: hasBottom ? height - bottom : 0,
+      left: hasLeft ? left : 0,
+      right: hasRight ? width - right : 0,
+      content_width: right - left,
+      content_height: bottom - top,
+      has_bars: hasTop || hasBottom || hasLeft || hasRight,
+    }
   }
 
   const toNormalized = (event) => {
@@ -187,27 +242,27 @@ export default function CameraCalibration({ preview, frameCapture, configuration
 
   const release = () => { drag.current = -1 }
 
-  const addExtraPoint = () => {
-    if (hasExtra) return
-    const floorPoint = [floor.width ?? 1, (floor.depth ?? 1) / 2]
-    const fallbackNormalized = projectFloor(homography, floorPoint[0], floorPoint[1]) || [0.9, 0.5]
-    setPoints((current) => [...current, [Math.min(1, Math.max(0, fallbackNormalized[0])), Math.min(1, Math.max(0, fallbackNormalized[1]))]])
-  }
-
-  const removeExtraPoint = () => {
-    if (!hasExtra) return
-    setPoints((current) => current.slice(0, 4))
-  }
-
   const save = async () => {
-    const targetMeters = hasExtra && extraFloor ? [...cornerTargets, [extraFloor[0], extraFloor[1]]] : cornerTargets
-    const next = { ...configuration, camera: { ...camera, source_normalized: points, target_meters: targetMeters, calibration_status: 'calibrated' } }
+    const next = {
+      ...configuration,
+      camera: {
+        ...camera,
+        source_normalized: points,
+        calibration_status: 'calibrated',
+        crop_info: cropInfo || undefined,
+      },
+    }
+    const gondolaCount = (configuration.gondolas || []).length
+    const calibrationMoved = openedWithRef.current && JSON.stringify(openedWithRef.current) !== JSON.stringify(points)
     onChange(next)
     setSaving(true)
     setSaveState({ kind: 'idle', text: '' })
     try {
       if (onSave) await onSave(next)
-      setSaveState({ kind: 'ok', text: 'Calibración guardada' })
+      openedWithRef.current = points.map((point) => [...point])
+      setSaveState(calibrationMoved && gondolaCount > 0
+        ? { kind: 'warn', text: `Moviste los 4 puntos con ${gondolaCount} góndola${gondolaCount === 1 ? '' : 's'} ya definida${gondolaCount === 1 ? '' : 's'} — sus posiciones se calcularon con la calibración anterior y pueden haber quedado desalineadas. Revisá "Verificar alineación" en la pantalla de subida.` }
+        : { kind: 'ok', text: 'Calibración guardada' })
     } catch (error) {
       setSaveState({ kind: 'error', text: error.message || 'No se pudo guardar la calibración' })
     } finally {
@@ -217,65 +272,46 @@ export default function CameraCalibration({ preview, frameCapture, configuration
 
   const restore = () => setPoints((camera.source_normalized || [[0, 0], [1, 0], [1, 1], [0, 1]]).map((point) => [...point]))
 
-  const updateGondola = (id, values) => {
-    onChange({
-      ...configuration,
-      gondolas: (configuration.gondolas || []).map((gondola) => (gondola.id === id ? { ...gondola, ...values } : gondola)),
-    })
-  }
-
   return (
-    <section className="my-4 border border-teal-800 bg-[#0c1915] p-5">
-      <div className="mb-5 flex items-start justify-between gap-4 [&_h3]:mt-2 [&_h3]:text-2xl [&_h3]:font-semibold">
-        <div><span className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-teal-300">CALIBRACIÓN DE CÁMARA · {points.length} PUNTOS</span><h3>Alinea el piso del video con el plano en metros</h3></div>
-        <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-[#172720] text-slate-200" onClick={onClose}>×</button>
+    <section className="m-0 border-0 p-0">
+      <div className="flex items-start justify-between gap-[18px]">
+        <div><span className="text-[10px] font-semibold font-[ui-monospace,monospace] tracking-[.17em] text-[#61dec0]">CALIBRACIÓN DE CÁMARA · 4 PUNTOS</span><h3 className="mt-2 text-[22px] tracking-[-.03em]">Alinea el piso del video con el plano en metros</h3></div>
+        <button className="grid h-[30px] w-[30px] place-items-center rounded-full border border-[rgba(206,236,221,.14)] bg-[#172720] text-[15px] text-[#dbe8e2]" onClick={onClose}>×</button>
       </div>
-      <p className="my-4 max-w-3xl text-xs leading-6 text-slate-400">Pausa el video donde se vea el pasillo completo y captura el frame. Luego arrastra P1…·P{Math.max(4, points.length)} a las esquinas del piso real en el video:<b> P1</b> esquina superior-izquierda · <b>P2</b> superior-derecha · <b>P3</b> fondo-derecha · <b>P4</b> fondo-izquierda. Si la cámara necesita un punto extra, añade P5 y arrástralo <b>hacia un lado</b> del piso: se fija automáticamente a ese borde y te deja deslizarlo a lo largo de él para afinar la homografía en tiempo real.</p>
+      <p className="mx-0 my-[14px] mb-[18px] max-w-[720px] text-[10px] leading-[1.65] text-[#71867e]">Pausa el video donde se vea el pasillo completo y captura el frame. Luego arrastra P1…·P4 a las esquinas del piso real en el video:<b> P1</b> esquina superior-izquierda · <b>P2</b> superior-derecha · <b>P3</b> fondo-derecha · <b>P4</b> fondo-izquierda. Cuanto más separados queden los puntos, mejor se ajusta la perspectiva; la rejilla y las góndolas proyectadas confirman el mapeo en vivo.</p>
       {!preview
-        ? <div className="p-12 text-center text-xs text-slate-500">Primero selecciona un video MP4 para capturar un frame y calibrar la cámara.</div>
-        : <>      <div className="grid gap-5 lg:grid-cols-2">
-        <div className="min-w-0 [&_video]:aspect-video [&_video]:w-full [&_video]:bg-black">
-          <video ref={videoRef} src={preview} controls muted playsInline />
-          <button className="mt-3 border border-lime-300 px-4 py-3 text-xs text-lime-300" onClick={capture}>＋ Capturar frame</button>
-        </div>
-        <div className="grid min-w-0 place-items-center border border-dashed border-teal-800 bg-[#08120f]">
+        ? <div className="px-5 py-[60px] text-center text-[10px] text-[#6c8179]">Primero selecciona un video MP4 para capturar un frame y calibrar la cámara.</div>
+        : <><div className="mx-auto grid max-w-[860px] grid-cols-1 gap-[22px]">
+        {!externalCapture && <div className="min-w-0">
+          <video ref={videoRef} src={preview} controls muted playsInline className="aspect-auto h-auto max-h-[52vh] w-auto max-w-full bg-[#050a09]" />
+          <button className="mt-3 border border-[#d4ff70] bg-transparent p-[11px] px-[14px] text-[10px] text-[#d4ff70]" onClick={capture}>＋ Capturar frame</button>
+        </div>}
+        <div className={`grid min-h-[320px] min-w-0 place-items-center border border-dashed border-[#46685c] bg-[#08120f]${externalCapture ? ' hidden' : ''}`}>
           {captured
-            ? <canvas ref={canvasRef} className="block touch-none cursor-crosshair border border-teal-900" style={{ width: '100%', aspectRatio: `${captured.width}/${captured.height}` }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={release} onPointerCancel={release} />
-            : <div className="p-12 text-center text-xs text-slate-500">Captura un frame para comenzar</div>}
+            ? <canvas ref={canvasRef} className="block h-auto max-h-[60vh] w-auto max-w-full cursor-crosshair touch-none border border-[#315148]" style={{ width: '100%', aspectRatio: `${captured.width}/${captured.height}` }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={release} onPointerCancel={release} />
+            : <div className="px-5 py-[60px] text-center text-[10px] text-[#6c8179]">Captura un frame para comenzar</div>}
         </div>
       </div>
-      <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <div className="flex min-w-0 flex-col gap-2">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-lime-300">PLANO 2D · VIDEO REAL</span>
-          <LiveAlignment frameCapture={frameCapture} configuration={configuration} interactive onMoveGondola={updateGondola} selectedId={selectedId} onSelect={setSelectedId} />
+      <div className="mt-4 mb-0 flex flex-wrap gap-x-[18px] gap-y-2 text-[9px] font-medium font-[ui-monospace,monospace] text-[#789087]">{targets.map(([x, z], index) => <span key={index}>P{index + 1} → ({x}, {z}) m</span>)}</div>
+
+      {/* Crop Info Display */}
+      {cropInfo?.has_bars && (
+        <div>
+          <b>Márgenes negros detectados</b>
+          <span>Arriba: {cropInfo.top}px · Abajo: {cropInfo.bottom}px · Izquierda: {cropInfo.left}px · Derecha: {cropInfo.right}px</span>
+          <span>Contenido: {cropInfo.content_width}×{cropInfo.content_height}px</span>
+          <small>Los márgenes negros se recortarán automáticamente durante el análisis para que la calibración quede alineada.</small>
         </div>
-        <div className="flex min-w-0 flex-col gap-2">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-lime-300">MAPA · VISTA SUPERIOR</span>
-          <MiniMap configuration={configuration} interactive onMoveGondola={updateGondola} selectedId={selectedId} onSelect={setSelectedId} />
-        </div>
-      </div>
-      <div className="my-4 flex flex-wrap gap-x-5 gap-y-2 font-mono text-[10px] text-slate-400">{targets.map(([x, z], index) => <span key={index}>P{index + 1} → ({x}, {z}) m</span>)}</div>
-      <div className="my-4 flex flex-wrap items-center gap-3 border border-teal-900 bg-[#091512]/40 p-3 [&_button]:border [&_button]:border-teal-900 [&_button]:px-3 [&_button]:py-2 [&_button]:text-xs [&_button]:text-slate-300 [&_label]:flex [&_label]:items-center [&_label]:gap-2 [&_label]:font-mono [&_label]:text-xs [&_label]:text-teal-300 [&_input]:w-20 [&_input]:border [&_input]:border-white/10 [&_input]:bg-[#101e1a] [&_input]:p-2 [&_input]:text-white">
-        <button onClick={addExtraPoint} disabled={hasExtra}>＋ Añadir punto extra (P{points.length + 1})</button>
-        {hasExtra && <button onClick={removeExtraPoint}>－ Quitar punto extra</button>}
-      </div>
-      {saveState.kind === 'ok' && <div className="mt-3 border border-lime-300/40 bg-lime-300/10 p-3 text-xs text-lime-300">{saveState.text}</div>}
-      {saveState.kind === 'error' && <div className="mt-3 border border-orange-300/40 bg-orange-300/10 p-3 text-xs text-orange-300">{saveState.text}</div>}
-      <div className="flex gap-2 [&_button]:border [&_button]:border-teal-900 [&_button]:px-4 [&_button]:py-3 [&_button]:text-xs [&_button]:text-slate-300">
-        <button onClick={restore}>Restaurar</button>
-        <button className="!border-lime-300 !text-lime-300 disabled:cursor-not-allowed disabled:opacity-40" onClick={save} disabled={saving || !captured}>{saving ? 'Guardando…' : 'Guardar calibración'}</button>
+      )}
+
+      {saveState.kind === 'ok' && <div className="mt-[10px] border border-[rgba(212,255,112,.35)] bg-[rgba(212,255,112,.06)] p-[10px] px-3 text-[10px] text-[#d4ff70]">{saveState.text}</div>}
+      {saveState.kind === 'warn' && <div className="mt-[10px] border border-[rgba(255,196,84,.4)] bg-[rgba(255,196,84,.07)] p-[10px] px-3 text-[10px] text-[#ffc454]">⚠ {saveState.text}</div>}
+      {saveState.kind === 'error' && <div className="mt-[10px] border border-[rgba(255,139,111,.4)] bg-[rgba(255,139,111,.06)] p-[10px] px-3 text-[10px] text-[#ff8b6f]">{saveState.text}</div>}
+      <div className="flex gap-2">
+        <button className="border border-[#3e5b51] bg-transparent p-3 px-[15px] text-[10px] text-[#b4c7bf]" onClick={restore}>Restaurar</button>
+        <button className="border border-[#3e5b51] bg-transparent p-3 px-[15px] text-[10px] text-[#b4c7bf] border-[#d4ff70]! text-[#d4ff70]! disabled:opacity-40 disabled:cursor-not-allowed" onClick={save} disabled={saving || !captured}>{saving ? 'Guardando…' : 'Guardar calibración'}</button>
       </div>
       </>}
     </section>
   )
 }
-
-function hexToRgba(hex, alpha) {
-  const normalized = hex.replace('#', '')
-  const full = normalized.length === 3 ? normalized.split('').map((c) => c + c).join('') : normalized
-  const num = parseInt(full, 16)
-  if (Number.isNaN(num)) return `rgba(97, 222, 192, ${alpha})`
-  return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`
-}
-
-

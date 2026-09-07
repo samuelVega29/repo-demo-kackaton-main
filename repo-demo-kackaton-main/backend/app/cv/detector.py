@@ -1,60 +1,90 @@
+from __future__ import annotations
+
+import os
+import threading
 from pathlib import Path
 
 from ultralytics import YOLO
+
+from ..config import settings
+
+
+# YOLO11-pose COCO keypoint indices (17 keypoints)
+# 0: nose, 1: left_eye, 2: right_eye, 3: left_ear, 4: right_ear,
+# 5: left_shoulder, 6: right_shoulder, 7: left_elbow, 8: right_elbow,
+# 9: left_wrist, 10: right_wrist, 11: left_hip, 12: right_hip,
+# 13: left_knee, 14: right_knee, 15: left_ankle, 16: right_ankle
+
+KEYPOINT_NAMES = [
+    "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+    "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+    "left_wrist", "right_wrist", "left_hip", "right_hip",
+    "left_knee", "right_knee", "left_ankle", "right_ankle",
+]
+
+# Skeleton connections for pose rendering
+SKELETON_CONNECTIONS = [
+    (0, 1), (0, 2), (1, 3), (2, 4),           # head
+    (5, 6),                                     # shoulders
+    (5, 7), (7, 9), (6, 8), (8, 10),          # arms
+    (5, 11), (6, 12),                           # torso
+    (11, 12),                                   # hips
+    (11, 13), (13, 15), (12, 14), (14, 16),   # legs
+]
+
+
+def _find_model(detection_only: bool) -> Path:
+    """Resolve model path: env override, exported, then bundled, then bare name."""
+    project_root = Path(__file__).resolve().parents[3]
+    override = os.environ.get("SCAPDER_DETECTOR_MODEL")
+    if override:
+        return Path(override)
+    exported = settings.EXPORTED_MODELS / ("people-yolo11n.pt" if detection_only else "yolo11n-pose.pt")
+    bundled = project_root / "backend" / ("yolo11n.pt" if detection_only else "yolo11n-pose.pt")
+    if exported.exists():
+        return exported
+    return bundled if bundled.exists() else Path("yolo11n.pt" if detection_only else "yolo11n-pose.pt")
+
+
+# Shared ultralytics ByteTrack state lives on the model's predictor, so all track()
+# calls must be serialized per analysis and the tracker reset between analyses.
+inference_lock = threading.RLock()
+_detector_cache: dict[bool, "PersonDetector"] = {}
+
+
+def get_person_detector(detection_only: bool = True) -> PersonDetector:
+    """Return the process-wide cached detector for the variant, loading once."""
+    with inference_lock:
+        detector = _detector_cache.get(detection_only)
+        if detector is None:
+            detector = PersonDetector(detection_only=detection_only)
+            _detector_cache[detection_only] = detector
+        return detector
 
 
 class PersonDetector:
     """Runs pretrained person detection and Ultralytics ByteTrack.
 
-    A second pose model (yolov8n-pose) is loaded when available so that real wrist
-    keypoints can refine the hand-reach heuristics for shelf pick-ups. It is optional:
-    if the pose checkpoint is missing, detection keeps working with the geometric
-    hand estimate.
+    Supports two modes:
+    - detection_only=True  (default): YOLO11n for bounding boxes only
+    - detection_only=False:          YOLO11n-pose for bounding boxes + 17 keypoints
     """
 
-    def __init__(self) -> None:
-        project_root = Path(__file__).resolve().parents[3]
-        exported = project_root / "models" / "exported" / "people-yolo11n.pt"
-        bundled = project_root / "backend" / "yolo11n.pt"
-        self.model_path = exported if exported.exists() else bundled
-        self.model = YOLO(str(self.model_path if self.model_path.exists() else "yolo11n.pt"))
+    def __init__(self, detection_only: bool = True) -> None:
+        self.detection_only = detection_only
+        model_path = _find_model(detection_only)
+        self.model_path = model_path
+        print(f"[DETECTOR] Loading {'detection' if detection_only else 'pose'} model: {model_path}")
+        self.model = YOLO(str(model_path))
 
-        pose_path = project_root / "backend" / "yolov8n-pose.pt"
-        self.pose_model = None
-        self.pose_available = False
-        if pose_path.exists():
-            try:
-                self.pose_model = YOLO(str(pose_path))
-                self.pose_available = True
-            except Exception:
-                self.pose_model = None
-                self.pose_available = False
-
-    def _frame_wrists(self, frame_pixels):
-        """Runs the pose model once and returns wrist keypoints (left, right) per detected person.
-
-        Returns a list of aligned [(left_wrist), (right_wrist)] arrays in pixels, or None when the
-        pose model is unavailable. Used with the frame-sized tracking image, so the keypoints are
-        already in the same pixel space as the person boxes.
-        """
-        if not self.pose_available or self.pose_model is None:
-            return None
-        try:
-            result = self.pose_model.predict(frame_pixels, classes=[0], conf=0.25, verbose=False)[0]
-        except Exception:
-            return None
-        if result.keypoints is None:
-            return None
-        keypoints = result.keypoints.xy.cpu().numpy()
-        if len(keypoints) == 0:
-            return None
-        wrists = []
-        for kpts in keypoints:
-            n = len(kpts)
-            left = [int(kpts[9][0]), int(kpts[9][1])] if n > 10 else [0, 0]
-            right = [int(kpts[10][0]), int(kpts[10][1])] if n > 10 else [0, 0]
-            wrists.append([left, right])
-        return wrists
+    def reset_tracker(self) -> None:
+        """Clears Ultralytics ByteTrack state so the next analysis starts with fresh track ids."""
+        predictor = getattr(self.model, "predictor", None)
+        trackers = getattr(predictor, "trackers", None)
+        if trackers:
+            for tracker in trackers:
+                tracker.reset()
+                type(tracker).reset_id()
 
     def track(self, frame):
         result = self.model.track(
@@ -72,33 +102,55 @@ class PersonDetector:
         boxes = result.boxes.xyxy.cpu().numpy()
         confidences = result.boxes.conf.cpu().numpy()
         track_ids = result.boxes.id.int().cpu().tolist()
-        all_wrists = self._frame_wrists(frame)
-        for box, confidence, track_id in zip(boxes, confidences, track_ids):
+        for idx, (box, confidence, track_id) in enumerate(zip(boxes, confidences, track_ids)):
             x1, y1, x2, y2 = [float(value) for value in box]
-            hand_points_real = None
-            if all_wrists:
-                kcx = (x1 + x2) / 2
-                kcy = (y1 + y2) / 2
-                for left, right in all_wrists:
-                    if left[0] <= 0 or left[1] <= 0 or right[0] <= 0 or right[1] <= 0:
-                        continue
-                    mid_x = (left[0] + right[0]) / 2
-                    mid_y = (left[1] + right[1]) / 2
-                    if x1 <= mid_x <= x2 and y1 <= mid_y <= y2:
-                        hand_points_real = [left, right]
-                        break
-            detections.append(
-                {
-                    "track_id": track_id,
-                    "bbox": [round(x1), round(y1), round(x2), round(y2)],
-                    "confidence": round(float(confidence), 3),
-                    "image_point": [(x1 + x2) / 2, y2],
-                    "body_center_y": (y1 + y2) / 2,
-                    "hand_points": [
-                        [x1 + 0.25 * (x2 - x1), y1 + 0.45 * (y2 - y1)],
-                        [x2 - 0.25 * (x2 - x1), y1 + 0.45 * (y2 - y1)],
-                    ],
-                    "hand_points_real": hand_points_real,
-                }
-            )
+            detection = {
+                "track_id": track_id,
+                "bbox": [round(x1), round(y1), round(x2), round(y2)],
+                "confidence": round(float(confidence), 3),
+                "image_point": [(x1 + x2) / 2, y2],
+                "body_center_y": (y1 + y2) / 2,
+                "hand_points": [
+                    [x1 + 0.25 * (x2 - x1), y1 + 0.45 * (y2 - y1)],
+                    [x2 - 0.25 * (x2 - x1), y1 + 0.45 * (y2 - y1)],
+                ],
+            }
+            # Extract pose keypoints if available
+            if not self.detection_only and result.keypoints is not None:
+                detection["keypoints"] = self._extract_keypoints(result.keypoints, idx)
+            detection["hand_points_real"] = self._real_wrists(detection.get("keypoints"))
+            detections.append(detection)
         return result, detections
+
+    def _extract_keypoints(self, keypoints_data, idx: int) -> list[list[float] | None]:
+        """Extracts 17 keypoints as [[x, y, conf], ...] or None entries."""
+        if keypoints_data is None or keypoints_data.xy is None:
+            return [None] * 17
+        xy = keypoints_data.xy.cpu().numpy()
+        conf = keypoints_data.conf.cpu().numpy() if keypoints_data.conf is not None else None
+        if idx >= len(xy):
+            return [None] * 17
+        kpts_xy = xy[idx]
+        kpts_conf = conf[idx] if conf is not None else [0.0] * len(kpts_xy)
+        result = []
+        for kp, c in zip(kpts_xy, kpts_conf):
+            if float(c) > 0.1:
+                result.append([round(float(kp[0]), 1), round(float(kp[1]), 1), round(float(c), 3)])
+            else:
+                result.append(None)
+        return result
+
+    @staticmethod
+    def _real_wrists(keypoints) -> list[list[int]] | None:
+        """Returns [left_wrist, right_wrist] pixels when real pose keypoints exist.
+
+        Keypoint indices 9 and 10 are the COCO left/right wrists. They refine the hand-reach
+        heuristic for shelf pick-ups when the pose model is available.
+        """
+        if not keypoints or len(keypoints) <= 10:
+            return None
+        left = keypoints[9]
+        right = keypoints[10]
+        if left is None or right is None:
+            return None
+        return [[int(left[0]), int(left[1])], [int(right[0]), int(right[1])]]

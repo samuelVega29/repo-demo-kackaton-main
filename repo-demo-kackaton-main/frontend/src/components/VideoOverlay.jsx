@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react'
+import { gondolaCorners } from '../utils/homography'
+import { hexToRgba } from '../utils/format'
 
 const project = (configuration, x, z) => {
   const matrix = configuration.camera?.homography_inv
@@ -7,14 +9,6 @@ const project = (configuration, x, z) => {
   const denominator = flat[6] * x + flat[7] * z + flat[8]
   if (!denominator) return null
   return [(flat[0] * x + flat[1] * z + flat[2]) / denominator, (flat[3] * x + flat[4] * z + flat[5]) / denominator]
-}
-
-const hexToRgba = (hex, alpha) => {
-  const normalized = hex.replace('#', '')
-  const full = normalized.length === 3 ? normalized.split('').map((c) => c + c).join('') : normalized
-  const num = parseInt(full, 16)
-  if (Number.isNaN(num)) return `rgba(212, 255, 112, ${alpha})`
-  return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`
 }
 
 export default function VideoOverlay({ preview, configuration, onClose }) {
@@ -63,7 +57,7 @@ export default function VideoOverlay({ preview, configuration, onClose }) {
 
       ;(config.gondolas || []).forEach((gondola) => {
         const color = gondola.color || '#d4ff70'
-        const corners = [[gondola.x, gondola.z], [gondola.x + gondola.width, gondola.z], [gondola.x + gondola.width, gondola.z + gondola.depth], [gondola.x, gondola.z + gondola.depth]]
+        const corners = gondolaCorners(gondola)
         const pixels = corners.map(([x, z]) => pointPx(x, z)).filter(Boolean)
         if (pixels.length < 4) return
         ctx.beginPath()
@@ -118,12 +112,12 @@ export default function VideoOverlay({ preview, configuration, onClose }) {
   }, [])
 
   return (
-    <section className="my-4 border border-teal-800 bg-[#0c1915] p-5">
-      <div className="mb-5 flex items-start justify-between gap-4 [&_h3]:mt-2 [&_h3]:text-2xl [&_h3]:font-semibold">
-        <div><span className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-teal-300">VERIFICACIÓN DE ALINEACIÓN</span><h3>Góndolas del planograma sobre el video real</h3></div>
-        <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-[#172720] text-slate-200" onClick={onClose}>×</button>
+    <section className="my-4 mb-[30px] border border-[#46685c] bg-[#0c1915] px-7 py-[26px]">
+      <div className="flex items-start justify-between gap-[18px]">
+        <div><span className="text-[10px] font-semibold font-[ui-monospace,monospace] tracking-[.17em] text-[#61dec0]">VERIFICACIÓN DE ALINEACIÓN</span><h3 className="mt-2 text-[22px] tracking-[-.03em]">Góndolas del planograma sobre el video real</h3></div>
+        <button className="grid h-[30px] w-[30px] place-items-center rounded-full border border-[rgba(206,236,221,.14)] bg-[#172720] text-[15px] text-[#dbe8e2]" onClick={onClose}>×</button>
       </div>
-      <div className="relative border border-teal-900 bg-black">
+      <div className="relative border border-[#315148] bg-[#050a09]">
         <video ref={videoRef} src={preview} controls muted playsInline className="block w-full" />
         <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
       </div>

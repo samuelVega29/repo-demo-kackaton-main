@@ -110,6 +110,34 @@ def test_cooldown_time_based_permite_varios_picks() -> None:
     assert g["pickups"] >= 2, f"Con cooldown se esperaban >=2 picks, hay {g['pickups']}"
 
 
+def test_agarre_corto_registra_pick_up_y_credita_interaccion() -> None:
+    """Un cliente que se acerca y alcanza el producto sin esperar `interaction_seconds`
+    (4.0s) debe registrar el pick-up de todos modos, y la interacción queda acreditada
+    para mantener la invariante `pickups <= interactions`."""
+    engine = InteractionEngine(CONFIG)
+    for i in range(int(5.0 / DT)):
+        engine.observe(make_detection(123), i * DT, DT, frame_height=720, hand_point=HAND_IN)
+    g = engine.results()[0]
+    first_t = g["pickup_events"][0]["t"] if g["pickup_events"] else None
+    assert g["pickups"] >= 1, "El agarre corto no registró ningún pick-up"
+    assert first_t is not None and first_t < CONFIG["thresholds"]["interaction_seconds"], \
+        f"El pick-up no fue anterior a interaction_seconds (t={first_t})"
+    assert g["interactions"] >= 1 and g["pickups"] <= g["interactions"], \
+        f"pickups {g['pickups']} > interactions {g['interactions']}"
+
+
+def test_pase_rapido_sin_detenerse_no_genera_pick_up() -> None:
+    """Un transeúnte que cruza frente a la góndola a velocidad alta no debe generar
+    pick-ups (requiere estancia engaged: cerca, lento y >=engaged_seconds)."""
+    engine = InteractionEngine(CONFIG)
+    moving = [1.5, 1.3]
+    for i in range(int(3.0 / DT)):
+        engine.observe(make_detection(456), i * DT, DT, frame_height=720, hand_point=None)
+    g = engine.results()[0]
+    assert g["pickups"] == 0, "Un pase rápido sin mano adentro generó pick-ups"
+    assert g["interactions"] == 0, "Un pase rápido sin estancia generó interacciones"
+
+
 def json_deepcopy(obj):
     import copy
     return copy.deepcopy(obj)

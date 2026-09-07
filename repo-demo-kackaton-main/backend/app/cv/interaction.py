@@ -83,6 +83,21 @@ class InteractionEngine:
             speed = math.dist(point, previous[0]) / (timestamp - previous[1])
         self.track_motion[track_id] = (point, timestamp)
 
+        # Extract 3D keypoint data for shelf-level detection if available
+        keypoints_3d = detection.get("keypoints_3d")
+        wrist_height_3d = None
+        if keypoints_3d:
+            # Use wrist keypoints (indices 9 and 10) for height estimation
+            left_wrist = keypoints_3d[9] if len(keypoints_3d) > 9 and keypoints_3d[9] else None
+            right_wrist = keypoints_3d[10] if len(keypoints_3d) > 10 and keypoints_3d[10] else None
+            # Get the higher wrist (closer to interaction)
+            if left_wrist and right_wrist:
+                wrist_height_3d = max(left_wrist[2], right_wrist[2])
+            elif left_wrist:
+                wrist_height_3d = left_wrist[2]
+            elif right_wrist:
+                wrist_height_3d = right_wrist[2]
+
         if not self.configuration.get("gondolas"):
             return {"state": "PASS", "speed": round(speed, 3), "gondola_id": None, "interaction": False, "pickup": False}
 
@@ -106,6 +121,7 @@ class InteractionEngine:
         if state["gondola_id"] != nearest["id"]:
             if state["gondola_id"]:
                 self._finalize(state, self.gondolas[state["gondola_id"]], timestamp)
+            self._reset_hand(state)
             state.update({"gondola_id": nearest["id"], "seconds": 0.0, "engaged": False, "interaction": False, "engaged_since": None, "interaction_since": None, "had_interaction": False})
             self._reset_hand(state)
         state["seconds"] += dt
@@ -120,11 +136,31 @@ class InteractionEngine:
         data["visitors"].add(track_id)
         data["dwell_seconds"] += dt
         data["states"][state_name] += 1
-        relative_x = (point[0] - nearest["x"]) / nearest["width"]
+        local_u, _ = SpatialEngine.local_offset(point, nearest)
+        relative_x = (local_u + nearest["width"] / 2) / nearest["width"]
         column = min(2, max(0, int(relative_x * 3)))
-        # Person-only YOLO cannot confirm a touched shelf level; a real wrist keypoint refines it
-        # when the pose model is available, otherwise it is a low-confidence body-position proxy.
-        row, row_pose_verified = self._refine_row(detection, frame_height)
+        # Determine shelf level (row) - use 3D height if available, fallback to body proxy.
+        # The fallback keeps the pick-up refinement: a real wrist keypoint refines the level,
+        # otherwise it is a low-confidence body-position proxy.
+        row = 0  # default to bottom shelf
+        row_pose_verified = False
+        if wrist_height_3d is not None:
+            # Use 3D wrist height to determine shelf level based on tier_heights
+            tier_heights = nearest.get("tier_heights", [0.25, 0.73, 1.20])
+            shelf_height = nearest.get("height", 1.45)
+
+            # Find which tier the wrist is closest to
+            min_distance = float("inf")
+            best_row = 0
+            for i, tier_height in enumerate(tier_heights):
+                distance = abs(wrist_height_3d - tier_height)
+                if distance < min_distance:
+                    min_distance = distance
+                    best_row = i
+            row = best_row
+        else:
+            # Fallback: low-confidence body-position proxy, refined by real wrists when available
+            (row, row_pose_verified) = self._refine_row(detection, frame_height)
         detection["row_pose_verified"] = row_pose_verified
         cell = (track_id, row, column)
         if cell not in data["seen_cells"]:
@@ -146,7 +182,13 @@ class InteractionEngine:
             if product:
                 data["product_events"][product] += 1
 
-        pickup = self._observe_pickup(state, data, nearest, detection, hand_point, timestamp, dt, row, column)
+        pickup, interaction_now = self._observe_pickup(state, data, nearest, detection, hand_point, timestamp, dt, row, column)
+        if interaction_now:
+            # A reach that fired before the interaction_seconds mark is a real hand-product
+            # touch: report it as the stay's interaction too (state_name is cosmetic here).
+            interaction = True
+            if state_name != "INTERACTION":
+                state_name = "INTERACTION"
         return {"state": state_name, "speed": round(speed, 3), "gondola_id": nearest["id"], "interaction": interaction, "pickup": pickup}
 
     def _ensure_hand(self, state: dict) -> None:
@@ -172,19 +214,27 @@ class InteractionEngine:
         dt: float,
         row: int,
         column: int,
-    ) -> bool:
+    ) -> tuple[bool, bool]:
         """Infers a probable shelf pick-up when the estimated hand reaches into the gondola
-        while the person is engaged, lasting long enough.
+        while the person is engaged (close + slow + long enough) and holds it for
+        ``pickup_min_seconds``.
 
         Anti-false-positive rules:
-        * Single pick-up per stay by default: `pickup_counted` is only re-armed when the
-          person leaves the current stay (see `observe`/`_reset_hand`). A numeric
-          `pickup_cooldown_s` relaxes this to re-arm after the hand clears for that many
+        * Requires an engaged stay (approach distance, low speed, ``engaged_seconds``);
+          a hand that passes by without stopping is never counted.
+        * Single pick-up per stay by default: ``pickup_counted`` is only re-armed when the
+          person leaves the current stay (see ``observe``/``_reset_hand``). A numeric
+          ``pickup_cooldown_s`` relaxes this to re-arm after the hand clears for that many
           seconds.
         * The reported column is derived from the HAND (not the foot) so the 3x3 cell
           matches the reach.
-        * The reported position is clamped to the gondola AABB so a pick never lands far
-          outside the gondola due to the perspective-distorted hand projection.
+        * The reported position is anchored to the gondola footprint so a pick never lands
+          far outside the gondola due to the perspective-distorted hand projection.
+
+        Returns ``(pickup, interaction_now)``. When a reach registers before the
+        ``interaction_seconds`` mark it is also credited as the stay's interaction, so the
+        exported ``pickups <= interactions`` invariant holds and a short genuine grab is not
+        lost just because the person did not linger a full interaction window.
         """
         inside = False
         if hand_point is not None:
@@ -195,7 +245,7 @@ class InteractionEngine:
             state["hand_since"] = None
             if state["hand_out_since"] is None:
                 state["hand_out_since"] = timestamp
-            return False
+            return False, False
 
         # Hand is inside again: compute the time it was out (from when it left until now)
         # BEFORE clearing the marker, so a configured cooldown can re-arm the counter.
@@ -210,12 +260,14 @@ class InteractionEngine:
         # A pick is only counted while the person is genuinely engaged (close + slow +
         # enough time). Hand inside without engagement is appreciated but not a pick-up.
         if not state["engaged"]:
-            return False
+            return False, False
 
         row_id, column_id = row, column
         if hand_point is not None:
-            # Column from the hand reach, so the cell matches where the hand goes.
-            relative_x = (hand_point[0] - gondola["x"]) / gondola["width"]
+            # Column from the hand reach, in the gondola's own (rotated) frame,
+            # so the cell matches where the hand actually goes.
+            local_u, _ = SpatialEngine.local_offset(hand_point, gondola)
+            relative_x = (local_u + gondola["width"] / 2) / gondola["width"]
             column_id = min(2, max(0, int(relative_x * 3)))
 
         if state["pickup_counted"]:
@@ -225,14 +277,12 @@ class InteractionEngine:
                 if (timestamp - state["pickup_since"]) >= self.pickup_cooldown_s and out_seconds >= self.pickup_cooldown_s:
                     state["pickup_counted"] = False
                 else:
-                    return False
+                    return False, False
             else:
-                return False
+                return False, False
 
         if (timestamp - state["hand_since"]) < self.pickup_min_seconds:
-            return False
-        if state["seconds"] < self.thresholds.get("interaction_seconds", 4.0):
-            return False
+            return False, False
 
         state["pickup_counted"] = True
         state["pickup_since"] = timestamp
@@ -242,10 +292,23 @@ class InteractionEngine:
         product = gondola.get("products", [[None] * 3 for _ in range(3)])[row_id][column_id]
         if product:
             data["product_events"][product] += 1
+        interaction_now = False
+        if not state["interaction"]:
+            # A genuine reach that did not wait for the interaction_seconds mark is still a
+            # hand-product touch: credit it as the stay's single interaction so pickups never
+            # exceed interactions in the exports and the later ENGAGED->INTERACTION
+            # transition (which requires `not state["interaction"]`) does not double-count.
+            state["interaction"] = True
+            state["had_interaction"] = True
+            if state["interaction_since"] is None:
+                state["interaction_since"] = timestamp
+            data["interactions"] += 1
+            data["matrices"]["interaction"][row_id][column_id] += 1
+            interaction_now = True
         # Anchor the reported location to the gondola (avoids out-of-rectangle picks).
         anchor = SpatialEngine.nearest_point_on_gondola(hand_point, gondola) if hand_point is not None else [gondola["x"], gondola["z"]]
         data["pickup_events"].append({"t": round(timestamp, 2), "track_id": detection["track_id"], "x": anchor[0], "z": anchor[1], "row": row_id, "column": column_id, "product": product, "pose_verified": bool(detection.get("hand_pose_verified", False)) or bool(detection.get("row_pose_verified", False))})
-        return True
+        return True, interaction_now
 
     def results(self) -> list[dict]:
         payload = []
@@ -261,7 +324,7 @@ class InteractionEngine:
             payload.append(
                 {
                     "id": data["id"], "name": data["name"], "x": data["x"], "z": data["z"],
-                    "width": data["width"], "depth": data["depth"], "segments": data["segments"],
+                    "width": data["width"], "depth": data["depth"], "rotation": data.get("rotation", 0), "segments": data["segments"],
                     "products": data.get("products", []), "visitors": visitors,
                     "traffic": visitors, "dwell_seconds": round(data["dwell_seconds"], 2),
                     "dwell_avg_seconds": round(data["dwell_seconds"] / visitors, 2) if visitors else 0.0,

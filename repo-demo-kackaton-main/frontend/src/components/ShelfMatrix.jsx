@@ -1,11 +1,9 @@
-const rows = ['Superior', 'Media', 'Inferior']
-const columns = ['Izquierda', 'Centro', 'Derecha']
+import { ROWS as rows, COLUMNS as columns } from '../utils/constants'
 
-export default function ShelfMatrix({ gondola, mode, events = [], pickupEvents = [] }) {
+export default function ShelfMatrix({ gondola, mode, events = [] }) {
   if (!gondola) {
-    return <div className="grid min-h-64 place-items-center p-8 text-center text-sm leading-7 text-slate-500">Selecciona una gondola en el planograma para inspeccionar su actividad.</div>
+    return <div className="grid h-full place-items-center p-[33px] px-[27px] text-center text-[12px] leading-[1.7] text-[#70857c]">Selecciona una góndola en el planograma para inspeccionar su actividad.</div>
   }
-
   const matrix = gondola.matrices[mode]
   const labels = {
     traffic: `${gondola.traffic} visitantes`,
@@ -18,56 +16,48 @@ export default function ShelfMatrix({ gondola, mode, events = [], pickupEvents =
   const tagged = (gondola.products || []).flat().filter(Boolean).length
   const completeness = Math.round(tagged / cellTotal * 100)
   const gondolaEvents = events.filter((event) => event.gondola_id === gondola.id)
-  const gondolaPickups = pickupEvents.filter((event) => event.gondola_id === gondola.id)
-
   return (
-    <section className="p-5">
-      <div className="mb-8 flex items-start justify-between gap-4">
+    <section className="p-[33px] px-[27px] max-[760px]:pt-[5px]">
+      <div className="mb-[35px] flex items-center justify-between gap-[15px]">
         <div>
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-teal-300">ANALISIS DE GONDOLA</span>
-          <h3 className="mt-2 text-2xl font-semibold">{gondola.name}</h3>
+          <span className="text-[10px] font-semibold font-[ui-monospace,monospace] tracking-[.17em] text-[#61dec0]">ANÁLISIS DE GÓNDOLA</span>
+          <h3 className="mt-2 mb-0 text-[23px]">{gondola.name}</h3>
         </div>
-        <strong className="whitespace-nowrap font-mono text-xs text-lime-300">{labels[mode]}</strong>
+        <strong className="text-[10px] font-semibold font-[ui-monospace,monospace] whitespace-nowrap text-[#d4ff70]">{labels[mode]}</strong>
       </div>
-
-      <div className="grid grid-cols-[50px_repeat(3,minmax(0,1fr))] gap-1">
+      <div className="grid grid-cols-[50px_repeat(3,1fr)] gap-1">
         <span />
-        {columns.map((column) => <span className="grid h-14 place-items-center justify-self-center font-mono text-[7px] uppercase text-slate-500 [writing-mode:vertical-rl]" key={column}>{column}</span>)}
+        {columns.map((column) => <span className="grid place-items-center text-[6px] font-medium font-[ui-monospace,monospace] uppercase text-[#61766e] h-[58px] justify-self-center pb-[7px] [writing-mode:vertical-rl]" key={column}>{column}</span>)}
         {matrix.map((row, rowIndex) => (
           <div className="contents" key={rows[rowIndex]}>
-            <span className="grid rotate-180 place-items-center font-mono text-[7px] uppercase text-slate-500 [writing-mode:vertical-rl]">{rows[rowIndex]}</span>
+            <span className="grid place-items-center text-[6px] font-medium font-[ui-monospace,monospace] uppercase text-[#61766e] [writing-mode:vertical-rl] rotate-180">{rows[rowIndex]}</span>
             {row.map((value, columnIndex) => (
               <div
-                className="flex aspect-[1/.96] min-w-0 flex-col items-center justify-center border border-orange-400/40 bg-[#101e1a] p-1 text-center"
+                className="flex aspect-[1/.96] min-w-0 flex-col items-center justify-center border p-[5px] text-center border-[color-mix(in_srgb,rgba(255,107,61,.7)_calc(var(--activity)*70%),#263b34)] bg-[color-mix(in_srgb,rgba(255,107,61,.7)_calc(var(--activity)*100%),#101e1a)]"
                 key={`${rowIndex}-${columnIndex}`}
-                style={{ opacity: 0.35 + (value / peak) * 0.65 }}
+                style={{ '--activity': value / peak }}
                 title={`${rows[rowIndex]} / ${columns[columnIndex]}: ${value}`}
               >
-                <span className="font-mono text-[10px] font-semibold">{mode === 'dwell' ? `${value.toFixed(1)}s` : value}</span>
-                <small className="mt-1 block max-w-full overflow-hidden text-ellipsis text-[7px] text-slate-300/60">{gondola.products?.[rowIndex]?.[columnIndex]}</small>
+                <span className="text-[9px] font-semibold font-[ui-monospace,monospace]">{mode === 'dwell' ? `${value.toFixed(1)}s` : value}</span>
+                <small className="mt-1 block max-w-full overflow-hidden text-ellipsis text-[6px] text-[rgba(229,241,234,.56)]">{gondola.products?.[rowIndex]?.[columnIndex]}</small>
               </div>
             ))}
           </div>
         ))}
       </div>
-
-      <div className="mt-5 grid grid-cols-2 border border-white/10 text-center text-[10px] text-slate-500 sm:grid-cols-4 [&_b]:mb-1 [&_b]:block [&_b]:font-mono [&_b]:text-sm [&_b]:text-slate-100 [&>span]:border-r [&>span]:border-white/10 [&>span]:p-3 [&>span:last-child]:border-r-0">
-        <span><b>{gondola.conversion_percent ?? 0}%</b>conversion</span>
-        <span><b>{gondola.dwell_avg_seconds ?? 0}s</b>perman. media</span>
-        <span><b>{gondola.engagement_avg_seconds ?? 0}s</b>atencion media</span>
-        <span><b>{gondolaEvents.length}</b>interacciones</span>
-        <span><b>{gondola.pickups ?? 0}</b>pick-ups</span>
+      <div className="mt-5 grid grid-cols-3 border border-[rgba(206,236,221,.14)] max-[390px]:grid-cols-4">
+        <span className="border-r border-[rgba(206,236,221,.14)] p-[11px] px-[7px] text-center text-[7px] text-[#667b73] last:border-r-0"><b className="mb-[3px] block text-[12px] font-semibold font-[ui-monospace,monospace] text-[#dce9e3]">{gondola.conversion_percent ?? 0}%</b>conversión</span>
+        <span className="border-r border-[rgba(206,236,221,.14)] p-[11px] px-[7px] text-center text-[7px] text-[#667b73] last:border-r-0"><b className="mb-[3px] block text-[12px] font-semibold font-[ui-monospace,monospace] text-[#dce9e3]">{gondola.dwell_avg_seconds ?? 0}s</b>perman. media</span>
+        <span className="border-r border-[rgba(206,236,221,.14)] p-[11px] px-[7px] text-center text-[7px] text-[#667b73] last:border-r-0"><b className="mb-[3px] block text-[12px] font-semibold font-[ui-monospace,monospace] text-[#dce9e3]">{gondola.engagement_avg_seconds ?? 0}s</b>atención media</span>
+        <span className="border-r border-[rgba(206,236,221,.14)] p-[11px] px-[7px] text-center text-[7px] text-[#667b73] last:border-r-0"><b className="mb-[3px] block text-[12px] font-semibold font-[ui-monospace,monospace] text-[#dce9e3]">{gondolaEvents.length}</b>interacciones</span>
+        <span className="border-r border-[rgba(206,236,221,.14)] p-[11px] px-[7px] text-center text-[7px] text-[#667b73] last:border-r-0"><b className="mb-[3px] block text-[12px] font-semibold font-[ui-monospace,monospace] text-[#dce9e3]">{gondola.pickups ?? 0}</b>pick-ups</span>
       </div>
-      {mode === 'pickup' && <div className="mt-4 grid gap-1 border border-white/10 bg-[#0c1714] p-3 text-[10px] text-slate-400 sm:grid-cols-2 [&_b]:text-lime-300">
-        <span><b>{gondolaPickups.length}</b> pick-ups registrados en el video</span>
-        <span><b>{gondola.pickup_ratio_percent ?? 0}%</b> de las interacciones resultaron en pick-up probable</span>
-      </div>}
-      <div className="mt-4 flex items-center gap-3 text-[10px] uppercase text-slate-500">
+      <div className="mt-3 flex items-center gap-3 text-[8px] uppercase text-[#71877e]">
         <span>Etiquetado de productos</span>
-        <div className="h-2 flex-1 overflow-hidden border border-slate-700 bg-[#12211c]"><i className="block h-full bg-lime-300" style={{ width: `${completeness}%` }} /></div>
-        <b className="font-mono text-lime-300">{tagged}/{cellTotal}</b>
+        <div className="h-[7px] flex-1 overflow-hidden border border-[#294039] bg-[#12211c]"><i className="block h-full bg-[#d4ff70]" style={{ width: `${completeness}%` }} /></div>
+        <b className="text-[11px] font-semibold font-[ui-monospace,monospace] text-[#d4ff70]">{tagged}/{cellTotal}</b>
       </div>
-      <p className="mt-5 text-xs leading-6 text-slate-500">Valores absolutos del video. El nivel vertical es una inferencia de baja confianza hasta disponer del modelo de interaccion propio. Los pick-ups son una aproximacion del alcance de la mano hacia la gondola (heuristica de baja confianza), no una confirmacion de compra.</p>
+      <p className="mt-5 text-[9px] leading-[1.65] text-[#60756d]">Valores absolutos del video. El nivel vertical es una inferencia de baja confianza hasta disponer del modelo de interacción propio.</p>
     </section>
   )
 }
