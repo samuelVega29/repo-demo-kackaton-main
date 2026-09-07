@@ -14,12 +14,3 @@ export async function api(path, options = {}) {
   if (!response.ok) throw new Error(payload?.detail || 'No fue posible completar la solicitud')
   return payload
 }
-
-export function artifactUrl(analysisId, filename) {
-  return `/api/analyses/${analysisId}/artifacts/${filename}`
-}
-
-export function videoUrl(analysisId) {
-  const token = getToken()
-  return `/api/analyses/${analysisId}/video${token ? `?token=${token}` : ''}`
-}

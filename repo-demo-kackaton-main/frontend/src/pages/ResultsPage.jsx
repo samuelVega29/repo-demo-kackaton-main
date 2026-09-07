@@ -1,87 +1,185 @@
-import { artifactUrl } from '../api/client'
-import AnalysisVideo from '../components/AnalysisVideo'
-import ShelfMatrix from '../components/ShelfMatrix'
+import { useEffect, useState } from 'react'
+import { Navigate, useParams } from 'react-router-dom'
+import { useApp } from '../context/AppProvider'
+import { artifactUrl } from '../services/analyses'
 import StoreScene from '../components/StoreScene'
-import OverlayViewer from '../components/results/OverlayViewer'
-import PageShell from '../components/ui/PageShell'
-import { ANALYSIS_MODES } from '../constants/analysisModes'
+import ShelfMatrix from '../components/ShelfMatrix'
+import AnalysisVideo from '../components/AnalysisVideo'
 
-export default function ResultsPage({ analysis, mode, setMode, selectedId, setSelectedId, closeDetail }) {
+const modes = [['traffic', 'Trafico'], ['dwell', 'Permanencia'], ['interaction', 'Interaccion']]
+
+export default function ResultsPage() {
+  const { job, site, mode, setMode, selectedId, setSelectedId, loadAnalysis } = useApp()
+  const { analysisId } = useParams()
+  const [loading, setLoading] = useState(Boolean(analysisId && !job?.result))
+
+  useEffect(() => {
+    if (job?.result || !analysisId) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    loadAnalysis(analysisId).catch(() => {}).finally(() => setLoading(false))
+  }, [analysisId, job?.result, loadAnalysis])
+
+  if (loading) return <section className="grid min-h-[calc(100vh-72px)] place-items-center font-[ui-monospace,monospace] text-sm font-bold tracking-[.18em] text-[#7d8392]">CARGANDO RESULTADOS</section>
+  if (!job?.result) return <Navigate to={site ? `/sedes/${site.id}` : '/empresas'} replace />
+
+  const analysis = job
   const result = analysis.result
-  const selected = result.gondolas.find((item) => item.id === selectedId)
+  const selected = (result.gondolas || []).find((item) => item.id === selectedId)
   const heatmapUrl = artifactUrl(analysis.id, `${mode}.png`)
-  const interactionAvailable = Boolean(result.heatmaps.interaction)
+  const interactionAvailable = Boolean(result.heatmaps?.interaction)
+  const metrics = result.metrics || {}
+  const video = result.video || {}
+  const zones = result.zones || []
+  const hotZones = zones.filter((zone) => zone.classification === 'hot')
+  const coldZones = zones.filter((zone) => zone.classification === 'cold')
+  const recommendations = result.recommendations || []
 
   return (
-    <PageShell wide>
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+    <section className="mx-auto w-[min(1480px,calc(100%-36px))] pb-[100px] pt-[72px] max-[760px]:w-[calc(100%-28px)] max-[760px]:pb-[75px] max-[760px]:pt-[55px]">
+      <div className="mb-10 flex items-end justify-between gap-[30px] max-[760px]:flex-col max-[760px]:items-start">
         <div>
-          <span className="font-mono text-[10px] uppercase tracking-[0.17em] text-teal-300">Analisis completado / {result.model.tracker.toUpperCase()}</span>
-          <h1 className="mt-4 text-5xl font-medium leading-none text-white sm:text-7xl">Spatial <em className="not-italic text-lime-300">Lens.</em></h1>
+          <span className="font-[ui-monospace,monospace] text-[10px] font-semibold tracking-[.17em] text-[#ff6b3d]">ANALISIS COMPLETADO · {(result.model?.tracker || 'TRACKING').toUpperCase()}</span>
+          <h1 className="my-[17px] mb-6 text-[clamp(55px,7vw,96px)] font-medium leading-[.92] tracking-[-.065em] text-[#151323] max-[760px]:text-[50px] max-[390px]:text-[43px]">
+            Retail <em className="not-italic text-[#ff6b3d]">Intelligence.</em>
+          </h1>
         </div>
-        <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4 lg:max-w-xl">
-          <Fact value={result.metrics.tracked_presences ?? result.metrics.people_detected} label="Presencias" />
-          <Fact value={`${result.video.duration_seconds}s`} label="Duracion" />
-          <Fact value={result.video.processed_frames} label="Frames" />
-          <Fact value={result.metrics.interaction_events} label="Interacciones" />
+        <div className="grid min-w-[430px] grid-cols-2 rounded-lg border border-[#e5e7ee] bg-white shadow-[0_20px_55px_-40px_rgba(20,27,36,.35)] max-[760px]:min-w-0 max-[760px]:w-full [&_span:nth-child(2n)]:border-r-0 [&_span:nth-last-child(-n+2)]:border-b-0">
+          <span className="border-b border-r border-[#e5e7ee] p-4 text-[8px] text-[#7d8392]"><b className="mb-1 block font-[ui-monospace,monospace] text-[17px] font-semibold text-[#151323]">{metrics.tracked_presences ?? metrics.people_detected ?? 0}</b>Presencias rastreadas</span>
+          <span className="border-b border-r border-[#e5e7ee] p-4 text-[8px] text-[#7d8392]"><b className="mb-1 block font-[ui-monospace,monospace] text-[17px] font-semibold text-[#151323]">{video.duration_seconds ?? 0}s</b>Duracion</span>
+          <span className="border-b border-r border-[#e5e7ee] p-4 text-[8px] text-[#7d8392]"><b className="mb-1 block font-[ui-monospace,monospace] text-[17px] font-semibold text-[#151323]">{video.processed_frames ?? video.total_frames ?? 0}</b>Frames</span>
+          <span className="border-b border-r border-[#e5e7ee] p-4 text-[8px] text-[#7d8392]"><b className="mb-1 block font-[ui-monospace,monospace] text-[17px] font-semibold text-[#151323]">{metrics.interaction_events ?? 0}</b>Interacciones</span>
+          <span className="border-b border-r border-[#e5e7ee] p-4 text-[8px] text-[#7d8392]"><b className="mb-1 block font-[ui-monospace,monospace] text-[17px] font-semibold text-[#151323]">{metrics.average_speed_m_s ?? metrics.average_speed_normalized ?? 0}</b>Velocidad media</span>
+          <span className="border-b border-r border-[#e5e7ee] p-4 text-[8px] text-[#7d8392]"><b className="mb-1 block font-[ui-monospace,monospace] text-[17px] font-semibold text-[#151323]">{metrics.flow_per_minute ?? 0}/min</b>Flujo</span>
         </div>
       </div>
 
-      <div className="mt-8 flex flex-wrap gap-2" role="tablist">
-        {ANALYSIS_MODES.map(([value, label]) => (
-          <button className={`border px-4 py-3 text-sm ${mode === value ? 'border-lime-300 text-lime-300' : 'border-white/10 text-slate-300'}`} role="tab" aria-selected={mode === value} onClick={() => setMode(value)} key={value} type="button">
-            {label}{value === 'interaction' && !interactionAvailable && <small className="ml-2 text-[9px] text-slate-500">evidencia insuficiente</small>}
-          </button>
-        ))}
-      </div>
+      <AnalysisVideo analysis={analysis} />
 
-      <div className="mt-6 grid min-h-[620px] border border-white/10 bg-[#0c1714] lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="relative min-h-[520px]">
-          <StoreScene result={result} mode={mode} selectedId={selectedId} onSelect={setSelectedId} heatmapUrl={heatmapUrl} slices={result.heatmaps?.slices} analysisId={analysis.id} />
-          <div className="absolute left-4 top-4 flex items-center gap-2 bg-black/40 px-3 py-2 font-mono text-[10px] text-slate-300">
-            <span>BAJA</span><i className="h-2 w-24 bg-gradient-to-r from-teal-500 via-lime-300 to-orange-400" /><span>ALTA</span>
+      <div className="mt-[90px]">
+        <div className="mb-6">
+          <span className="font-[ui-monospace,monospace] text-[10px] font-semibold tracking-[.17em] text-[#1f6feb]">GEMELO ESPACIAL</span>
+          <h2 className="mt-[9px] text-[clamp(32px,4vw,52px)] tracking-[-.045em] text-[#151323]">Mapa operativo de la sede</h2>
+        </div>
+        <div className="relative z-[2] mb-[-1px] flex w-fit rounded-t-lg border border-[#e5e7ee] bg-white p-1 max-[760px]:sticky max-[760px]:top-[66px] max-[760px]:w-full" role="tablist">
+          {modes.map(([value, label]) => (
+            <button role="tab" aria-selected={mode === value} className={`min-w-[130px] rounded-md border-0 bg-transparent p-3 px-[18px] text-[11px] text-[#7d8392] max-[760px]:min-w-0 max-[760px]:flex-1 max-[760px]:px-[5px] max-[760px]:p-[11px] max-[390px]:text-[9px] ${mode === value ? 'bg-[#ff6b3d] font-extrabold text-white' : ''}`} onClick={() => setMode(value)} key={value}>
+              {label}{value === 'interaction' && !interactionAvailable && <small className="mt-[3px] block text-[6px]">evidencia insuficiente</small>}
+            </button>
+          ))}
+        </div>
+        <div className="grid min-h-[690px] grid-cols-[minmax(0,1fr)_360px] rounded-b-lg border border-[#e5e7ee] bg-[#08100e] max-[980px]:min-h-[620px] max-[980px]:grid-cols-[minmax(0,1fr)_320px] max-[760px]:block max-[760px]:min-h-[520px]">
+          <div className="relative min-w-0 border-r border-[rgba(206,236,221,.14)] max-[760px]:h-[520px] max-[760px]:border-r-0 max-[390px]:h-[460px]">
+            <StoreScene result={result} mode={mode} selectedId={selectedId} onSelect={setSelectedId} heatmapUrl={heatmapUrl} slices={result.heatmaps?.slices} analysisId={analysis.id} />
           </div>
+          <aside className={`min-w-0 bg-[#0b1613] max-[760px]:fixed max-[760px]:bottom-0 max-[760px]:left-0 max-[760px]:right-0 max-[760px]:z-50 max-[760px]:max-h-[78vh] max-[760px]:overflow-y-auto max-[760px]:rounded-t-[18px] max-[760px]:border-t max-[760px]:border-t-[#53786a] max-[760px]:shadow-[0_-25px_80px_rgba(0,0,0,.55)] max-[760px]:transition-transform max-[760px]:duration-300 max-[760px]:ease-in-out ${selected ? 'max-[760px]:translate-y-0' : 'max-[760px]:translate-y-[110%]'}`}>
+            <button className="sticky top-[10px] z-[2] m-0 ml-auto mb-0 hidden h-8 w-8 place-items-center rounded-full border border-[rgba(206,236,221,.14)] bg-[#172720] text-[#dbe8e2] max-[760px]:mt-[10px] max-[760px]:mr-3 max-[760px]:grid" onClick={() => setSelectedId(null)}>×</button>
+            {selected
+              ? <ShelfMatrix gondola={selected} mode={mode} events={result.interaction_events_log || []} />
+              : <div className="grid h-full place-items-center px-[27px] p-[33px] text-center text-[12px] leading-[1.7] text-[#70857c] max-[760px]:hidden">Selecciona una gondola en el planograma para inspeccionar su actividad.</div>}
+          </aside>
         </div>
-        <aside className="border-t border-white/10 bg-[#0a1310] lg:border-l lg:border-t-0">
-          <button className="m-3 ml-auto grid h-8 w-8 place-items-center border border-white/10 text-slate-300" onClick={closeDetail} type="button">x</button>
-          <ShelfMatrix gondola={selected} mode={mode} events={result.interaction_events_log || []} />
-          {selected && <div className="grid grid-cols-2 gap-2 p-4 text-xs"><Fact value={selected.visitors} label="Visitantes" /><Fact value={`${selected.dwell_seconds}s`} label="Permanencia" /><Fact value={selected.interactions} label="Eventos" /><Fact value={`${selected.conversion_percent ?? 0}%`} label="Conversion" /></div>}
-        </aside>
       </div>
 
-      <div className="mt-16 grid gap-10 lg:grid-cols-[1.3fr_1fr]">
+      <div className="mt-[90px] grid grid-cols-[1.45fr_.55fr] gap-[65px] max-[980px]:grid-cols-1 max-[760px]:mt-[75px] max-[760px]:gap-[65px]">
         <section>
-          <span className="font-mono text-[10px] uppercase tracking-[0.17em] text-teal-300">Evidencia visual</span>
-          <h2 className="mt-2 text-3xl font-semibold">Frames + detecciones</h2>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {result.annotated_frames.map((filename, index) => (
-              <figure className="border border-white/10 bg-[#0c1714] p-2" key={filename}>
-                <img className="w-full" src={artifactUrl(analysis.id, filename)} alt={`Frame procesado ${index + 1}`} />
-                <figcaption className="p-2 font-mono text-[10px] text-slate-400">YOLO / FRAME {index + 1}</figcaption>
-              </figure>
-            ))}
-          </div>
+          <div className="mb-7"><span className="font-[ui-monospace,monospace] text-[10px] font-semibold tracking-[.17em] text-[#1f6feb]">EVIDENCIA VISUAL</span><h2 className="mt-[9px] text-[clamp(33px,4vw,52px)] tracking-[-.045em] text-[#151323]">Frames y detecciones</h2></div>
+          <div className="grid grid-cols-3 gap-[7px] max-[980px]:grid-cols-3 max-[760px]:grid-cols-2 max-[390px]:grid-cols-1">{(result.annotated_frames || []).map((filename, index) => <figure key={filename} className="relative m-0 aspect-video overflow-hidden rounded-lg bg-[#0e1916]"><img className="h-full w-full object-cover" src={artifactUrl(analysis.id, filename)} alt={`Frame procesado ${index + 1}`} /><figcaption className="absolute bottom-[7px] left-[7px] bg-[rgba(5,10,8,.83)] px-[7px] p-[5px] font-[ui-monospace,monospace] text-[7px] font-medium text-[#aac0b7]">FRAME {index + 1}</figcaption></figure>)}</div>
         </section>
-        <section>
-          <span className="font-mono text-[10px] uppercase tracking-[0.17em] text-teal-300">Hallazgos calculados</span>
-          <h2 className="mt-2 text-3xl font-semibold">Que indican los datos</h2>
-          <div className="mt-5 grid gap-3">
-            {result.findings.map((finding, index) => (
-              <article className="grid grid-cols-[40px_1fr] gap-4 border border-white/10 bg-[#0c1714] p-4" key={`${finding.title}-${index}`}>
-                <span className="font-mono text-lime-300">{String(index + 1).padStart(2, '0')}</span>
-                <div><h3 className="font-semibold">{finding.title}</h3><p className="mt-1 text-sm leading-6 text-slate-400">{finding.detail}</p></div>
-              </article>
-            ))}
-          </div>
+        <section id="hallazgos">
+          <div className="mb-7"><span className="font-[ui-monospace,monospace] text-[10px] font-semibold tracking-[.17em] text-[#ff6b3d]">HALLAZGOS CALCULADOS</span><h2 className="mt-[9px] text-[clamp(33px,4vw,52px)] tracking-[-.045em] text-[#151323]">Que indican los datos</h2></div>
+
+          {(hotZones.length > 0 || coldZones.length > 0) && (
+            <div className="mb-8">
+              <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-[#151323]">Zonas de calor y frio <span className="text-[#7d8392]">· según clasificacion del analisis</span></h3>
+              <div className="grid grid-cols-2 gap-[7px] max-[980px]:grid-cols-2 max-[400px]:grid-cols-1">
+                {hotZones.map((zone, index) => (
+                  <ZoneCard key={`hot-${zone.zone_id || index}`} zone={zone} kind="hot" />
+                ))}
+                {coldZones.map((zone, index) => (
+                  <ZoneCard key={`cold-${zone.zone_id || index}`} zone={zone} kind="cold" />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {recommendations.length > 0 && (
+            <div className="mb-8">
+              <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-[#151323]">Recomendaciones</h3>
+              <div className="grid gap-[7px]">
+                {recommendations.map((recommendation, index) => (
+                  <RecommendationCard key={`${recommendation.rule}-${index}`} recommendation={recommendation} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(result.findings || []).map((finding, index) => <article key={`${finding.title}-${index}`} className="grid grid-cols-[34px_1fr] gap-[14px] border-t border-[#e5e7ee] py-[19px]"><span className="font-[ui-monospace,monospace] text-[9px] font-semibold text-[#ff6b3d]">{String(index + 1).padStart(2, '0')}</span><div><h3 className="m-0 mb-[7px] text-[14px] text-[#151323]">{finding.title}</h3><p className="m-0 text-[10px] leading-[1.6] text-[#7d8392]">{finding.detail}</p></div></article>)}
         </section>
       </div>
-
-      <AnalysisVideo analysis={analysis} selectedId={selectedId} onSelect={setSelectedId} />
-      <OverlayViewer analysis={analysis} />
-    </PageShell>
+    </section>
   )
 }
 
-function Fact({ value, label }) {
-  return <span className="border border-white/10 bg-white/[0.03] p-3"><b className="block text-lg text-lime-300">{value}</b><small className="uppercase text-slate-500">{label}</small></span>
+function ZoneCard({ zone, kind }) {
+  const value = Number(zone.heat_index || 0)
+  const accent = kind === 'hot' ? '#ff6b3d' : '#1f6feb'
+  const label = kind === 'hot' ? 'Caliente' : 'Fria'
+  return (
+    <article className={`rounded-lg border bg-white p-[15px] ${kind === 'hot' ? 'border-[#ffd9c4] bg-[#fff9f5]' : 'border-[#cdddf7] bg-[#f6f9ff]'}`}>
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <h4 className="m-0 text-[12px] font-black leading-tight text-[#151323]">{zone.name}</h4>
+        <span className={`shrink-0 rounded-full px-2 py-[3px] text-[8px] font-black uppercase tracking-wide ${kind === 'hot' ? 'bg-[#ff6b3d] text-white' : 'bg-[#1f6feb] text-white'}`}>{label}</span>
+      </div>
+      <div className="mb-3">
+        <div className="mb-1 flex items-center justify-between gap-2 text-[9px] font-bold text-[#7d8392]"><span>Heat index</span><span className="font-[ui-monospace,monospace] text-[#151323]">{(value * 100).toFixed(1)}%</span></div>
+        <div className="h-[6px] overflow-hidden rounded-full bg-[#ececf0]"><div className="h-full rounded-full" style={{ width: `${Math.max(2, value * 100)}%`, background: accent }} /></div>
+      </div>
+      <dl className="m-0 grid grid-cols-2 gap-x-[14px] gap-y-[9px]">
+        <MetricCell label="Visitas" value={String(zone.visits ?? 0)} />
+        <MetricCell label="Densidad" value={`${zone.density ?? 0}/min`} />
+        <MetricCell label="Permanencia total" value={`${zone.dwell_seconds ?? 0}s`} />
+        <MetricCell label="Permanencia media" value={`${zone.avg_dwell_seconds ?? 0}s`} />
+        <MetricCell label="Interacciones" value={String(zone.interactions ?? 0)} />
+        <MetricCell label="Fuente" value={zone.source === 'configured' ? 'Configurada' : 'Grilla auto'} />
+      </dl>
+    </article>
+  )
+}
+
+function MetricCell({ label, value }) {
+  return <div><dt className="text-[8px] font-bold text-[#7d8392]">{label}</dt><dd className="m-0 font-[ui-monospace,monospace] text-[11px] font-semibold text-[#151323]">{value}</dd></div>
+}
+
+function RecommendationCard({ recommendation }) {
+  const severityStyles = {
+    high: { label: 'Alta', className: 'bg-[#ff3b30] text-white' },
+    medium: { label: 'Media', className: 'bg-[#ff6b3d] text-white' },
+    low: { label: 'Baja', className: 'bg-[#1f6feb] text-white' },
+  }
+  const severity = severityStyles[recommendation.severity] || severityStyles.medium
+  const trace = recommendation.trace || {}
+  return (
+    <article className="rounded-lg border border-[#ffe6d8] bg-white p-[15px]">
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <h4 className="m-0 max-w-[75%] text-[12px] font-black leading-tight text-[#151323]">{recommendation.title}</h4>
+        <span className={`shrink-0 rounded-full px-2 py-[3px] text-[8px] font-black uppercase tracking-wide ${severity.className}`}>{severity.label}</span>
+      </div>
+      <p className="m-0 mb-3 text-[10px] leading-[1.6] text-[#7d8392]">{recommendation.detail}</p>
+      {(typeof trace.heat_index === 'number' || typeof trace.visits === 'number' || typeof trace.classification === 'string') && (
+        <dl className="m-0 grid grid-cols-2 gap-x-[14px] gap-y-[9px] border-t border-[#eef0f3] pt-3">
+          {trace.zone_name && <MetricCell label="Zona" value={trace.zone_name} />}
+          {typeof trace.heat_index === 'number' && <MetricCell label="Heat index" value={(Number(trace.heat_index) * 100).toFixed(1) + '%'} />}
+          {typeof trace.visits === 'number' && <MetricCell label="Visitas" value={String(trace.visits)} />}
+          {typeof trace.avg_dwell_seconds === 'number' && <MetricCell label="Permanencia media" value={`${trace.avg_dwell_seconds}s`} />}
+          {typeof trace.interactions === 'number' && <MetricCell label="Interacciones" value={String(trace.interactions)} />}
+          {typeof trace.density === 'number' && <MetricCell label="Densidad" value={`${trace.density}/min`} />}
+          {typeof trace.hot_zones === 'number' && <MetricCell label="Zonas calientes" value={String(trace.hot_zones)} />}
+          {typeof trace.active_zones === 'number' && <MetricCell label="Zonas activas" value={String(trace.active_zones)} />}
+        </dl>
+      )}
+    </article>
+  )
 }

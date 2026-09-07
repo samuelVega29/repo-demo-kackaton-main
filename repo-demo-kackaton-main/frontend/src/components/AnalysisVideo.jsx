@@ -1,238 +1,548 @@
-import { useEffect, useRef, useState } from 'react'
-import { artifactUrl, videoUrl } from '../api/client'
+import { Clock, Flame, MessageCircle, Users } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { artifactUrl, getAnalysisHeatmap, getAnalysisTrajectories, getAnalysisZones, videoUrl } from '../services/analyses'
+import { inverseHomography, projectFloor } from '../utils/homography'
+import { pointInPolygon } from '../utils/floorOutline'
+import { formatTime } from '../utils/format'
 
-const solveHomography = (pairs) => {
-  const a = []
-  const b = []
-  pairs.forEach(([sx, sy, tx, ty]) => {
-    a.push([-sx, -sy, -1, 0, 0, 0, tx * sx, tx * sy])
-    b.push(-tx)
-    a.push([0, 0, 0, -sx, -sy, -1, ty * sx, ty * sy])
-    b.push(-ty)
-  })
-  const n = 8
-  for (let col = 0; col < n; col++) {
-    let pivot = col
-    for (let row = col + 1; row < n; row++) if (Math.abs(a[row][col]) > Math.abs(a[pivot][col])) pivot = row
-    if (Math.abs(a[pivot][col]) < 1e-10) return null
-    ;[a[col], a[pivot]] = [a[pivot], a[col]]
-    ;[b[col], b[pivot]] = [b[pivot], b[col]]
-    const divisor = a[col][col]
-    for (let j = col; j < n; j++) a[col][j] /= divisor
-    b[col] /= divisor
-    for (let row = 0; row < n; row++) {
-      if (row === col) continue
-      const factor = a[row][col]
-      for (let j = col; j < n; j++) a[row][j] -= factor * a[col][j]
-      b[row] -= factor * b[col]
-    }
+const findingDotColor = { evidence: '#ff6b3d', recommendation: '#22c55e', quality: '#151323' }
+
+const VIEW_MODES = [['original', 'Original'], ['heatmap', 'Mapa de calor'], ['pickup', 'Pick-ups'], ['zones', 'Zonas'], ['trajectories', 'Trayectorias']]
+const zoneStyles = {
+  hot: ['rgba(255, 107, 61, .28)', 'rgba(255, 107, 61, .86)'],
+  normal: ['rgba(31, 111, 235, .18)', 'rgba(31, 111, 235, .72)'],
+  cold: ['rgba(97, 222, 192, .16)', 'rgba(24, 151, 122, .72)'],
+}
+
+const flat = (matrix) => matrix?.flat?.() ?? matrix
+
+function invert3x3(matrix) {
+  const m = flat(matrix)
+  if (!m || m.length !== 9) return null
+  const [a, b, c, d, e, f, g, h, i] = m
+  const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
+  if (Math.abs(det) < 1e-10) return null
+  return [
+    (e * i - f * h) / det, (c * h - b * i) / det, (b * f - c * e) / det,
+    (f * g - d * i) / det, (a * i - c * g) / det, (c * d - a * f) / det,
+    (d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det,
+  ]
+}
+
+function renderedVideoBox(video) {
+  const rect = video.getBoundingClientRect()
+  const ratio = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9
+  const elementRatio = rect.width / Math.max(1, rect.height)
+  if (elementRatio > ratio) {
+    const width = rect.height * ratio
+    return { x: (rect.width - width) / 2, y: 0, width, height: rect.height }
   }
-  return [...b, 1]
+  const height = rect.width / ratio
+  return { x: 0, y: (rect.height - height) / 2, width: rect.width, height }
 }
 
-const formatTime = (seconds) => {
-  const s = Math.max(0, Math.floor(seconds || 0))
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+function centroid(points) {
+  const sum = points.reduce((acc, point) => [acc[0] + point[0], acc[1] + point[1]], [0, 0])
+  return [sum[0] / points.length, sum[1] / points.length]
 }
 
-export default function AnalysisVideo({ analysis, selectedId, onSelect }) {
-  const result = analysis.result
-  const configuration = result.site.configuration
-  const floor = configuration.floor || {}
-  const duration = result.video.duration_seconds || 0
-  const events = result.interaction_events_log || []
-  const histogram = result.interaction_histogram
+export default function AnalysisVideo({ analysis }) {
+  const result = analysis.result || {}
+  const configuration = result.site?.configuration || {}
+  const camera = configuration.camera || {}
+  const duration = result.video?.duration_seconds || 0
+  const coordinateSystem = result.coordinate_system || result.quality?.coordinate_system
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
-  const heatRef = useRef(null)
-  const configurationRef = useRef(configuration)
-  configurationRef.current = configuration
-  const selectedRef = useRef(selectedId)
-  selectedRef.current = selectedId
+  const [viewMode, setViewMode] = useState('heatmap')
+  const [opacity, setOpacity] = useState(0.58)
+  const [showLabels, setShowLabels] = useState(true)
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
-  const [showHeat, setShowHeat] = useState(false)
-  const [heatMatrix, setHeatMatrix] = useState(null)
-  const [heatDims, setHeatDims] = useState(null)
+  const [box, setBox] = useState(null)
+  const [heatmapData, setHeatmapData] = useState(null)
+  const [trajectoryData, setTrajectoryData] = useState(null)
+  const [zoneData, setZoneData] = useState(null)
+  const [eventFilter, setEventFilter] = useState('all')
+  const [showZoneBoundaries, setShowZoneBoundaries] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    Promise.allSettled([getAnalysisHeatmap(analysis.id), getAnalysisTrajectories(analysis.id), getAnalysisZones(analysis.id)]).then(([heatmap, trajectories, zones]) => {
+      if (!active) return
+      if (heatmap.status === 'fulfilled') setHeatmapData(heatmap.value)
+      if (trajectories.status === 'fulfilled') setTrajectoryData(trajectories.value)
+      if (zones.status === 'fulfilled') setZoneData(zones.value)
+    })
+    return () => { active = false }
+  }, [analysis.id])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return undefined
+    const update = () => setBox(renderedVideoBox(video))
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(video)
+    window.addEventListener('resize', update)
+    video.addEventListener('loadedmetadata', update)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', update)
+      video.removeEventListener('loadedmetadata', update)
+    }
+  }, [])
+
+  const heatmaps = heatmapData?.heatmaps || result.heatmaps || {}
+  const overlayMetric = viewMode === 'pickup' ? 'pickup' : 'traffic'
+  const overlays = heatmaps.overlays?.[overlayMetric] || heatmaps.overlays?.traffic || heatmaps.overlays?.dwell || []
+  const slices = heatmaps.slices || []
+  const activeSlice = useMemo(() => {
+    if (!slices.length) return null
+    return slices.find((slice) => time >= slice.start && time <= slice.end) || slices[slices.length - 1]
+  }, [slices, time])
+  const floorHeatmap = activeSlice?.[overlayMetric] || heatmaps[overlayMetric]
+  // El overlay acumula los puntos de TODO el video: cualquier frame de evidencia sirve de
+  // fondo, asi que se fija uno solo (el del medio) en vez de recalcularlo con el scrubber -
+  // eso era lo que producia el efecto fantasma al mezclar el overlay con el video en marcha.
+  const overlayFrame = overlays.length ? overlays[Math.floor((overlays.length - 1) / 2)] : null
+  const heatmapSrc = overlayFrame || (coordinateSystem === 'normalized' ? floorHeatmap : null)
+  const trajectories = trajectoryData?.trajectories || result.trajectories || []
+  const zones = zoneData?.zones || result.zones || []
+  const findings = result.findings || []
+  const peopleTotal = result.metrics?.tracked_presences ?? result.metrics?.people_detected ?? 0
+  const interactionsTotal = result.metrics?.interaction_events ?? 0
+  const hotZonesTotal = zones.filter((zone) => zone.classification === 'hot').length
+  const zoneVisits = zones.reduce((sum, zone) => sum + (zone.visits || 0), 0)
+  const zoneDwellSeconds = zones.reduce((sum, zone) => sum + (zone.dwell_seconds || 0), 0)
+  const avgDwellTotal = zoneVisits ? zoneDwellSeconds / zoneVisits : 0
+  const pickupEvents = result.pickup_events_log || []
+  const interactionEvents = result.interaction_events_log || []
+
+  // Metricas principales dinamicas: se recalculan segun el instante actual del video.
+  // - Personas detectadas   -> presentes AHORA (track_id unicos en la ultima muestra <= time)
+  // - Permanencia promedio  -> duracion media de presencia de las personas vistas hasta el instante
+  // - Zonas calientes       -> zonas con actividad caliente (interaccion/pick-up) hasta el instante
+  // - Interacciones         -> eventos de interaccion (+ pick-ups) ocurridos hasta el instante
+  // Si no hay muestreo en vivo (sin frame_detections) se cae a los totales del analisis.
+  const liveMetrics = useMemo(() => {
+    const samples = result.frame_detections || []
+    if (!samples.length) {
+      return {
+        people: peopleTotal,
+        avgDwell: avgDwellTotal,
+        hotZones: hotZonesTotal,
+        interactions: interactionsTotal,
+      }
+    }
+
+    let lastPeople = 0
+    const firstSeen = {}
+    const lastSeen = {}
+    let seenCount = 0
+    for (let index = 0; index < samples.length && samples[index].timestamp <= time; index++) {
+      const sample = samples[index]
+      const present = new Set()
+      for (const detection of sample.detections || []) {
+        const id = detection.track_id
+        if (id === undefined || id === null) continue
+        present.add(id)
+        if (!(id in firstSeen)) {
+          firstSeen[id] = sample.timestamp
+          seenCount++
+        }
+        lastSeen[id] = sample.timestamp
+      }
+      lastPeople = present.size
+    }
+
+    const avgDwell = (() => {
+      if (!seenCount) return avgDwellTotal
+      let total = 0
+      for (const id of Object.keys(firstSeen)) {
+        total += (lastSeen[id] ?? firstSeen[id]) - firstSeen[id]
+      }
+      return total / seenCount
+    })()
+
+    const hotZoneIds = new Set()
+    const eventSources = [...(result.interaction_events_log || []), ...(result.pickup_events_log || [])]
+    for (const event of eventSources) {
+      if (typeof event.t !== 'number' || event.t > time) continue
+      if (typeof event.x !== 'number' || typeof event.z !== 'number') continue
+      for (const zone of zones) {
+        if (!hotZoneIds.has(zone.id) && pointInPolygon(event.x, event.z, zone.polygon)) hotZoneIds.add(zone.id)
+      }
+    }
+
+    let interactions = 0
+    for (const event of interactionEvents) if (typeof event.t === 'number' && event.t <= time) interactions++
+    for (const event of pickupEvents) if (typeof event.t === 'number' && event.t <= time) interactions++
+
+    return {
+      people: lastPeople,
+      avgDwell,
+      hotZones: hotZoneIds.size,
+      interactions,
+    }
+  }, [time, result, zones, peopleTotal, avgDwellTotal, hotZonesTotal, interactionsTotal, interactionEvents, pickupEvents])
+  const visibleEvents = eventFilter === 'pickup' ? pickupEvents : eventFilter === 'interaction' ? interactionEvents : [...pickupEvents, ...interactionEvents].sort((a, b) => (a.t || 0) - (b.t || 0))
+  const projectionMatrix = useMemo(() => flat(camera.homography_inv) || invert3x3(camera.homography) || inverseHomography(camera), [camera])
+
+  // Acumulador en vivo del mapa de calor: mientras el video corre se van sumando
+  // los puntos de contacto ya vistos (calientes = interacción/engagement, fríos =
+  // tránsito de paso). Al hacer seek hacia atrás se rellena desde t=0 hasta el
+  // tiempo actual para que el resultado sea siempre la densidad acumulada real.
+  const heatAccum = useRef({
+    calibrated: false,
+    hot: { size: 0, filled: 0, points: [], events: [] },
+    cold: { size: 0, filled: 0, points: [], events: [] },
+  })
+
+  const buildLiveHeatmap = (until) => {
+    const acc = heatAccum.current
+    if (!acc.calibrated) {
+      const frameSamples = result.frame_detections || []
+      acc.hot.size = frameSamples.length
+      acc.cold.size = frameSamples.length
+      acc.hot.points = new Array(frameSamples.length)
+      acc.cold.points = new Array(frameSamples.length)
+      acc.calibrated = true
+    }
+    acc.hot.filled = 0
+    acc.cold.filled = 0
+    const samples = result.frame_detections || []
+    for (let index = 0; index < samples.length && samples[index].timestamp <= until; index++) {
+      const sample = samples[index]
+      const hot = []
+      const cold = []
+      for (const detection of sample.detections || []) {
+        const state = detection.state || 'PASS'
+        if (!detection.floor_point) continue
+        if (state === 'INTERACTION' || state === 'ENGAGED') hot.push(detection.floor_point)
+        else cold.push(detection.floor_point)
+      }
+      acc.hot.points[index] = hot
+      acc.cold.points[index] = cold
+      acc.hot.filled = index + 1
+      acc.cold.filled = index + 1
+    }
+    // Picos calientes de interacción/pick-up ya ocurridos hasta el instante actual:
+    // son la señal mas fuerte de que hubo contacto con una gondola o producto.
+    const hotEvents = []
+    const eventSources = [...(result.pickup_events_log || []), ...(result.interaction_events_log || [])]
+    for (const event of eventSources) {
+      if (typeof event.t !== 'number' || event.t > until) continue
+      if (typeof event.x === 'number' && typeof event.z === 'number') hotEvents.push([event.x, event.z])
+    }
+    acc.hot.events = hotEvents
+  }
+
+  const collectLiveHeat = (until) => {
+    const acc = heatAccum.current
+    buildLiveHeatmap(until)
+    return acc
+  }
+
+  useEffect(() => {
+    if (viewMode === 'heatmap') buildLiveHeatmap(time)
+  }, [time, viewMode])
+
+  const projectPoint = (point) => {
+    if (!box) return null
+    const [x, y] = point
+    if (coordinateSystem === 'normalized') return [box.x + x * box.width, box.y + y * box.height]
+    const projected = projectFloor(projectionMatrix, x, y)
+    if (!projected) return null
+    return [box.x + projected[0] * box.width, box.y + projected[1] * box.height]
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current
     const video = videoRef.current
-    if (!canvas || !video) return
-    let frame = 0
+    if (!canvas || !video || !box) return
+    const dpr = window.devicePixelRatio || 1
+    const rect = video.getBoundingClientRect()
+    canvas.width = Math.round(rect.width * dpr)
+    canvas.height = Math.round(rect.height * dpr)
+    canvas.style.width = `${rect.width}px`
+    canvas.style.height = `${rect.height}px`
+    const ctx = canvas.getContext('2d')
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, rect.width, rect.height)
 
-    const draw = () => {
-      if (!video.videoWidth) return
-      const width = canvas.width = video.videoWidth
-      const height = canvas.height = video.videoHeight
-      const ctx = canvas.getContext('2d')
-      ctx.clearRect(0, 0, width, height)
-      const config = configurationRef.current
-      const matrix = config.camera?.homography_inv
-      const px = (x, z) => {
-        if (!matrix) return null
-        const flat = matrix.flat()
-        const denominator = flat[6] * x + flat[7] * z + flat[8]
-        if (!denominator) return null
-        return [(flat[0] * x + flat[1] * z + flat[2]) / denominator * width, (flat[3] * x + flat[4] * z + flat[5]) / denominator * height]
+    if (viewMode === 'heatmap') {
+      const frameSamples = result.frame_detections || []
+      const live = frameSamples.length > 0
+      if (live) {
+        const acc = collectLiveHeat(time)
+        // Calientes primero (arriba) y frías debajo: cada punto acumula peso por
+        // cada paso, asi las zonas donde hubo interacciones se ven mas intensas.
+        const paint = (points, colorCenter, colorMid, radius, maxWeight, baseAlpha) => {
+          for (const chunk of points) {
+            if (!chunk) continue
+            for (const point of chunk) {
+              const px = projectPoint(point)
+              if (!px) continue
+              const r = radius
+              const gradient = ctx.createRadialGradient(px[0], px[1], 0, px[0], px[1], r)
+              gradient.addColorStop(0, colorCenter)
+              gradient.addColorStop(0.55, colorMid)
+              gradient.addColorStop(1, 'rgba(255, 107, 61, 0)')
+              ctx.globalAlpha = Math.max(baseAlpha, opacity)
+              ctx.fillStyle = gradient
+              ctx.beginPath()
+              ctx.arc(px[0], px[1], r, 0, Math.PI * 2)
+              ctx.fill()
+            }
+          }
+          ctx.globalAlpha = 1
+        }
+        // Zonas frias: transito y aproximacion (cian/azul), menos calor.
+        paint(acc.cold.points.slice(0, acc.cold.filled), `rgba(97, 222, 192, ${(opacity) * 0.32})`, `rgba(64, 170, 210, ${(opacity) * 0.16})`, 34, opacity * 0.1)
+        // Zonas calientes: interacciones y pick-ups (naranja/rojo), mas calor y radio mayor.
+        paint(acc.hot.points.slice(0, acc.hot.filled), `rgba(255, 107, 61, ${Math.min(0.92, opacity + 0.28)})`, `rgba(255, 209, 102, ${(opacity) * 0.5})`, 58, opacity * 0.35)
+        // Picos calientes: un anillo mas amplio y brillante en cada contacto real
+        // con gondola/producto, para que se lea claramente como zona caliente.
+        paint([acc.hot.events || []], 'rgba(255, 82, 40, 0.9)', 'rgba(255, 168, 77, 0.55)', 82, opacity, opacity * 0.5)
+      } else if (!heatmapSrc) {
+        trajectories.forEach((trajectory) => {
+          ;(trajectory.points || []).forEach((point) => {
+            const px = projectPoint(point)
+            if (!px) return
+            const gradient = ctx.createRadialGradient(px[0], px[1], 0, px[0], px[1], 46)
+            gradient.addColorStop(0, `rgba(255, 107, 61, ${opacity * 0.42})`)
+            gradient.addColorStop(0.55, `rgba(255, 209, 102, ${opacity * 0.2})`)
+            gradient.addColorStop(1, 'rgba(255, 107, 61, 0)')
+            ctx.fillStyle = gradient
+            ctx.beginPath()
+            ctx.arc(px[0], px[1], 46, 0, Math.PI * 2)
+            ctx.fill()
+          })
+        })
       }
-      const quad = (corners, fill, stroke, lineWidth, dash) => {
-        const points = corners.map(([x, z]) => px(x, z)).filter(Boolean)
-        if (points.length < 4) return
+    }
+
+    if (viewMode === 'pickup') {
+      pickupEvents.forEach((event) => {
+        const px = projectPoint([event.x, event.z])
+        if (!px) return
+        ctx.beginPath()
+        ctx.arc(px[0], px[1], 15, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(255, 107, 61, ${Math.max(.22, opacity)})`
+        ctx.fill()
+        ctx.lineWidth = 3
+        ctx.strokeStyle = 'rgba(255,255,255,.92)'
+        ctx.stroke()
+        if (showLabels) {
+          const label = event.product || event.gondola_name || `Pick-up ${formatTime(event.t || 0)}`
+          ctx.font = '700 12px Poppins, system-ui, sans-serif'
+          const width = ctx.measureText(label).width + 18
+          ctx.fillStyle = 'rgba(16,23,34,.88)'
+          ctx.beginPath()
+          ctx.roundRect(px[0] - width / 2, px[1] - 42, width, 26, 8)
+          ctx.fill()
+          ctx.fillStyle = '#fff'
+          ctx.fillText(label, px[0] - width / 2 + 9, px[1] - 25)
+        }
+      })
+    }
+
+    if (viewMode === 'zones' || (viewMode === 'heatmap' && showZoneBoundaries)) {
+      const onHeatmap = viewMode === 'heatmap'
+      zones.forEach((zone) => {
+        const points = (zone.polygon || []).map(projectPoint).filter(Boolean)
+        if (points.length < 3) return
+        const [fill, stroke] = zoneStyles[zone.classification] || zoneStyles.normal
         ctx.beginPath()
         ctx.moveTo(...points[0])
         points.slice(1).forEach((point) => ctx.lineTo(...point))
         ctx.closePath()
-        if (fill) { ctx.fillStyle = fill; ctx.fill() }
-        ctx.strokeStyle = stroke
-        ctx.lineWidth = lineWidth
-        if (dash) ctx.setLineDash(dash)
-        ctx.stroke()
-        ctx.setLineDash([])
-      }
-
-      if (matrix) {
-        quad([[0, 0], [floor.width, 0], [floor.width, floor.depth || 0], [0, floor.depth || 0]], null, 'rgba(126, 154, 143, .75)', 2, [8, 6])
-      }
-
-      ;(config.gondolas || []).forEach((gondola) => {
-        const corners = [[gondola.x, gondola.z], [gondola.x + gondola.width, gondola.z], [gondola.x + gondola.width, gondola.z + gondola.depth], [gondola.x, gondola.z + gondola.depth]]
-        const selected = gondola.id === selectedRef.current
-        const p0 = px(gondola.x, gondola.z)
-        quad(corners, selected ? 'rgba(212, 255, 112, .30)' : 'rgba(97, 222, 192, .06)', selected ? '#d9fe6b' : '#65dfc2', selected ? 6 : 3, selected ? null : [5, 5])
-        if (p0 && gondola.name) {
-          ctx.fillStyle = selected ? '#d9fe6b' : 'rgba(8, 18, 15, .75)'
-          if (!selected) ctx.fillRect(p0[0], p0[1] - 24, ctx.measureText(gondola.name).width + 16, 22)
-          ctx.fillStyle = selected ? '#0c1714' : '#e8f2ed'
-          ctx.font = `${selected ? 14 : 12}px ui-monospace, monospace`
-          ctx.fillText(gondola.name, p0[0] + 8, p0[1] - 8)
+        if (onHeatmap) {
+          // Sobre la foto del calor solo interesa el contorno con el nombre; el
+          // relleno de color competiria con la escala de calor ya pintada.
+          ctx.setLineDash([6, 4])
+          ctx.strokeStyle = 'rgba(11,17,26,.85)'
+          ctx.lineWidth = 1.5
+          ctx.stroke()
+          ctx.setLineDash([])
+        } else {
+          ctx.fillStyle = fill
+          ctx.strokeStyle = stroke
+          ctx.lineWidth = 2
+          ctx.fill()
+          ctx.stroke()
+        }
+        if ((showLabels || onHeatmap) && zone.name) {
+          const [x, y] = centroid(points)
+          const label = `${zone.name}${zone.classification ? ` · ${zone.classification}` : ''}`
+          ctx.font = '600 12px Poppins, system-ui, sans-serif'
+          const width = ctx.measureText(label).width + 18
+          ctx.fillStyle = 'rgba(255, 255, 255, .92)'
+          ctx.beginPath()
+          ctx.roundRect(x - width / 2, y - 14, width, 28, 8)
+          ctx.fill()
+          ctx.fillStyle = '#141b24'
+          ctx.fillText(label, x - width / 2 + 9, y + 4)
         }
       })
+    }
 
-      ;(config.zones || []).forEach((zone) => {
-        quad(zone.polygon || [], 'rgba(97, 222, 192, .05)', 'rgba(97, 222, 192, .4)', 2, [4, 4])
+    if (viewMode === 'trajectories') {
+      trajectories.forEach((trajectory) => {
+        const points = (trajectory.points || []).map(projectPoint).filter(Boolean)
+        if (points.length < 2) return
+        ctx.beginPath()
+        ctx.moveTo(...points[0])
+        points.slice(1).forEach((point) => ctx.lineTo(...point))
+        ctx.strokeStyle = `rgba(31, 111, 235, ${Math.max(.2, opacity)})`
+        ctx.lineWidth = 3
+        ctx.lineJoin = 'round'
+        ctx.lineCap = 'round'
+        ctx.stroke()
       })
     }
-
-    const loop = () => {
-      draw()
-      frame = requestAnimationFrame(loop)
-    }
-    loop()
-    return () => cancelAnimationFrame(frame)
-  }, [floor.width, floor.depth])
-
-  useEffect(() => {
-    if (!showHeat) return
-    const img = heatRef.current
-    if (!img) return
-    const onLoad = () => {
-      const config = configurationRef.current
-      const matrix = config.camera?.homography_inv
-      const video = videoRef.current
-      if (!matrix || !video || !video.videoWidth) return
-      const width = video.videoWidth
-      const height = video.videoHeight
-      const px = (x, z) => {
-        const flat = matrix.flat()
-        const denominator = flat[6] * x + flat[7] * z + flat[8]
-        if (!denominator) return null
-        return [(flat[0] * x + flat[1] * z + flat[2]) / denominator * width, (flat[3] * x + flat[4] * z + flat[5]) / denominator * height]
-      }
-      const target = [[0, 0], [floor.width, 0], [floor.width, floor.depth || 0], [0, floor.depth || 0]].map(([x, z]) => px(x, z))
-      if (target.some((point) => !point)) return
-      const W = img.naturalWidth
-      const H = img.naturalHeight
-      const homography = solveHomography([
-        [0, 0, target[0][0], target[0][1]],
-        [W, 0, target[1][0], target[1][1]],
-        [W, H, target[2][0], target[2][1]],
-        [0, H, target[3][0], target[3][1]],
-      ])
-      if (!homography) return
-      setHeatMatrix(homography)
-      setHeatDims([W, H])
-    }
-    if (img.complete) onLoad()
-    img.addEventListener('load', onLoad)
-    return () => img.removeEventListener('load', onLoad)
-  }, [showHeat, floor.width, floor.depth])
+  }, [box, coordinateSystem, heatmapSrc, opacity, pickupEvents, projectionMatrix, result, showLabels, showZoneBoundaries, time, trajectories, viewMode, zones])
 
   const seek = (seconds) => {
     const video = videoRef.current
     if (!video) return
     video.currentTime = Math.max(0, Math.min(seconds, video.duration || duration))
-    video.play().catch(() => {})
   }
 
-  const seekToEvent = (event) => {
-    onSelect(event.gondola_id)
-    seek(event.t - 1)
+  const jumpToEvent = (event) => {
+    seek(Math.max(0, (event.t || 0) - 1))
+    videoRef.current?.play().catch(() => {})
   }
-
-  const maxCount = histogram ? Math.max(1, ...histogram.buckets.map((bucket) => bucket.count)) : 1
 
   return (
-    <section className="mt-20">
-      <div className="mb-7"><span className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-teal-300">REPRODUCCIÓN DEL ANÁLISIS</span><h2>El video, con geografía</h2><p>Reproduce el video real con las góndolas y zonas proyectadas. Enciende el calor para ver el mapa espacial superpuesto.</p></div>
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.9fr)_minmax(240px,1fr)]">
-        <div className="relative overflow-hidden rounded-2xl border border-teal-900 bg-black">
-          <video
-            ref={videoRef}
-            src={videoUrl(analysis.id)}
-            playsInline
-            onPlay={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
-            onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)}
-            onEnded={() => setPlaying(false)}
-          />
-          <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
-          {showHeat && <img
-            ref={heatRef}
-            className="pointer-events-none absolute left-0 top-0 origin-top-left opacity-55 mix-blend-screen"
-            src={artifactUrl(analysis.id, result.heatmaps.traffic)}
-            style={heatDims ? { width: heatDims[0], height: heatDims[1], transform: `matrix3d(${heatMatrix.join(',')})` } : undefined}
-            alt=""
-          />}
-          <div className="flex items-center gap-3 border-t border-teal-950 bg-[#08100e]/95 px-4 py-3">
-            <button className="grid h-9 w-9 flex-none place-items-center rounded-full border border-lime-300 text-xs text-lime-300" onClick={() => { const video = videoRef.current; if (!video) return; if (video.paused) { video.play().catch(() => {}) } else { video.pause() } }}>{playing ? '❚❚' : '▶'}</button>
-            <strong>{formatTime(time)}</strong>
-            <span>/</span>
-            <b>{formatTime(duration)}</b>
-            <label className="ml-auto inline-flex cursor-pointer select-none items-center gap-2 text-xs text-slate-300 [&_input]:accent-lime-300"><input type="checkbox" checked={showHeat} onChange={(event) => setShowHeat(event.target.checked)} />Calor superpuesto</label>
-          </div>
-          <div className="relative px-4 pb-2 pt-3 [&_input]:w-full [&_input]:accent-lime-300">
-            <input type="range" min="0" max={Math.max(1, duration)} step="0.1" value={Math.min(time, duration)} onChange={(event) => seek(Number(event.target.value))} />
-            {events.map((event, index) => (
-              <button key={`${event.t}-${index}`} className="absolute top-1 h-1.5 w-1.5 -translate-x-1/2 rounded-full border border-orange-400 bg-orange-400 p-0" style={{ left: `${Math.min(100, event.t / Math.max(1, duration) * 100)}%` }} title={`${event.gondola_name} · ${formatTime(event.t)}`} onClick={() => seekToEvent(event)} />
-            ))}
-          </div>
-          <small className="block px-4 pb-3 text-[10px] text-slate-500">Overlay fijo: la cámara estática mantiene la proyección alineada durante toda la reproducción.</small>
+    <section>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <span className="font-[ui-monospace,monospace] text-[10px] font-semibold tracking-[.17em] text-[#ff6b3d]">VIDEO INTERACTIVO</span>
+          <h2 className="mt-[9px] text-[clamp(32px,4vw,52px)] tracking-[-.045em] text-[#151323]">Analitica sobre el video real</h2>
         </div>
-        <aside className="min-h-52 rounded-2xl border border-teal-950 bg-[#0a1310] p-4">
-          <div className="mb-3 flex items-baseline justify-between [&_b]:font-mono [&_b]:text-xl [&_b]:font-semibold [&_b]:text-orange-400">
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-teal-300">FLUJO DE INTERACCIÓN</span>
-            <b>{events.length} eventos</b>
+        <div className="flex flex-wrap items-center gap-2" role="tablist">
+          {VIEW_MODES.map(([value, label]) => (
+            <button key={value} role="tab" aria-selected={viewMode === value} className={`rounded-full border px-4 py-2 text-[11px] font-bold transition ${viewMode === value ? 'border-[#ff6b3d] bg-[#ff6b3d] text-white' : 'border-[#e5e7ee] bg-white text-[#3f4858] hover:border-[#ff6b3d]'}`} onClick={() => setViewMode(value)}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid overflow-hidden rounded-lg border border-[#e5e7ee] bg-[#05070a] shadow-[0_30px_90px_-45px_rgba(20,27,36,.55)] xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0">
+        <div className="relative mx-auto max-h-[72vh] bg-black">
+          <video ref={videoRef} src={videoUrl(analysis.id)} playsInline className="block h-auto max-h-[72vh] w-full bg-black object-contain" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
+          {viewMode === 'heatmap' && !(result.frame_detections || []).length && heatmapSrc && box && <img src={artifactUrl(analysis.id, heatmapSrc)} alt="Densidad acumulada de movimiento sobre la camara" className="pointer-events-none absolute object-fill" style={{ left: box.x, top: box.y, width: box.width, height: box.height }} />}
+          <canvas ref={canvasRef} className="pointer-events-none absolute inset-0" />
+        </div>
+
+        {viewMode === 'heatmap' ? (
+          <div className="text-white">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#101722] p-4">
+              <span className="text-[11px] text-white/60">Mapa de calor en vivo · corre el video y se acumulan las zonas calientes (interacción) y frías (tránsito)</span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 text-[10px] text-white/80">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#ff6b3d]" />Zona caliente
+                  <span className="ml-2 inline-block h-2.5 w-2.5 rounded-full bg-[#42aac9]" />Zona fría
+                </div>
+                {zones.length > 0 && (
+                  <button className="text-[11px] font-bold text-[#ff6b3d] underline underline-offset-2" onClick={() => setShowZoneBoundaries((value) => !value)}>
+                    {showZoneBoundaries ? 'Ocultar' : 'Mostrar'} limites de gondola
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="grid gap-3 bg-[#101722] p-4 text-white md:grid-cols-[auto_1fr_auto_auto] md:items-center">
+              <div className="flex items-center gap-3">
+                <button className="grid h-10 w-10 place-items-center rounded-full border border-[#ff6b3d] bg-[#ff6b3d] text-[13px] font-bold text-white" onClick={() => { const video = videoRef.current; if (!video) return; video.paused ? video.play().catch(() => {}) : video.pause() }}>{playing ? 'II' : '▶'}</button>
+                <span className="font-[ui-monospace,monospace] text-[12px]">{formatTime(time)} / {formatTime(duration)}</span>
+              </div>
+              <input className="w-full accent-[#ff6b3d]" type="range" min="0" max={Math.max(1, duration)} step="0.1" value={Math.min(time, duration)} onChange={(event) => seek(Number(event.target.value))} />
+              <label className="flex items-center gap-2 text-[11px] text-white/75">Opacidad<input className="w-28 accent-[#ff6b3d]" type="range" min="0.15" max="0.9" step="0.05" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /></label>
+              <label className="flex items-center gap-2 text-[11px] text-white/75"><input className="accent-[#ff6b3d]" type="checkbox" checked={showLabels} onChange={(event) => setShowLabels(event.target.checked)} />Etiquetas</label>
+            </div>
           </div>
-          {histogram && histogram.buckets.some((bucket) => bucket.count > 0)
-            ? <div className="flex h-20 items-end gap-1 border-b border-teal-950 pb-4">{histogram.buckets.map((bucket) => (
-              <div key={bucket.index} className="flex h-full flex-1 flex-col items-center justify-end gap-1 [&_i]:block [&_i]:min-h-[3px] [&_i]:w-full [&_i]:rounded-t [&_i]:bg-gradient-to-b [&_i]:from-orange-400 [&_i]:to-orange-900 [&_small]:rotate-[-40deg] [&_small]:whitespace-nowrap [&_small]:font-mono [&_small]:text-[7px] [&_small]:font-medium [&_small]:text-slate-500" title={`${formatTime(bucket.start)}–${formatTime(bucket.end)} · ${bucket.count} evento${bucket.count === 1 ? '' : 's'}`}>
-                <i style={{ height: `${Math.max(4, bucket.count / maxCount * 100)}%` }} />
-                <small>{formatTime(bucket.start)}</small>
-              </div>))}</div>
-            : <p className="text-xs leading-6 text-slate-500">Sin eventos de interacción inferidos en este video.</p>}
-          <div className="mt-4 max-h-60 overflow-hidden">
-            {events.length > 0
-              ? <div className="grid max-h-60 gap-1 overflow-y-auto pr-1">{[...events].reverse().map((event, index) => (
-                <button className="flex w-full items-center gap-3 rounded-lg border border-teal-950 bg-[#0d1916] px-3 py-2 text-left text-xs text-slate-200 hover:border-orange-400 hover:bg-orange-400/10 [&_b]:font-mono [&_b]:text-xs [&_b]:text-orange-400 [&_span]:flex-1 [&_i]:not-italic [&_i]:text-slate-500" key={`${event.t}-${index}`} onClick={() => seekToEvent(event)}>
-                  <b>{formatTime(event.t)}</b>
-                  <span>{event.gondola_name}</span>
-                  <i>→</i>
-                </button>))}</div>
-              : <p className="text-xs leading-6 text-slate-500">Lista de eventos vacía: se completa al inferir interacciones de proximidad, velocidad y tiempo frente a las góndolas.</p>}
+        ) : (
+          <div className="grid gap-3 border-t border-white/10 bg-[#101722] p-4 text-white md:grid-cols-[auto_1fr_auto_auto] md:items-center">
+            <div className="flex items-center gap-3">
+              <button className="grid h-10 w-10 place-items-center rounded-full border border-[#ff6b3d] bg-[#ff6b3d] text-[13px] font-bold text-white" onClick={() => { const video = videoRef.current; if (!video) return; video.paused ? video.play().catch(() => {}) : video.pause() }}>{playing ? 'II' : '▶'}</button>
+              <span className="font-[ui-monospace,monospace] text-[12px]">{formatTime(time)} / {formatTime(duration)}</span>
+            </div>
+            <input className="w-full accent-[#ff6b3d]" type="range" min="0" max={Math.max(1, duration)} step="0.1" value={Math.min(time, duration)} onChange={(event) => seek(Number(event.target.value))} />
+            <label className="flex items-center gap-2 text-[11px] text-white/75">Opacidad<input className="w-28 accent-[#ff6b3d]" type="range" min="0.15" max="0.9" step="0.05" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /></label>
+            <label className="flex items-center gap-2 text-[11px] text-white/75"><input className="accent-[#ff6b3d]" type="checkbox" checked={showLabels} onChange={(event) => setShowLabels(event.target.checked)} />Etiquetas</label>
           </div>
+        )}
+        </div>
+
+        <aside className="border-t border-white/10 bg-white p-4 xl:border-l xl:border-t-0">
+          <div className="mb-5">
+            <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-[#7d8392]">Metricas principales</h3>
+            <div className="grid grid-cols-2 gap-2">
+              <Metric icon={<Users size={18} />} label="Personas detectadas" value={liveMetrics.people} />
+              <Metric icon={<Clock size={18} />} label="Permanencia promedio" value={`${liveMetrics.avgDwell.toFixed(1)} s`} />
+              <Metric icon={<Flame size={18} />} label="Zonas calientes" value={liveMetrics.hotZones} />
+              <Metric icon={<MessageCircle size={18} />} label="Interacciones" value={liveMetrics.interactions} />
+            </div>
+          </div>
+
+          {findings.length > 0 && (
+            <div className="mb-5 border-t border-[#e5e7ee] pt-4">
+              <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-[#7d8392]">Hallazgos clave</h3>
+              <ul className="grid gap-2">
+                {findings.slice(0, 4).map((finding, index) => (
+                  <li key={`${finding.title}-${index}`} className="flex items-start gap-2 text-xs leading-snug text-[#3f4858]">
+                    <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: findingDotColor[finding.type] || '#ff6b3d' }} />
+                    <span>{finding.title}</span>
+                  </li>
+                ))}
+              </ul>
+              <a href="#hallazgos" className="mt-3 inline-block text-[11px] font-bold text-[#ff6b3d] hover:underline">Ver recomendaciones →</a>
+            </div>
+          )}
+
+          <div className="mb-4 flex items-start justify-between gap-3 border-t border-[#e5e7ee] pt-4">
+            <div>
+              <h3 className="text-lg font-black text-[#151323]">Eventos del video</h3>
+              <p className="mt-1 text-xs text-[#7d8392]">Salta al segundo exacto detectado por el analisis.</p>
+            </div>
+            <b className="rounded-full bg-[#fff1eb] px-3 py-1 text-[11px] text-[#ff6b3d]">{pickupEvents.length} pick-ups</b>
+          </div>
+          <div className="mb-4 grid grid-cols-3 gap-1">
+            {['all', 'pickup', 'interaction'].map((value) => <button key={value} className={`rounded-md px-2 py-2 text-[10px] font-bold ${eventFilter === value ? 'bg-[#1f6feb] text-white' : 'bg-[#f6f6f4] text-[#7d8392]'}`} onClick={() => setEventFilter(value)}>{value === 'all' ? 'Todos' : value === 'pickup' ? 'Pick-ups' : 'Interacciones'}</button>)}
+          </div>
+          {visibleEvents.length ? (
+            <div className="grid max-h-[360px] gap-2 overflow-y-auto pr-1">
+              {visibleEvents.map((event, index) => {
+                const isPickup = pickupEvents.includes(event)
+                return (
+                  <button key={`${event.t}-${event.track_id}-${index}`} className="rounded-lg border border-[#e5e7ee] bg-white p-3 text-left transition hover:border-[#ff6b3d]" onClick={() => jumpToEvent(event)}>
+                    <div className="flex items-center justify-between gap-2">
+                      <b className={`font-[ui-monospace,monospace] text-sm ${isPickup ? 'text-[#ff6b3d]' : 'text-[#1f6feb]'}`}>{formatTime(event.t || 0)}</b>
+                      <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${isPickup ? 'bg-[#fff1eb] text-[#ff6b3d]' : 'bg-[#eef5ff] text-[#1f6feb]'}`}>{isPickup ? 'Pick-up' : 'Interaccion'}</span>
+                    </div>
+                    <p className="mt-2 text-xs text-[#151323]">{event.product || event.gondola_name || `Track ${event.track_id}`}</p>
+                    {typeof event.row !== 'undefined' && typeof event.column !== 'undefined' && <p className="mt-1 text-[11px] text-[#7d8392]">Nivel {event.row + 1} · Seccion {event.column + 1}</p>}
+                  </button>
+                )
+              })}
+            </div>
+          ) : <p className="rounded-lg border border-dashed border-[#e5e7ee] bg-[#f6f6f4] p-4 text-sm text-[#7d8392]">Este analisis no reporto eventos de pick-up o interaccion.</p>}
         </aside>
       </div>
     </section>
+  )
+}
+
+function Metric({ icon, label, value }) {
+  return (
+    <article className="flex items-center gap-2 rounded-lg border border-[#e5e7ee] bg-white p-3">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#fff1eb] text-[#ff5b12]">{icon}</span>
+      <span className="min-w-0">
+        <b className="block truncate text-lg font-black text-[#151323]">{value}</b>
+        <span className="block text-[10px] font-bold leading-tight text-[#7d8392]">{label}</span>
+      </span>
+    </article>
   )
 }
