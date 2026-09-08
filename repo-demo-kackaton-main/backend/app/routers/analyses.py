@@ -35,7 +35,7 @@ router = APIRouter(
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 RESULT_DIR = DATA_DIR / "results"
-MAX_VIDEO_DURATION_SECONDS = 60
+MAX_VIDEO_DURATION_SECONDS = 120
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 RESULT_DIR.mkdir(parents=True, exist_ok=True)

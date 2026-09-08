@@ -86,7 +86,7 @@ def test_failed_state_exposes_safe_error(client, state):
     assert "OpenCV" in response.json()["message"]
 
 
-def test_create_analysis_rejects_videos_longer_than_60_seconds(client, state, monkeypatch):
+def test_create_analysis_rejects_videos_longer_than_120_seconds(client, state, monkeypatch):
     import app.routers.analyses as analyses_router
 
     set_user(state, 1)
@@ -100,7 +100,7 @@ def test_create_analysis_rejects_videos_longer_than_60_seconds(client, state, mo
     monkeypatch.setattr(
         analyses_router,
         "get_video_duration_seconds",
-        lambda path: 61.0,
+        lambda path: 121.0,
     )
     monkeypatch.setattr(
         analyses_router.threading,
@@ -121,7 +121,7 @@ def test_create_analysis_rejects_videos_longer_than_60_seconds(client, state, mo
     )
 
     assert response.status_code == 400
-    assert "60 segundos" in response.json()["detail"]
+    assert "120 segundos" in response.json()["detail"]
     assert started is False
 
 

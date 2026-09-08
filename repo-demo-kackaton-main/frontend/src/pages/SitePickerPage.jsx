@@ -28,6 +28,7 @@ import iconoCamara from '../assets/images/icono-camara.png'
 import iconoUbicacion1 from '../assets/images/icono-ubicacion1.png'
 
 import { useApp } from '../context/AppProvider'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 
 /* =========================================================
    FORMULARIO INICIAL
@@ -148,6 +149,7 @@ export default function SitePickerPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
+  const [siteToDelete, setSiteToDelete] = useState(null)
 
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -396,7 +398,7 @@ export default function SitePickerPage() {
      ELIMINAR SEDE
   ========================================================= */
 
-  const removeSite = async (event, site) => {
+  const removeSite = (event, site) => {
     event.preventDefault()
     event.stopPropagation()
 
@@ -408,20 +410,18 @@ export default function SitePickerPage() {
     }
 
     if (deletingId !== null) return
+    setSiteToDelete(site)
+  }
 
-    const confirmation = window.confirm(
-      `¿Seguro que deseas eliminar la sede "${
-        site.name || 'Sin nombre'
-      }"?`
-    )
-
-    if (!confirmation) return
+  const confirmRemoveSite = async () => {
+    if (!siteToDelete) return
 
     try {
       setError('')
-      setDeletingId(site.id)
+      setDeletingId(siteToDelete.id)
 
-      await deleteSite(site)
+      await deleteSite(siteToDelete)
+      setSiteToDelete(null)
     } catch (requestError) {
       console.error(
         'Error eliminando sede:',
@@ -460,7 +460,18 @@ export default function SitePickerPage() {
           pointer-events-none
           absolute
           inset-0
-          bg-[linear-gradient(180deg,#02060b_0%,#030911_22%,#04101b_40%,#061728_62%,#061a2e_78%,#030d18_100%)]
+          bg-[linear-gradient(180deg,#02060b_0%,#030911_30%,#061728_50%,#f7fbff_50%,#ffffff_100%)]
+        "
+      />
+
+      <div
+        className="
+          pointer-events-none
+          absolute
+          inset-x-0
+          top-1/2
+          bottom-0
+          bg-[radial-gradient(circle_at_14%_12%,rgba(37,170,255,.10),transparent_24%),linear-gradient(180deg,#f7fbff_0%,#ffffff_100%)]
         "
       />
 
@@ -753,67 +764,19 @@ export default function SitePickerPage() {
               "
             />
 
-            <p
-              className="
-                mb-1
-                text-[8px]
-                font-black
-                leading-none
-                text-[#ff681e]
-
-                sm:text-[11px]
-                lg:text-[12px]
-              "
-            >
-              Mis sedes
-            </p>
-
-            <h1
-              className="
-                max-w-[180px]
-                font-black
-                tracking-[-0.045em]
-
-                min-[390px]:max-w-[200px]
-                sm:max-w-[300px]
-                lg:max-w-[365px]
-              "
-            >
-              <span
-                className="
-                  block
-                  text-[19px]
-                  leading-[.98]
-                  text-white
-
-                  min-[390px]:text-[21px]
-                  sm:text-[28px]
-
-                  lg:whitespace-nowrap
-                  lg:text-[clamp(29px,2.55vw,40px)]
-                "
-              >
-                Todas tus sedes,
+            <div className="flex items-end gap-3 sm:gap-4">
+              <span className="block text-[54px] font-black leading-[.78] text-[#ff8b3a] sm:text-[74px] lg:text-[86px]">
+                02
               </span>
-
-              <span
-                className="
-                  mt-[2px]
-                  block
-                  text-[19px]
-                  leading-[.98]
-                  text-[#ff681e]
-
-                  min-[390px]:text-[21px]
-                  sm:text-[28px]
-
-                  lg:whitespace-nowrap
-                  lg:text-[clamp(29px,2.55vw,40px)]
-                "
-              >
-                en un solo lugar.
-              </span>
-            </h1>
+              <div className="min-w-0 pb-1">
+                <p className="mb-1 text-[9px] font-black uppercase tracking-[.24em] text-[#9fb2c4] sm:text-[11px]">
+                  Paso 2
+                </p>
+                <h1 className="text-[36px] font-black leading-[.86] text-white sm:text-[52px] lg:text-[62px]">
+                  Sedes
+                </h1>
+              </div>
+            </div>
 
             <p
               className="
@@ -838,7 +801,7 @@ export default function SitePickerPage() {
                 lg:leading-[19px]
               "
             >
-              Administra, analiza y potencia cada espacio de tu negocio.
+              Selecciona la sede que vas a analizar, revisa su historial y reutiliza la configuracion guardada para nuevos videos.
             </p>
           </div>
 
@@ -912,46 +875,42 @@ export default function SitePickerPage() {
               row-start-2
               -mt-7
               overflow-hidden
-              rounded-[14px]
+              rounded-[22px]
               border
-              border-[#26a9ff]
-              bg-white
-              px-[2px]
-              py-1
+              border-white/70
+              bg-white/95
+              p-2
 
-              shadow-[0_0_10px_rgba(38,169,255,.85),0_0_24px_rgba(0,130,255,.5),0_18px_45px_-28px_rgba(0,91,180,.55)]
+              shadow-[0_0_0_1px_rgba(38,169,255,.55),0_0_22px_rgba(38,169,255,.80),0_26px_70px_-34px_rgba(0,91,180,.75)]
+              backdrop-blur
 
               min-[390px]:-mt-6
 
               sm:-mt-1
-              sm:rounded-[18px]
-              sm:px-1
-              sm:py-2
+              sm:rounded-[26px]
+              sm:p-3
 
               lg:col-auto
               lg:row-auto
               lg:order-2
               lg:mt-2
-              lg:rounded-[20px]
-              lg:px-3
-              lg:py-3
+              lg:rounded-[28px]
             "
           >
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(17,81,168,.035),transparent_58%)]" />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(38,169,255,.18),transparent_30%),linear-gradient(135deg,rgba(255,255,255,.98),rgba(239,248,255,.96))]" />
+            <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-white" />
 
-            <div className="relative grid grid-cols-3">
+            <div className="relative grid grid-cols-3 gap-1.5 sm:gap-2.5">
               <TopMetric
                 image={iconoUbicacion1}
                 value={currentSites.length}
                 label="Sedes registradas"
-                border
               />
 
               <TopMetric
                 image={iconoCamara}
                 value={totalCameras}
                 label="Cámaras en total"
-                border
               />
 
               <TopMetric
@@ -1480,6 +1439,16 @@ export default function SitePickerPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(siteToDelete)}
+        title="Eliminar sede"
+        message={`Se eliminara "${siteToDelete?.name || 'esta sede'}" junto con su configuracion y analisis asociados.`}
+        confirmLabel="Eliminar sede"
+        loading={deletingId === siteToDelete?.id}
+        onCancel={() => setSiteToDelete(null)}
+        onConfirm={confirmRemoveSite}
+      />
     </section>
   )
 }
@@ -1848,51 +1817,25 @@ function TopMetric({
   image,
   value,
   label,
-  border = false,
 }) {
   return (
     <div
-      className={`
-        flex
-        min-h-[52px]
-        min-w-0
-        items-center
-        justify-center
-        gap-1
-        px-1
-
-        min-[390px]:gap-2
-        min-[390px]:px-2
-
-        sm:min-h-[70px]
-        sm:gap-3
-        sm:px-3
-
-        lg:min-h-[72px]
-        lg:gap-4
-        lg:px-4
-
-        ${
-          border
-            ? 'border-r border-[#d6e0ea]'
-            : ''
-        }
-      `}
+      className="flex min-h-[58px] min-w-0 items-center justify-center gap-2 rounded-[16px] border border-[#d8ebfa] bg-white px-2 shadow-[inset_0_1px_0_rgba(255,255,255,.95),0_14px_26px_-22px_rgba(0,73,145,.55)] sm:min-h-[78px] sm:gap-3 sm:rounded-[20px] sm:px-3 lg:min-h-[82px] lg:gap-4 lg:px-4"
     >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center min-[390px]:h-9 min-[390px]:w-9 sm:h-11 sm:w-11 lg:h-[58px] lg:w-[58px]">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#eff8ff,#ffffff)] shadow-[0_10px_24px_-18px_rgba(0,112,255,.85)] min-[390px]:h-10 min-[390px]:w-10 sm:h-[52px] sm:w-[52px] lg:h-[62px] lg:w-[62px]">
         <img
           src={image}
           alt=""
-          className="h-full w-full object-contain drop-shadow-[0_4px_7px_rgba(0,0,0,.12)]"
+          className="h-[82%] w-[82%] object-contain drop-shadow-[0_7px_10px_rgba(0,68,130,.18)]"
         />
       </div>
 
       <div className="min-w-0">
-        <strong className="block text-[14px] font-black leading-none text-black min-[390px]:text-[16px] sm:text-[20px] lg:text-[26px]">
+        <strong className="block text-[18px] font-black leading-none text-[#061327] min-[390px]:text-[20px] sm:text-[28px] lg:text-[32px]">
           {value}
         </strong>
 
-        <span className="mt-1 block max-w-[48px] text-[4.5px] font-black leading-[6px] text-black min-[390px]:max-w-[55px] min-[390px]:text-[5px] sm:max-w-[75px] sm:text-[7px] sm:leading-[9px] lg:max-w-none lg:whitespace-nowrap lg:text-[8px]">
+        <span className="mt-1 block max-w-[56px] text-[5.5px] font-black leading-[7px] text-[#10243a] min-[390px]:max-w-[65px] min-[390px]:text-[6px] sm:max-w-[90px] sm:text-[8px] sm:leading-[10px] lg:max-w-none lg:whitespace-nowrap lg:text-[9px]">
           {label}
         </span>
       </div>
