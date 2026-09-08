@@ -5,7 +5,7 @@ zone-derived metrics (hot zones, cards, recommendations) keep working.
 These tests cover the per-gondola rectangle (inflation, rotation, ids) and the
 fast/advanced fallbacks.
 """
-from app.cv.pipeline import _auto_fast_zones, _auto_gondola_zones, _fast_zones
+from app.cv.pipeline import _auto_fast_zones, _auto_gondola_zones, _fast_process_configuration, _fast_zones
 from app.cv.zones import compute_zone_metrics
 
 
@@ -56,6 +56,32 @@ def test_fast_scales_margins_per_axis() -> None:
     assert round(max(xs), 3) == 7.0
     assert round(min(zs), 3) == -3.0
     assert round(max(zs), 3) == 10.0
+
+
+def test_fast_process_scales_interaction_thresholds_to_pixels() -> None:
+    config = {
+        "version": 1,
+        "floor": {"width": 10.0, "depth": 5.0},
+        "camera": {"name": "Camara", "calibration_status": "uncalibrated"},
+        "gondolas": [gondola(x=1.0, z=1.0, width=2.0, depth=1.0)],
+        "thresholds": {
+            "approach_m": 1.5,
+            "engaged_m": 0.8,
+            "interaction_seconds": 4.0,
+            "pickup_reach_m": 0.5,
+            "pickup_min_seconds": 0.6,
+            "max_speed_m_s": 1.2,
+        },
+    }
+    process_config = _fast_process_configuration(config, width=1000, height=500)
+    thresholds = process_config["thresholds"]
+
+    assert thresholds["approach_m"] == 150.0
+    assert thresholds["engaged_m"] == 80.0
+    assert thresholds["pickup_reach_m"] == 50.0
+    assert thresholds["max_speed_m_s"] == 120.0
+    assert thresholds["interaction_seconds"] == 4.0
+    assert thresholds["pickup_min_seconds"] == 0.6
 
 
 def test_compute_zone_metrics_preserves_auto_source() -> None:

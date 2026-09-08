@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import cv2
 from fastapi import (
     APIRouter,
     Depends,
@@ -34,6 +35,7 @@ router = APIRouter(
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 RESULT_DIR = DATA_DIR / "results"
+MAX_VIDEO_DURATION_SECONDS = 60
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 RESULT_DIR.mkdir(parents=True, exist_ok=True)
@@ -317,6 +319,29 @@ def average_dwell(
     )
 
 
+def get_video_duration_seconds(
+    video_path: Path,
+) -> float:
+    capture = cv2.VideoCapture(str(video_path))
+
+    try:
+        fps = capture.get(cv2.CAP_PROP_FPS)
+        frame_count = capture.get(cv2.CAP_PROP_FRAME_COUNT)
+    finally:
+        capture.release()
+
+    if fps <= 0 or frame_count <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No se pudo leer la duracion del video. "
+                "Carga un MP4 valido."
+            ),
+        )
+
+    return frame_count / fps
+
+
 # =========================================================
 # CREAR ANÁLISIS
 # =========================================================
@@ -393,6 +418,29 @@ def create_analysis(
         raise HTTPException(
             status_code=400,
             detail="El archivo está vacío",
+        )
+
+    try:
+        duration_seconds = get_video_duration_seconds(
+            video_path
+        )
+    except HTTPException:
+        video_path.unlink(
+            missing_ok=True
+        )
+        raise
+
+    if duration_seconds > MAX_VIDEO_DURATION_SECONDS:
+        video_path.unlink(
+            missing_ok=True
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "El video no puede durar mas de "
+                f"{MAX_VIDEO_DURATION_SECONDS} segundos"
+            ),
         )
 
     # -----------------------------------------------------

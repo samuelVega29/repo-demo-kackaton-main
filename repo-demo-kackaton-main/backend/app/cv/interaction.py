@@ -15,7 +15,7 @@ class InteractionEngine:
 
     def __init__(self, configuration: dict) -> None:
         self.configuration = configuration
-        self.thresholds = configuration["thresholds"]
+        self.thresholds = self._normalize_thresholds(configuration.get("thresholds") or {})
         self.track_motion: dict[int, tuple[list[float], float]] = {}
         self.active: dict[int, dict] = {}
         self.last_timestamp = 0.0
@@ -44,6 +44,26 @@ class InteractionEngine:
             }
             for item in configuration["gondolas"]
         }
+
+    @staticmethod
+    def _normalize_thresholds(thresholds: dict) -> dict:
+        normalized = {
+            "approach_m": 1.5,
+            "engaged_m": 0.8,
+            "engaged_seconds": 1.2,
+            "interaction_seconds": 2.5,
+            "max_speed_m_s": 1.2,
+            "minimum_track_seconds": 1.0,
+            "pickup_reach_m": 0.65,
+            "pickup_min_seconds": 0.35,
+            "pickup_cooldown_s": None,
+        }
+        normalized.update({key: value for key, value in thresholds.items() if value is not None})
+        if "hand_reach_m" in thresholds and "pickup_reach_m" not in thresholds:
+            normalized["pickup_reach_m"] = thresholds["hand_reach_m"]
+        if "pick_min_seconds" in thresholds and "pickup_min_seconds" not in thresholds:
+            normalized["pickup_min_seconds"] = thresholds["pick_min_seconds"]
+        return normalized
 
     @staticmethod
     def _refine_row(detection: dict, frame_height: int) -> tuple[int, bool]:
@@ -126,7 +146,7 @@ class InteractionEngine:
             self._reset_hand(state)
         state["seconds"] += dt
         state_name = "APPROACH"
-        if distance <= self.thresholds["engaged_m"] and speed <= 1.2 and state["seconds"] >= self.thresholds["engaged_seconds"]:
+        if distance <= self.thresholds["engaged_m"] and speed <= self.thresholds["max_speed_m_s"] and state["seconds"] >= self.thresholds["engaged_seconds"]:
             state_name = "ENGAGED"
             if not state["engaged"] and state["engaged_since"] is None:
                 state["engaged_since"] = timestamp
