@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowRight, CheckCircle2, Eye, FileText, FileVideo, HelpCircle, Settings2, Store, UploadCloud, Wrench, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useApp } from '../context/AppProvider'
 import SiteFlowPage from '../components/flow/SiteFlowPage'
 import { artifactUrl, listAnalyses } from '../services/analyses'
@@ -34,12 +34,14 @@ const formatDuration = (seconds) => {
 export default function UploadPage() {
   const { file, preview, chooseFile, clearFile, inputRef, site } = useApp()
   const { siteId } = useParams()
+  const [searchParams] = useSearchParams()
   const [metadata, setMetadata] = useState(null)
   const [acceptedConfig, setAcceptedConfig] = useState(false)
   const [instructionsOpen, setInstructionsOpen] = useState(false)
   const [history, setHistory] = useState([])
   const [historyError, setHistoryError] = useState('')
   const configured = isSiteConfigured(site)
+  const reconfiguringCamera = searchParams.get('reconfigurar') === 'camara'
   const metricCalibrated = isMetricCalibrated(site)
   const calibrationLabel = calibrationStatusLabel(site)
   const gondolaCount = site?.configuration?.gondolas?.length || 0
@@ -52,9 +54,9 @@ export default function UploadPage() {
     : latestFrame
       ? `Previsualizacion tomada de ${latestFrameAnalysis.filename || 'un analisis anterior'}`
       : 'Sin previsualizacion disponible'
-  const mustReviewConfiguration = configured && !acceptedConfig
-  const nextPath = `/sedes/${siteId}/analisis/nuevo/siguiente`
-  const nextLabel = 'Continuar a zona'
+  const mustReviewConfiguration = configured && !acceptedConfig && !reconfiguringCamera
+  const nextPath = reconfiguringCamera ? `/sites/${siteId}/captura` : `/sedes/${siteId}/analisis/nuevo/siguiente`
+  const nextLabel = reconfiguringCamera ? 'Capturar frame' : 'Continuar a zona'
   const videoTooLong = metadata?.duration > MAX_VIDEO_DURATION_SECONDS
 
   useEffect(() => {
@@ -146,7 +148,7 @@ export default function UploadPage() {
                 onClick={() => document.getElementById('upload-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 type="button"
               >
-                {configured ? 'Revisar configuracion' : 'Sube tu video'}
+                {reconfiguringCamera ? 'Subir video de referencia' : configured ? 'Revisar configuracion' : 'Sube tu video'}
                 <ArrowDown size={18} strokeWidth={3} />
               </button>
               <button
@@ -214,8 +216,12 @@ export default function UploadPage() {
           <div className="rounded-lg border border-[#e5e7ee] bg-white p-5 shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)]">
             <div className="mb-4">
               <span className="text-xs font-black uppercase text-[#ff5b12]">Paso 1</span>
-              <h3 className="mt-1 text-xl font-black text-[#151323]">Paso 1: video de la camara</h3>
-              <p className="mt-1 text-sm font-semibold text-[#7d8392]">Usa un MP4 de maximo {MAX_VIDEO_DURATION_SECONDS} segundos. En el siguiente paso eliges el area y confirmas las gondolas.</p>
+              <h3 className="mt-1 text-xl font-black text-[#151323]">{reconfiguringCamera ? 'Video de referencia para recalibrar' : 'Paso 1: video de la camara'}</h3>
+              <p className="mt-1 text-sm font-semibold text-[#7d8392]">
+                {reconfiguringCamera
+                  ? `Sube un MP4 de maximo ${MAX_VIDEO_DURATION_SECONDS} segundos desde la camara actual. Con ese video capturas un nuevo frame y actualizas la calibracion.`
+                  : `Usa un MP4 de maximo ${MAX_VIDEO_DURATION_SECONDS} segundos. En el siguiente paso eliges el area y confirmas las gondolas.`}
+              </p>
             </div>
             <button
               className={`relative z-10 grid min-h-[240px] w-full place-items-center rounded-md border border-dashed p-8 text-center transition ${file ? 'border-[#ff5b12] bg-[#fff4ee]' : 'border-[#f5a782] bg-[#fffaf7] hover:border-[#ff5b12]'}`}
@@ -245,7 +251,9 @@ export default function UploadPage() {
             <FileVideo className="mb-3 text-[#ff5b12]" size={32} />
             <h3 className="text-lg font-black text-[#151323]">Siguiente: area y gondolas</h3>
             <p className="mt-2 text-sm font-semibold leading-6 text-[#7d8392]">
-              {configured
+              {reconfiguringCamera
+                ? 'Al continuar capturaras un frame nuevo. El plano guardado se mantiene para que solo ajustes lo necesario.'
+                : configured
                 ? 'Si la configuracion guardada coincide con esta camara, continua para revisar el area y analizar.'
                 : 'Despues de subir el video, captura un frame claro y guarda las gondolas de esta sede.'}
             </p>

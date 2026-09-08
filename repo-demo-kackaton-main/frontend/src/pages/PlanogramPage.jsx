@@ -35,7 +35,7 @@ export default function PlanogramPage() {
             <h3 className="text-xl font-black text-[#151323]">Vista 3D del plano</h3>
             <p className="mt-1 text-sm font-semibold text-[#7d8392]">Revisa la configuracion guardada de esta sede antes de analizar nuevos videos.</p>
           </div>
-          <Link className="inline-flex min-h-[40px] items-center justify-center rounded-md border border-[#e5e7ee] bg-white px-4 text-[13px] font-black text-[#151323] no-underline transition hover:-translate-y-px hover:border-[#ff5b12]" to={`/sites/${siteId}/captura`}>
+          <Link className="inline-flex min-h-[40px] items-center justify-center rounded-md border border-[#e5e7ee] bg-white px-4 text-[13px] font-black text-[#151323] no-underline transition hover:-translate-y-px hover:border-[#ff5b12]" to={`/sites/${siteId}/video?reconfigurar=camara`}>
             Volver a configurar camara
           </Link>
         </div>
@@ -43,7 +43,7 @@ export default function PlanogramPage() {
       </div>
       <FlowNav
         back={`/sites/${siteId}/calibracion`}
-        backLabel="Calibrar camara"
+        backLabel="Volver a calibracion"
         next={`/sedes/${siteId}`}
         nextLabel="Volver a la sede"
         nextDisabled={!hasGondolas}
