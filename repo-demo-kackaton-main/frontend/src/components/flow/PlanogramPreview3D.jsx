@@ -4,6 +4,14 @@ import { Canvas } from '@react-three/fiber'
 import { Grid, Line, OrbitControls, Text } from '@react-three/drei'
 import { ROWS as productRows, COLUMNS as productColumns } from '../../utils/constants'
 
+const CATEGORY_PALETTE = ['#d4ff70', '#61dec0', '#ff6b3d', '#7ea8ff', '#ff8bd1', '#ffd166', '#a78bfa', '#4dd0ff']
+
+export function categoryColor(id) {
+  let hash = 0
+  for (let index = 0; index < String(id).length; index += 1) hash = (hash * 31 + String(id).charCodeAt(index)) >>> 0
+  return CATEGORY_PALETTE[hash % CATEGORY_PALETTE.length]
+}
+
 function buildFacadeTexture(products, flip) {
   const W = 600
   const H = 300
@@ -48,6 +56,7 @@ function PreviewShelf({ item, floor, selected, onSelect }) {
   const x = item.x + item.width / 2 - floor.width / 2
   const z = item.z + item.depth / 2 - floor.depth / 2
   const accent = selected ? '#d9ff6b' : '#3c665c'
+  const category = categoryColor(item.name || item.id)
   const rotationY = -THREE.MathUtils.degToRad(item.rotation || 0)
   const facade = useMemo(() => {
     if (!selected) return null
@@ -58,7 +67,7 @@ function PreviewShelf({ item, floor, selected, onSelect }) {
     <group position={[x, 0, z]} rotation={[0, rotationY, 0]} onClick={(event) => { event.stopPropagation(); onSelect(item.id) }}>
       <mesh position={[0, 0.76, 0]} castShadow>
         <boxGeometry args={[item.width, 1.45, item.depth]} />
-        <meshStandardMaterial color="#18312b" emissive={accent} emissiveIntensity={selected ? 0.35 : 0.15} />
+        <meshStandardMaterial color={category} emissive={accent} emissiveIntensity={selected ? 0.35 : 0.15} />
       </mesh>
       {[0.25, 0.73, 1.2].map((height) => <mesh position={[0, height, 0]} key={height}><boxGeometry args={[item.width + 0.08, 0.05, item.depth + 0.1]} /><meshStandardMaterial color={accent} /></mesh>)}
       <Text position={[0, 1.62, 0]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.16} color="#e1ece7">{item.name}</Text>
