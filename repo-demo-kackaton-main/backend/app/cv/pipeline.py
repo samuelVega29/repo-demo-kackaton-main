@@ -204,6 +204,52 @@ def _auto_fast_zones(width: int, height: int, rows: int = FAST_ZONE_ROWS, cols: 
     return zones
 
 
+def _auto_gondola_zones(gondolas: list[dict], margin_x: float = 1.5, margin_z: float | None = None) -> list[dict]:
+    """Builds one zone per gondola, centered on its footprint and inflated by a margin.
+
+    The gondola ``x``/``z`` are the top-left corner of its footprint. Rotated gondolas use
+    the same rotation convention as ``SpatialEngine.local_offset`` (degrees, clockwise), so
+    the zone matches exactly what the interaction logic considers "near the gondola". The
+    margin can differ per axis (fast mode rescales pixels with different sx/sz factors).
+    """
+    zone_margin_z = margin_z if margin_z is not None else margin_x
+    zones = []
+    for gondola in gondolas:
+        gx = float(gondola["x"])
+        gz = float(gondola["z"])
+        width = float(gondola.get("width", 1.0) or 1.0)
+        depth = float(gondola.get("depth", 1.0) or 1.0)
+        rotation = float(gondola.get("rotation") or 0.0)
+        cx = gx + width / 2.0
+        cz = gz + depth / 2.0
+        half_w = width / 2.0 + margin_x
+        half_d = depth / 2.0 + zone_margin_z
+        theta = math.radians(rotation)
+        cos_t, sin_t = math.cos(theta), math.sin(theta)
+        corners = []
+        for u, v in ((-half_w, -half_d), (half_w, -half_d), (half_w, half_d), (-half_w, half_d)):
+            dx = u * cos_t - v * sin_t
+            dz = u * sin_t + v * cos_t
+            corners.append([round(cx + dx, 3), round(cz + dz, 3)])
+        zones.append({
+            "id": f"zone-{gondola['id']}",
+            "name": gondola.get("name") or f"Zona de {gondola['id']}",
+            "polygon": corners,
+            "source": "auto_gondola",
+        })
+    return zones
+
+
+def _fast_zones(gondolas: list[dict], thresholds: dict, sx: float, sz: float, width: int, height: int) -> list[dict]:
+    """Auto zones for fast mode: one inflated rectangle per gondola when the site
+    has gondolas, otherwise the classic 3x3 grid.
+    """
+    if gondolas:
+        approach_m = float(thresholds.get("approach_m", 1.5) or 1.5)
+        return _auto_gondola_zones(gondolas, margin_x=approach_m * sx, margin_z=approach_m * sz)
+    return _auto_fast_zones(width, height)
+
+
 def _fast_process_configuration(configuration: dict, width: int, height: int) -> dict:
     """Pixel-space working config for fast mode (identity projection, no false calibration).
 
@@ -250,7 +296,7 @@ def _fast_process_configuration(configuration: dict, width: int, height: int) ->
             "calibration_status": "fast",
             "model_3d": None,
         },
-        "zones": _auto_fast_zones(width, height),
+        "zones": _fast_zones(gondolas, thresholds, sx, sz, width, height),
         "gondolas": gondolas,
         "thresholds": thresholds,
         "auto_zones": True,
@@ -408,6 +454,22 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
         advanced = mode == "advanced"
         process_config = configuration if advanced else _fast_process_configuration(configuration, width, height)
         output_config = configuration if advanced else _fast_output_configuration(process_config, width, height)
+        # Advanced mode without any configured zone would produce an empty zones list,
+        # silently zeroing every zone-derived metric (hot zones, recommendations...).
+        # Mirror fast mode: auto-create one zone per gondola when there are gondolas,
+        # falling back to a floor grid when the site has neither zones nor gondolas.
+        if advanced and not (process_config.get("zones") or []):
+            thresholds = configuration.get("thresholds") or {}
+            approach_m = float(thresholds.get("approach_m", 1.5) or 1.5)
+            floor = configuration.get("floor") or {}
+            auto_zones = _auto_gondola_zones(configuration.get("gondolas", []), margin_x=approach_m)
+            if not auto_zones:
+                auto_zones = _auto_fast_zones(
+                    float(floor.get("width", 12.0) or 12.0),
+                    float(floor.get("depth", 8.0) or 8.0),
+                )
+            process_config = {**configuration, "zones": auto_zones, "auto_zones": True}
+            output_config = process_config
         roi_pixels = _roi_to_pixel_polygon(roi, width, height) if roi else None
 
         update_analysis(analysis_id, stage="model", progress=5, message="Preparando detección y seguimiento (YOLO + ByteTrack)")
