@@ -84,7 +84,7 @@ export function AppProvider({ children }) {
     setJob(null)
     setSelectedId(null)
     setAnalysisArea(null)
-    navigate(`/sedes/${item.id}/analisis/entrada`)
+    navigate(`/sedes/${item.id}`)
   }, [navigate])
 
   const createSite = useCallback(async (values) => {

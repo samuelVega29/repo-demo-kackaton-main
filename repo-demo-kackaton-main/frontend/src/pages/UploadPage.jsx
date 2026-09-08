@@ -16,6 +16,8 @@ const uploadStep = {
   accent: 'video.',
 }
 
+const MAX_VIDEO_DURATION_SECONDS = 60
+
 const formatBytes = (bytes) => {
   if (!bytes) return ''
   const mb = bytes / 1048576
@@ -52,6 +54,7 @@ export default function UploadPage() {
   const mustReviewConfiguration = configured && !acceptedConfig
   const nextPath = `/sedes/${siteId}/analisis/nuevo/siguiente`
   const nextLabel = 'Continuar a zona'
+  const videoTooLong = metadata?.duration > MAX_VIDEO_DURATION_SECONDS
 
   useEffect(() => {
     setAcceptedConfig(false)
@@ -132,6 +135,11 @@ export default function UploadPage() {
                 <StatusPill icon={Store} active={gondolaCount > 0} label={`${gondolaCount} gondolas`} />
                 <StatusPill icon={CheckCircle2} active={configured} label={configured ? 'Pipeline listo' : 'Config pendiente'} />
               </div>
+              <div className="mt-5 grid gap-2 text-xs font-bold text-white/75 sm:grid-cols-3">
+                <FlowHint number="1" label="Sube video" />
+                <FlowHint number="2" label="Define area" />
+                <FlowHint number="3" label="Guarda y analiza" />
+              </div>
               <button
                 className="mt-7 inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full border border-[#ff8a4d]/40 bg-[#ff5b12] px-5 text-sm font-black text-white shadow-[0_0_26px_rgba(255,91,18,.45),0_18px_42px_-24px_rgba(255,91,18,.95)] transition hover:-translate-y-px hover:bg-[#e94d08]"
                 onClick={() => document.getElementById('upload-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
@@ -204,8 +212,9 @@ export default function UploadPage() {
           {!mustReviewConfiguration && (
           <div className="rounded-lg border border-[#e5e7ee] bg-white p-5 shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)]">
             <div className="mb-4">
-              <span className="text-xs font-black uppercase text-[#ff5b12]">Paso 2</span>
-              <h3 className="mt-1 text-xl font-black text-[#151323]">Sube el video del analisis</h3>
+              <span className="text-xs font-black uppercase text-[#ff5b12]">Paso 1</span>
+              <h3 className="mt-1 text-xl font-black text-[#151323]">Paso 1: video de la camara</h3>
+              <p className="mt-1 text-sm font-semibold text-[#7d8392]">Usa un MP4 de maximo {MAX_VIDEO_DURATION_SECONDS} segundos. En el siguiente paso eliges el area y confirmas las gondolas.</p>
             </div>
             <button
               className={`relative z-10 grid min-h-[240px] w-full place-items-center rounded-md border border-dashed p-8 text-center transition ${file ? 'border-[#ff5b12] bg-[#fff4ee]' : 'border-[#f5a782] bg-[#fffaf7] hover:border-[#ff5b12]'}`}
@@ -216,7 +225,7 @@ export default function UploadPage() {
               <span>
                 <b className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full border border-[#ff5b12] text-[#ff5b12]"><UploadCloud size={34} /></b>
                 <strong className="block text-xl font-black text-[#151323]">{file ? file.name : 'Arrastra tu video aqui'}</strong>
-                <small className="mt-2 block text-sm font-semibold text-[#7d8392]">{file ? 'Video listo para continuar' : 'o haz clic para seleccionar'}</small>
+                <small className="mt-2 block text-sm font-semibold text-[#7d8392]">{file ? `Maximo ${MAX_VIDEO_DURATION_SECONDS} segundos` : 'o haz clic para seleccionar'}</small>
               </span>
             </button>
           </div>
@@ -224,11 +233,11 @@ export default function UploadPage() {
 
           {!mustReviewConfiguration && <aside className="rounded-lg border border-[#e5e7ee] bg-white shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)] p-5">
             <FileVideo className="mb-3 text-[#ff5b12]" size={32} />
-            <h3 className="text-lg font-black text-[#151323]">Paso 3: confirmar y analizar</h3>
+            <h3 className="text-lg font-black text-[#151323]">Siguiente: area y gondolas</h3>
             <p className="mt-2 text-sm font-semibold leading-6 text-[#7d8392]">
               {configured
-                ? 'Esta sede ya tiene calibracion y gondolas guardadas. Sube un video nuevo y SCAPDER lo analizara con esa configuracion.'
-                : 'Primero sube un video, captura un frame claro y guarda la calibracion/gondolas de esta sede.'}
+                ? 'Si la configuracion guardada coincide con esta camara, continua para revisar el area y analizar.'
+                : 'Despues de subir el video, captura un frame claro y guarda las gondolas de esta sede.'}
             </p>
             <div className="mt-4 grid gap-2">
               <PipelineItem icon={Settings2} active={calibrationLabel === 'calibrated'} label="Calibracion de camara" value={calibrationLabel === 'calibrated' ? 'Guardada en esta sede' : 'Pendiente'} />
@@ -242,7 +251,18 @@ export default function UploadPage() {
                 <Data label="Formato" value={file.type || 'MP4'} />
                 {metadata?.duration ? <Data label="Duracion" value={formatDuration(metadata.duration)} /> : null}
                 {metadata?.width && metadata?.height ? <Data label="Resolucion" value={`${metadata.width} x ${metadata.height}`} /> : null}
-                <Link className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-md bg-[#ff5b12] px-4 text-[13px] font-black text-white no-underline transition hover:-translate-y-px hover:bg-[#e94d08] mt-4" to={nextPath}>{nextLabel} <ArrowRight size={16} /></Link>
+                {videoTooLong ? (
+                  <p className="rounded-md bg-[#fff1eb] px-4 py-3 text-sm font-bold text-[#b43b1d]">
+                    El video supera el limite de {MAX_VIDEO_DURATION_SECONDS} segundos. Selecciona un MP4 mas corto.
+                  </p>
+                ) : null}
+                <Link
+                  aria-disabled={videoTooLong}
+                  className={`inline-flex min-h-[42px] items-center justify-center gap-2 rounded-md px-4 text-[13px] font-black text-white no-underline transition mt-4 ${videoTooLong ? 'pointer-events-none cursor-not-allowed bg-[#d1d5db] opacity-60' : 'bg-[#ff5b12] hover:-translate-y-px hover:bg-[#e94d08]'}`}
+                  to={videoTooLong ? '#' : nextPath}
+                >
+                  {nextLabel} <ArrowRight size={16} />
+                </Link>
               </div>
             ) : (
               <p className="mt-4 text-sm font-semibold leading-6 text-[#7d8392]">Cuando selecciones un video, SCAPDER mostrara sus datos reales aqui.</p>
@@ -305,6 +325,15 @@ function StatusPill({ icon: Icon, active, label }) {
   return (
     <span className={`inline-flex min-h-[34px] items-center gap-2 rounded-full border px-3 ${active ? 'border-[#66d6ff]/35 bg-[#0e2a3d]/70 text-white' : 'border-white/10 bg-white/5 text-white/55'}`}>
       <Icon size={15} />
+      {label}
+    </span>
+  )
+}
+
+function FlowHint({ number, label }) {
+  return (
+    <span className="inline-flex min-h-[34px] items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3">
+      <b className="grid h-5 w-5 place-items-center rounded-full bg-[#ff5b12] text-[11px] text-white">{number}</b>
       {label}
     </span>
   )

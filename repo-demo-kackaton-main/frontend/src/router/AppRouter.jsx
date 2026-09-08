@@ -3,7 +3,6 @@ import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import RequireAuth from './RequireAuth'
 import AppLayout from '../layouts/AppLayout'
 import LoginPage from '../pages/LoginPage'
-import HomePage from '../pages/HomePage'
 import RetailersPage from '../pages/RetailersPage'
 import SitePickerPage from '../pages/SitePickerPage'
 import SiteDashboardPage from '../pages/SiteDashboardPage'
@@ -42,7 +41,6 @@ function SiteRouteGate({ resolve }) {
   return <Navigate to={resolve(site, siteId)} replace />
 }
 
-const analysisEntryRoute = (site, siteId) => `/sedes/${siteId}/analisis/nuevo`
 const uploadNextRoute = (site, siteId) => `/sedes/${siteId}/analisis/nuevo/area`
 
 export default function AppRouter() {
@@ -52,13 +50,9 @@ export default function AppRouter() {
       <Route element={<RequireAuth />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Navigate to="/empresas" replace />} />
-          <Route path="/inicio" element={<HomePage />} />
           <Route path="/empresas" element={<RetailersPage />} />
           <Route path="/empresas/:retailerId/sedes" element={<SitePickerPage />} />
-          <Route path="/retailers/:retailerId/sites" element={<SitePickerPage />} />
-          <Route path="/sites/:siteId" element={<SiteDashboardPage />} />
           <Route path="/sedes/:siteId" element={<SiteDashboardPage />} />
-          <Route path="/sedes/:siteId/analisis/entrada" element={<SiteRouteGate resolve={analysisEntryRoute} />} />
           <Route path="/sites/:siteId/video" element={<UploadPage />} />
           <Route path="/sedes/:siteId/analisis/nuevo" element={<UploadPage />} />
           <Route path="/sedes/:siteId/analisis/nuevo/siguiente" element={<SiteRouteGate resolve={uploadNextRoute} />} />

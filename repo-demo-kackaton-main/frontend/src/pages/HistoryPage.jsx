@@ -927,14 +927,14 @@ export default function HistoryPage() {
             navigate(
               siteId
                 ? `/sedes/${siteId}`
-                : '/inicio'
+                : '/empresas'
             )
           }
           className="mt-5 rounded-[12px] border border-[#1c5f8c] bg-[#002341] px-5 py-3 text-sm font-black text-white transition hover:border-[#ff641f] hover:text-[#ff641f]"
         >
           {siteId
             ? 'Volver a la sede'
-            : 'Volver a inicio'}
+            : 'Volver a empresas'}
         </button>
       </div>
     </section>
