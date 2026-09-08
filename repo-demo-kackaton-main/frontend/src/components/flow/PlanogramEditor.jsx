@@ -30,6 +30,13 @@ import { hexToRgba } from '../../utils/format'
 const GRID_SNAP = 0.25
 
 const ZONE_STATUS = {
+  none: { label: 'sin zona definida', dot: '', color: '#8aa39a' },
+  in: { label: 'dentro de zona', dot: '✅', color: '#d4ff70' },
+  partial: { label: 'parcialmente fuera de zona', dot: '⚠️', color: '#ffb454' },
+  out: { label: 'fuera de zona', dot: '⚠️', color: '#ff6b3d' },
+}
+
+const ZONE_STATUS = {
   none: {
     label: 'sin zona definida',
     dot: '',
