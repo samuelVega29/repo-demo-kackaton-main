@@ -1,10 +1,11 @@
-import { ArrowLeft, ArrowRight, Camera, CheckCircle2, Crosshair, Play, Save, ScanLine, Store } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Camera, CheckCircle2, Crosshair, Play, Save, ScanLine, Sparkles, Store } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppProvider'
 import SiteFlowPage from '../components/flow/SiteFlowPage'
 import PlanogramEditor from '../components/flow/PlanogramEditor'
 import { forwardHomography, projectFloor } from '../utils/homography'
+import { api } from '../services/client'
 
 const areaStep = {
   id: 'area',
@@ -13,6 +14,34 @@ const areaStep = {
   title: 'Prepara el',
   accent: 'analisis.',
   desc: 'Primero define que parte del video se analiza. Luego ubica las gondolas sobre el frame y ejecuta el analisis.',
+}
+
+const CONFIDENCE_CONFIG = {
+  alta: { color: '#177345', score: 100 },
+  media: { color: '#b26500', score: 60 },
+  baja: { color: '#b43b1d', score: 25 },
+}
+
+function ConfidencePanel({ result }) {
+  if (!result?.gondolas?.length) return null
+  const gondolas = result.gondolas
+  const scores = gondolas.map((g) => CONFIDENCE_CONFIG[g.confianza]?.score ?? 60)
+  const globalScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+
+  return (
+    <div className="mt-4 rounded-lg border border-[#e5e7ee] bg-[#fff4ee] p-4">
+      <span className="text-[10px] font-black uppercase tracking-widest text-[#ff5b12]">Sugerencia de IA aplicada</span>
+      <h4 className="text-sm font-black text-[#151323]">Claude detecto {gondolas.length} gondolas (acierto global: {globalScore}%)</h4>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {gondolas.map((g, i) => (
+          <span key={`${g.name}-${i}`} className="inline-flex items-center gap-1 rounded border border-[#e5e7ee] bg-white px-2 py-1 text-xs font-bold text-[#151323]">
+            <span className="h-2 w-2 rounded-full" style={{ background: CONFIDENCE_CONFIG[g.confianza]?.color || '#ff5b12' }} />
+            {g.name}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export default function AnalysisAreaPage() {
@@ -28,6 +57,36 @@ export default function AnalysisAreaPage() {
   const areaReady = mode === 'all' || points.length >= 4
   const configReady = hasGondolas && areaReady
   const canAnalyze = !running && configReady
+  const [layoutSuggesting, setLayoutSuggesting] = useState(false)
+  const [layoutMessage, setLayoutMessage] = useState('')
+  const [layoutResult, setLayoutResult] = useState(null)
+
+  const suggestLayoutAutomatically = async () => {
+    if (!file) {
+      setLayoutMessage('Error: no se encontro un video cargado.')
+      return
+    }
+    setLayoutSuggesting(true)
+    setLayoutMessage('')
+    setLayoutResult(null)
+    try {
+      const body = new FormData()
+      body.append('video', file, file.name || 'video.mp4')
+      const result = await api(`/api/sites/${siteId}/layout-suggestions`, { method: 'POST', body })
+      const coloredGondolas = (result.gondolas || []).map((g) => ({
+        ...g,
+        color: CONFIDENCE_CONFIG[g.confianza]?.color ?? '#b26500',
+      }))
+
+      updateConfiguration({ ...site.configuration, gondolas: coloredGondolas })
+      setLayoutResult({ ...result, gondolas: coloredGondolas })
+      setLayoutMessage(`Listo: Claude sugirio ${coloredGondolas.length} gondolas.`)
+    } catch (error) {
+      setLayoutMessage(`Error: ${error.message}`)
+    } finally {
+      setLayoutSuggesting(false)
+    }
+  }
 
   useEffect(() => {
     setAnalysisArea(mode === 'zone' ? points : null)
@@ -157,6 +216,10 @@ export default function AnalysisAreaPage() {
               site={site}
               updateConfiguration={updateConfiguration}
               saveConfiguration={saveConfiguration}
+              layoutSuggesting={layoutSuggesting}
+              layoutMessage={layoutMessage}
+              layoutResult={layoutResult}
+              onSuggestLayout={suggestLayoutAutomatically}
             />
           </div>
 
@@ -249,7 +312,7 @@ function AreaPanel({ addPoint, mode, points, preview, setMode, videoRef }) {
   )
 }
 
-function GondolasPanel({ captureFrame, frameCapture, mode, points, site, updateConfiguration, saveConfiguration }) {
+function GondolasPanel({ captureFrame, frameCapture, layoutMessage, layoutResult, layoutSuggesting, mode, onSuggestLayout, points, site, updateConfiguration, saveConfiguration }) {
   return (
     <section>
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -258,10 +321,17 @@ function GondolasPanel({ captureFrame, frameCapture, mode, points, site, updateC
           <h2 className="mt-1 text-3xl font-black leading-none text-[#151323]">Ubica las gondolas sobre el frame</h2>
           <p className="mt-2 text-sm font-semibold text-[#7d8392]">Anade, arrastra y ajusta cada gondola. Esta configuracion se reutiliza en futuros videos de la sede.</p>
         </div>
-        <button className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-md border border-[#ff5b12] bg-white px-4 text-[13px] font-black text-[#ff5b12] transition hover:-translate-y-px hover:bg-[#fff4ee]" onClick={captureFrame} type="button">
-          <Camera size={16} /> {frameCapture ? 'Recapturar frame' : 'Capturar frame'}
-        </button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-md bg-[#151323] px-4 text-[13px] font-black text-white transition hover:-translate-y-px hover:bg-[#29263d] disabled:opacity-50" onClick={onSuggestLayout} disabled={layoutSuggesting} type="button">
+            <Sparkles size={16} className="text-[#ff5b12]" /> {layoutSuggesting ? 'Analizando...' : 'Sugerir gondolas con IA'}
+          </button>
+          <button className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-md border border-[#ff5b12] bg-white px-4 text-[13px] font-black text-[#ff5b12] transition hover:-translate-y-px hover:bg-[#fff4ee]" onClick={captureFrame} type="button">
+            <Camera size={16} /> {frameCapture ? 'Recapturar frame' : 'Capturar frame'}
+          </button>
+        </div>
       </div>
+      {layoutMessage && <p className={`mt-3 text-xs font-bold ${layoutMessage.includes('Error') ? 'text-red-600' : 'text-[#177345]'}`}>{layoutMessage}</p>}
+      {layoutResult && <ConfidencePanel result={layoutResult} />}
       <div className="mt-4 rounded-md border border-[#d6e4f1] bg-[#f8fafc] px-4 py-3 text-sm font-semibold leading-6 text-[#64748b]">
         Usa el boton “+ Anadir gondola”, colocalas encima de los muebles reales y presiona “Guardar plano”. Luego vuelve al boton final para analizar.
       </div>
