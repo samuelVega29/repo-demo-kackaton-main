@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppProvider'
 import SiteFlowPage from '../components/flow/SiteFlowPage'
 import { artifactUrl, listAnalyses } from '../services/analyses'
-import { isSiteConfigured } from '../utils/siteConfiguration'
+import { calibrationStatusLabel, isMetricCalibrated, isSiteConfigured } from '../utils/siteConfiguration'
 import analisisRobot from '../assets/images/analisis_robot.png'
 
 
@@ -16,7 +16,7 @@ const uploadStep = {
   accent: 'video.',
 }
 
-const MAX_VIDEO_DURATION_SECONDS = 60
+const MAX_VIDEO_DURATION_SECONDS = 120
 
 const formatBytes = (bytes) => {
   if (!bytes) return ''
@@ -32,7 +32,7 @@ const formatDuration = (seconds) => {
 }
 
 export default function UploadPage() {
-  const { file, preview, chooseFile, inputRef, site } = useApp()
+  const { file, preview, chooseFile, clearFile, inputRef, site } = useApp()
   const { siteId } = useParams()
   const [metadata, setMetadata] = useState(null)
   const [acceptedConfig, setAcceptedConfig] = useState(false)
@@ -40,7 +40,8 @@ export default function UploadPage() {
   const [history, setHistory] = useState([])
   const [historyError, setHistoryError] = useState('')
   const configured = isSiteConfigured(site)
-  const calibrationLabel = site?.configuration?.camera?.calibration_status || 'lista'
+  const metricCalibrated = isMetricCalibrated(site)
+  const calibrationLabel = calibrationStatusLabel(site)
   const gondolaCount = site?.configuration?.gondolas?.length || 0
   const referenceFrame = site?.configuration?.reference_frame
   const latestFrameAnalysis = history.find((item) => item.result?.annotated_frames?.length)
@@ -129,9 +130,9 @@ export default function UploadPage() {
               <p className="mt-3 text-sm font-medium leading-6 text-white/70">
                 Selecciona la fuente y carga un video real de tu punto de venta para que Scapde, lo analice y genere insights de tus gondolas
               </p>
-              <p className="mt-3 text-sm leading-6 text-white/60">{site?.city || 'Sede'} - {site?.name || 'Punto de venta'} - Calibracion: <b className="text-white">{calibrationLabel}</b></p>
+              <p className="mt-3 text-sm leading-6 text-white/60">{site?.city || 'Sede'} - {site?.name || 'Punto de venta'} - Estado: <b className="text-white">{calibrationLabel}</b></p>
               <div className="mt-5 grid gap-2 text-xs font-bold text-white/75 sm:grid-cols-3">
-                <StatusPill icon={Settings2} active={calibrationLabel === 'calibrated'} label={calibrationLabel === 'calibrated' ? 'Camara lista' : 'Falta calibrar'} />
+                <StatusPill icon={Settings2} active={configured || metricCalibrated} label={metricCalibrated ? 'Camara calibrada' : configured ? 'Modo rapido' : 'Config pendiente'} />
                 <StatusPill icon={Store} active={gondolaCount > 0} label={`${gondolaCount} gondolas`} />
                 <StatusPill icon={CheckCircle2} active={configured} label={configured ? 'Pipeline listo' : 'Config pendiente'} />
               </div>
@@ -175,7 +176,7 @@ export default function UploadPage() {
                   <span className="text-xs font-black uppercase text-[#ff5b12]">Configuracion guardada</span>
                   <h3 className="mt-1 text-2xl font-black text-[#151323]">Revisa la configuracion de esta sede</h3>
                   <p className="mt-2 max-w-[760px] text-sm font-semibold leading-6 text-[#7d8392]">
-                    Esta sede ya tiene camara y gondolas guardadas. Verifica la previsualizacion; si coincide con la camara actual, acepta y sube el nuevo video sin repetir la calibracion.
+                    Esta sede ya tiene plano y gondolas guardadas. Verifica la previsualizacion; si coincide con la camara actual, acepta y sube el nuevo video sin repetir la configuracion.
                   </p>
                   <figure className="mt-5 overflow-hidden rounded-lg border border-[#d6e4f1] bg-[#071d25]">
                     {previewFrameSrc ? (
@@ -194,7 +195,7 @@ export default function UploadPage() {
                   <h3 className="text-lg font-black text-[#151323]">Pipeline listo</h3>
                   <p className="mt-2 text-sm font-semibold leading-6 text-[#7d8392]">Acepta esta configuracion para habilitar la carga del video.</p>
                   <div className="mt-4 grid gap-2">
-                    <PipelineItem icon={Settings2} active={calibrationLabel === 'calibrated'} label="Camara" value={calibrationLabel === 'calibrated' ? 'Calibrada' : 'Pendiente'} />
+                    <PipelineItem icon={Settings2} active={configured || metricCalibrated} label="Estado de la sede" value={calibrationLabel} />
                     <PipelineItem icon={Store} active={gondolaCount > 0} label="Gondolas" value={gondolaCount > 0 ? `${gondolaCount} guardadas` : 'Pendientes'} />
                     <PipelineItem icon={Eye} active={Boolean(previewFrameSrc)} label="Previsualizacion" value={previewFrameSrc ? 'Disponible' : 'Pendiente'} />
                   </div>
@@ -228,6 +229,15 @@ export default function UploadPage() {
                 <small className="mt-2 block text-sm font-semibold text-[#7d8392]">{file ? `Maximo ${MAX_VIDEO_DURATION_SECONDS} segundos` : 'o haz clic para seleccionar'}</small>
               </span>
             </button>
+            {file ? (
+              <button
+                className="mt-3 inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-md border border-[#ffd7c4] bg-white px-4 text-[13px] font-black text-[#b43b1d] transition hover:-translate-y-px hover:bg-[#fff1eb]"
+                onClick={clearFile}
+                type="button"
+              >
+                <X size={16} /> Quitar video seleccionado
+              </button>
+            ) : null}
           </div>
           )}
 
@@ -240,7 +250,7 @@ export default function UploadPage() {
                 : 'Despues de subir el video, captura un frame claro y guarda las gondolas de esta sede.'}
             </p>
             <div className="mt-4 grid gap-2">
-              <PipelineItem icon={Settings2} active={calibrationLabel === 'calibrated'} label="Calibracion de camara" value={calibrationLabel === 'calibrated' ? 'Guardada en esta sede' : 'Pendiente'} />
+              <PipelineItem icon={Settings2} active={configured || metricCalibrated} label="Estado de la sede" value={calibrationLabel} />
               <PipelineItem icon={Store} active={gondolaCount > 0} label="Gondolas del plano" value={gondolaCount > 0 ? `${gondolaCount} guardadas` : 'Pendientes'} />
               <PipelineItem icon={UploadCloud} active={Boolean(file)} label="Video del analisis" value={file ? 'Listo para procesar' : 'Selecciona un MP4'} />
             </div>
@@ -263,6 +273,13 @@ export default function UploadPage() {
                 >
                   {nextLabel} <ArrowRight size={16} />
                 </Link>
+                <button
+                  className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-md border border-[#e5e7ee] bg-white px-4 text-[13px] font-black text-[#151323] transition hover:-translate-y-px hover:border-[#ff5b12]"
+                  onClick={clearFile}
+                  type="button"
+                >
+                  <X size={16} /> Eliminar este video
+                </button>
               </div>
             ) : (
               <p className="mt-4 text-sm font-semibold leading-6 text-[#7d8392]">Cuando selecciones un video, SCAPDER mostrara sus datos reales aqui.</p>

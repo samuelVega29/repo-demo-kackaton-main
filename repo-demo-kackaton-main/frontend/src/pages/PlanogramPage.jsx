@@ -32,10 +32,10 @@ export default function PlanogramPage() {
       <FlowNav
         back={`/sites/${siteId}/calibracion`}
         backLabel="Calibrar camara"
-        next={`/sites/${siteId}/analizar`}
-        nextLabel="Revisar y analizar"
+        next={`/sedes/${siteId}`}
+        nextLabel="Volver a la sede"
         nextDisabled={!hasGondolas}
-        nextHint={!hasGondolas ? 'Dibuja al menos una gondola para avanzar.' : 'Plano listo para el analisis.'}
+        nextHint={!hasGondolas ? 'Dibuja al menos una gondola para guardar el flujo.' : 'Plano listo. Desde la sede puedes cargar un nuevo video o revisar historial.'}
       />
     </SiteFlowPage>
   )

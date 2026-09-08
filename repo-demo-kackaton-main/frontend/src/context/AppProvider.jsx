@@ -110,6 +110,15 @@ export function AppProvider({ children }) {
     setAnalysisArea(null)
   }
 
+  const clearFile = () => {
+    if (preview) URL.revokeObjectURL(preview)
+    setFile(null)
+    setPreview('')
+    setJob(null)
+    setAnalysisArea(null)
+    if (inputRef.current) inputRef.current.value = ''
+  }
+
   const updateConfiguration = (configuration) => setSite((current) => ({ ...current, configuration }))
 
   const onFrameCapture = (dataUrl, width, height) => {
@@ -194,6 +203,7 @@ export function AppProvider({ children }) {
     createSite,
     deleteSite,
     chooseFile,
+    clearFile,
     updateConfiguration,
     saveConfiguration,
     onFrameCapture,

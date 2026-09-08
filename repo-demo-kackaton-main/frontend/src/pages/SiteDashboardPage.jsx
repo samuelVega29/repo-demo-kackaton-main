@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppProvider'
 import { artifactUrl, listAnalyses } from '../services/analyses'
-import { isSiteConfigured } from '../utils/siteConfiguration'
+import { calibrationStatusLabel, isMetricCalibrated, isSiteConfigured } from '../utils/siteConfiguration'
 
 const completed = (analysis) => analysis.status === 'completed' && analysis.result
 const formatDate = (value) => value ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '-'
@@ -40,6 +40,8 @@ export default function SiteDashboardPage() {
   const latest = useMemo(() => analyses.find(completed), [analyses])
   const configuration = site?.configuration ?? {}
   const configured = isSiteConfigured(site)
+  const metricCalibrated = isMetricCalibrated(site)
+  const calibrationLabel = calibrationStatusLabel(site)
   const gondolas = configuration.gondolas || []
   const metrics = latest?.result?.metrics || {}
   const video = latest?.result?.video || {}
@@ -80,7 +82,9 @@ export default function SiteDashboardPage() {
                 <h2 className="text-xl font-black text-[#151323]">{configured ? 'Configuracion lista para reutilizar' : 'Configuracion pendiente'}</h2>
                 <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-[#64748b]">
                   {configured
-                    ? 'La camara, la calibracion y las gondolas ya estan guardadas. Si el nuevo video usa la misma vista, puedes cargarlo y analizarlo sin rehacer el plano.'
+                    ? metricCalibrated
+                      ? 'La camara, la calibracion metrica y las gondolas ya estan guardadas. Si el nuevo video usa la misma vista, puedes cargarlo y analizarlo sin rehacer el plano.'
+                      : 'El plano y las gondolas ya estan guardados. Puedes reutilizar esta configuracion para analizar nuevos videos; calibra la camara solo si necesitas mediciones metricas exactas.'
                     : 'Primero define la camara, captura un frame claro y guarda las gondolas. Ese plano sera la base para todos los analisis de esta sede.'}
                 </p>
               </div>
@@ -133,7 +137,7 @@ export default function SiteDashboardPage() {
             <h2 className="text-xl font-black text-[#151323]">Configuracion guardada</h2>
             <div className="mt-4 grid gap-3">
               <Trace icon={<Camera size={18} />} label="Camara" value={configuration.camera?.name || 'Camara principal'} />
-              <Trace icon={<Settings2 size={18} />} label="Calibracion" value={configuration.camera?.calibration_status || 'pendiente'} />
+              <Trace icon={<Settings2 size={18} />} label="Estado" value={calibrationLabel} />
               <Trace icon={<Store size={18} />} label="Gondolas" value={`${gondolas.length} guardadas`} />
             </div>
             <Link className="mt-4 inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-md border border-[#d6e4f1] bg-white px-4 text-[13px] font-black text-[#151323] no-underline transition hover:-translate-y-px hover:border-[#ff5b12]" to={`/sites/${site.id}/planograma`}>Mirar plano actual <ArrowRight size={16} /></Link>
