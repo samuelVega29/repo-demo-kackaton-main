@@ -12,7 +12,6 @@ import ProcessingPage from '../pages/ProcessingPage'
 import CapturePage from '../pages/CapturePage'
 import CalibrationPage from '../pages/CalibrationPage'
 import PlanogramPage from '../pages/PlanogramPage'
-import AnalyzePage from '../pages/AnalyzePage'
 import ResultsPage from '../pages/ResultsPage'
 import HistoryPage from '../pages/HistoryPage'
 import { useApp } from '../context/AppProvider'
@@ -42,6 +41,7 @@ function SiteRouteGate({ resolve }) {
 }
 
 const uploadNextRoute = (site, siteId) => `/sedes/${siteId}/analisis/nuevo/area`
+const legacyAnalyzeRoute = (site, siteId) => `/sedes/${siteId}/analisis/nuevo`
 
 export default function AppRouter() {
   return (
@@ -61,7 +61,7 @@ export default function AppRouter() {
           <Route path="/sites/:siteId/captura" element={<CapturePage />} />
           <Route path="/sites/:siteId/calibracion" element={<CalibrationPage />} />
           <Route path="/sites/:siteId/planograma" element={<PlanogramPage />} />
-          <Route path="/sites/:siteId/analizar" element={<AnalyzePage />} />
+          <Route path="/sites/:siteId/analizar" element={<SiteRouteGate resolve={legacyAnalyzeRoute} />} />
           <Route path="/historial" element={<HistoryPage />} />
           <Route path="/analyses/:analysisId/procesando" element={<ProcessingPage />} />
           <Route path="/analyses/:analysisId" element={<ResultsPage />} />
