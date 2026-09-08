@@ -262,15 +262,26 @@ def _fast_process_configuration(configuration: dict, width: int, height: int) ->
     producing zeroes because ``gondolas`` was emptied.
     """
     camera_name = (configuration.get("camera") or {}).get("name", "Cámara")
-    thresholds = dict(configuration.get("thresholds") or {
+    raw_thresholds = dict(configuration.get("thresholds") or {
         "approach_m": 1.5, "engaged_m": 0.8, "engaged_seconds": 2.0,
-        "interaction_seconds": 4.0, "minimum_track_seconds": 2.0,
+        "interaction_seconds": 4.0, "max_speed_m_s": 1.2, "minimum_track_seconds": 2.0,
         "pickup_reach_m": 0.5, "pickup_min_seconds": 0.6, "pickup_cooldown_s": None,
     })
     floor_m = configuration.get("floor") or {}
     floor_w = float(floor_m.get("width", 1.0) or 1.0)
     floor_d = float(floor_m.get("depth", 1.0) or 1.0)
     sx, sz = width / floor_w, height / floor_d
+    scale = (sx + sz) / 2.0
+    thresholds = {
+        **raw_thresholds,
+        "approach_m": float(raw_thresholds.get("approach_m", 1.5) or 1.5) * scale,
+        "engaged_m": float(raw_thresholds.get("engaged_m", 0.8) or 0.8) * scale,
+        "pickup_reach_m": float(
+            raw_thresholds.get("pickup_reach_m", raw_thresholds.get("hand_reach_m", 0.5))
+            or 0.5
+        ) * scale,
+        "max_speed_m_s": float(raw_thresholds.get("max_speed_m_s", 1.2) or 1.2) * scale,
+    }
     gondolas = []
     for item in configuration.get("gondolas", []):
         x, z, gwidth, gdepth = item["x"], item["z"], item.get("width", 1.0), item.get("depth", 1.0)
@@ -296,7 +307,7 @@ def _fast_process_configuration(configuration: dict, width: int, height: int) ->
             "calibration_status": "fast",
             "model_3d": None,
         },
-        "zones": _fast_zones(gondolas, thresholds, sx, sz, width, height),
+        "zones": _fast_zones(gondolas, raw_thresholds, sx, sz, width, height),
         "gondolas": gondolas,
         "thresholds": thresholds,
         "auto_zones": True,
@@ -357,6 +368,28 @@ def _exposed_point(point: list[float], mode: str, width: int, height: int) -> li
     return [float(point[0]), float(point[1])]
 
 
+def _exposed_gondola(gondola: dict, mode: str, width: int, height: int) -> dict:
+    if mode != "fast":
+        return gondola
+    return {
+        **gondola,
+        "x": round(float(gondola["x"]) / width, 6),
+        "z": round(float(gondola["z"]) / height, 6),
+        "width": round(float(gondola["width"]) / width, 6),
+        "depth": round(float(gondola["depth"]) / height, 6),
+        "height": 0.22,
+        "tier_heights": [0.06, 0.13, 0.2],
+        "pickup_events": [
+            {
+                **event,
+                "x": round(float(event["x"]) / width, 6),
+                "z": round(float(event["z"]) / height, 6),
+            }
+            for event in gondola.get("pickup_events", [])
+        ],
+    }
+
+
 def update_analysis(analysis_id: str, **values) -> None:
     with SessionLocal() as database:
         analysis = database.get(Analysis, analysis_id)
@@ -399,7 +432,20 @@ def project_hand(spatial: SpatialEngine, detection: dict) -> tuple[list[float] |
         if projected:
             candidates.append((SpatialEngine.distance_to_gondola(projected, active), projected))
     candidates.sort(key=lambda item: item[0])
-    return (candidates[0][1] if candidates else None), False
+    if candidates:
+        best_distance, best_point = candidates[0]
+        if best_distance <= float(spatial.configuration.get("thresholds", {}).get("approach_m", 1.5) or 1.5):
+            return best_point, False
+
+    # Without reliable pose, hand pixels are projected as if they were on the floor, which
+    # can push the estimated reach away from the shelf. If the body is already engaged
+    # very close to the gondola, use the nearest shelf point as a low-confidence proxy.
+    body_distance = SpatialEngine.distance_to_gondola(car, active)
+    proxy_reach = max(0.25, float(spatial.configuration.get("thresholds", {}).get("engaged_m", 0.8) or 0.8) * 0.55)
+    if body_distance <= proxy_reach:
+        return SpatialEngine.nearest_point_on_gondola(car, active), False
+
+    return None, False
 
 
 def build_findings(gondolas: list[dict], zones: list[dict], interactions: int, pickups: int = 0) -> list[dict]:
@@ -525,6 +571,14 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
         pickup_points: list[dict] = []
         interaction_events: list[dict] = []
         pickup_events: list[dict] = []
+        behavior_trace = {
+            "zone_hits": 0,
+            "near_gondola_frames": 0,
+            "engaged_frames": 0,
+            "interaction_frames": 0,
+            "hand_candidate_frames": 0,
+            "pickup_frames": 0,
+        }
         last_interaction: dict[int, bool] = defaultdict(bool)
         gondola_names = {item["id"]: item.get("name", item["id"]) for item in process_config.get("gondolas", [])}
         frame_samples: list[dict] = []
@@ -599,9 +653,18 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
                     track_frames[detection["track_id"]] += 1
                     zone = spatial.zone_at(detection["floor_point"])
                     if zone:
+                        behavior_trace["zone_hits"] += 1
                         zone_entry = zone_stats.setdefault(zone["id"], {"track_ids": set(), "dwell_seconds": 0.0, "interactions": 0})
                         zone_entry["dwell_seconds"] += dt
                         zone_entry["track_ids"].add(detection["track_id"])
+                    if behavior["gondola_id"]:
+                        behavior_trace["near_gondola_frames"] += 1
+                    if behavior["state"] in ("ENGAGED", "INTERACTION"):
+                        behavior_trace["engaged_frames"] += 1
+                    if behavior["interaction"]:
+                        behavior_trace["interaction_frames"] += 1
+                    if hand_point is not None:
+                        behavior_trace["hand_candidate_frames"] += 1
                     if frame_index % payload_every == 0:
                         timestamped = {**{"x": detection["floor_point"][0], "z": detection["floor_point"][1]}}
                         trajectories[detection["track_id"]].append(detection["floor_point"])
@@ -635,6 +698,7 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
                     else:
                         last_interaction[detection["track_id"]] = False
                     if behavior["pickup"] and hand_point is not None:
+                        behavior_trace["pickup_frames"] += 1
                         pickup_points.append({"x": hand_point[0], "z": hand_point[1], "weight": 1, "t": round(timestamp, 2)})
                         slice_buckets["pickup"][min(slice_count - 1, int(frame_index / slice_size))].append({"x": hand_point[0], "z": hand_point[1], "weight": 1})
                         pickup_events.append({
@@ -702,6 +766,11 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
             gondola["height"] = config.get("height", 1.45)
             gondola["tier_heights"] = config.get("tier_heights", [0.25, 0.73, 1.20])
 
+        gondolas = [
+            _exposed_gondola(gondola, mode, width, height)
+            for gondola in gondolas
+        ]
+
         duration_seconds = total_frames / fps
         zones = compute_zone_metrics(
             zone_stats,
@@ -736,6 +805,14 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
         interaction_events_log = interaction_events[:400]
 
         pickup_count = sum(item["pickups"] for item in gondolas)
+        pickup_events = []
+        for gondola in gondolas:
+            for event in gondola.get("pickup_events", []):
+                pickup_events.append({
+                    **event,
+                    "gondola_id": gondola["id"],
+                    "gondola_name": gondola.get("name", gondola["id"]),
+                })
         pickup_histogram = None
         if pickup_events:
             bucket_s = max(10, round(duration_seconds / 12))
@@ -800,6 +877,7 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
                 "flow_per_minute": round(len(valid_track_ids) / duration_minutes, 1),
                 "peak_presence": peak_presence,
                 "time_slices": slice_count,
+                "behavior_trace": behavior_trace,
             },
             "trajectories": trajectory_payload,
             "frame_detections": frame_samples,

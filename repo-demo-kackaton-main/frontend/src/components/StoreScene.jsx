@@ -464,7 +464,23 @@ function Store({ result, mode, selectedId, onSelect, heatmapUrl, sliceEntries, s
   const configuration = result.site.configuration
   const floor = configuration.floor
   const zones = configuration.zones || []
-  const maxValue = Math.max(...result.gondolas.map((item) => item[metricField[mode]] || 0), 1)
+  const sceneGondolas = useMemo(() => {
+    const gondolas = result.gondolas || []
+    const video = result.video || {}
+    const normalizedFloor = floor.width <= 1.5 && floor.depth <= 1.5
+    const looksLikePixels = normalizedFloor && gondolas.some((item) => item.x > 2 || item.z > 2 || item.width > 2 || item.depth > 2)
+    if (!looksLikePixels || !video.width || !video.height) return gondolas
+    return gondolas.map((item) => ({
+      ...item,
+      x: item.x / video.width,
+      z: item.z / video.height,
+      width: item.width / video.width,
+      depth: item.depth / video.height,
+      height: Math.min(item.height || 1.45, 0.35),
+      tier_heights: (item.tier_heights || [0.08, 0.18, 0.28]).map((height) => Math.min(height / video.height, 0.35)),
+    }))
+  }, [result.gondolas, result.video, floor.width, floor.depth])
+  const maxValue = Math.max(...sceneGondolas.map((item) => item[metricField[mode]] || 0), 1)
   const trajectories = result.trajectories.slice(0, 80)
   const urls = useMemo(
     () => (sliceEntries.length ? sliceEntries.map((entry) => artifactUrl(analysisId, entry[mode])) : [heatmapUrl]),
@@ -511,7 +527,7 @@ function Store({ result, mode, selectedId, onSelect, heatmapUrl, sliceEntries, s
           color="#5b9dff" lineWidth={1.8} dashed dashScale={5} transparent opacity={0.7}
         />
       )}
-      {result.gondolas.map((item) => <Shelf key={item.id} item={item} floor={floor} selected={selectedId === item.id} mode={mode} maxValue={maxValue} onSelect={onSelect} />)}
+      {sceneGondolas.map((item) => <Shelf key={item.id} item={item} floor={floor} selected={selectedId === item.id} mode={mode} maxValue={maxValue} onSelect={onSelect} />)}
       {mode === 'dwell' && trajectories.map((trajectory) => <Line key={trajectory.track_id} points={trajectory.points.map(([x, z]) => [x - floor.width / 2, 0.07, z - floor.depth / 2])} color="#70efd0" lineWidth={1.3} transparent opacity={0.75} />)}
       <PeopleLayer samples={peopleSamples} floor={floor} timeWindow={timeWindow} poolSize={result.metrics?.peak_presence || 6} />
       <OrbitControls makeDefault minDistance={5} maxDistance={20} maxPolarAngle={Math.PI / 2.08} target={[0, 0.3, 0]} />

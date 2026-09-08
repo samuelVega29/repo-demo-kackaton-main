@@ -113,9 +113,9 @@ def test_uniform_activity_has_no_false_hot_cold() -> None:
             assert zone["classification"] == "normal"
 
 
-def test_single_active_zone_is_normal_not_hot() -> None:
+def test_single_active_zone_is_hot() -> None:
     zones = run([(10, 30.0, 0), (0, 0.0, 0), (0, 0.0, 0)], make_config(3))
-    assert zones[0]["classification"] == "normal"
+    assert zones[0]["classification"] == "hot"
     assert zones[1]["classification"] == "cold"
     assert zones[2]["classification"] == "cold"
 
@@ -160,7 +160,7 @@ def test_advanced_preserves_configured_zones() -> None:
     assert zones[0]["name"] == "Acceso"
     assert zones[0]["polygon"] == polygon
     assert zones[0]["source"] == "configured"
-    assert zones[0]["classification"] == "normal"  # single active zone never hot
+    assert zones[0]["classification"] == "hot"
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +203,7 @@ def test_no_nan_or_division_by_zero() -> None:
     only_visits = run([(3, 0.0, 0), (0, 0.0, 0)], make_config(2), duration_seconds=0.0)
     assert math.isfinite(only_visits[0]["density"])
     assert only_visits[0]["heat_index"] > 0
-    assert only_visits[0]["classification"] == "normal"
+    assert only_visits[0]["classification"] == "hot"
 
 
 def test_heat_precision_is_exposed_rounded() -> None:

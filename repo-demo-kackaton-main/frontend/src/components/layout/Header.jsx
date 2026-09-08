@@ -9,8 +9,8 @@ const navItems = [
   ['01', 'Empresas', '/empresas'],
   ['02', 'Sedes', 'site'],
   ['03', 'Analisis', 'analysis'],
-  ['04', 'Historial', '/historial'],
-  ['05', 'Resultados', 'results'],
+  ['04', 'Resultados', 'results'],
+  ['05', 'Historial general', '/historial'],
 ]
 
 const matchesPathGroup = (pathname, ...groups) => groups.some((group) => pathname === group || pathname.startsWith(`${group}/`))
@@ -133,7 +133,7 @@ export default function Header({ user, logout, retailer, site, job, goHome }) {
         navigate('/empresas')
         return
       }
-      navigate(`/sedes/${site.id}/analisis/entrada`)
+      navigate(`/sedes/${site.id}`)
       return
     }
     if (target === 'results') {

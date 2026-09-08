@@ -3,7 +3,6 @@ import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import RequireAuth from './RequireAuth'
 import AppLayout from '../layouts/AppLayout'
 import LoginPage from '../pages/LoginPage'
-import HomePage from '../pages/HomePage'
 import RetailersPage from '../pages/RetailersPage'
 import SitePickerPage from '../pages/SitePickerPage'
 import SiteDashboardPage from '../pages/SiteDashboardPage'
@@ -13,7 +12,6 @@ import ProcessingPage from '../pages/ProcessingPage'
 import CapturePage from '../pages/CapturePage'
 import CalibrationPage from '../pages/CalibrationPage'
 import PlanogramPage from '../pages/PlanogramPage'
-import AnalyzePage from '../pages/AnalyzePage'
 import ResultsPage from '../pages/ResultsPage'
 import HistoryPage from '../pages/HistoryPage'
 import { useApp } from '../context/AppProvider'
@@ -42,8 +40,8 @@ function SiteRouteGate({ resolve }) {
   return <Navigate to={resolve(site, siteId)} replace />
 }
 
-const analysisEntryRoute = (site, siteId) => `/sedes/${siteId}/analisis/nuevo`
 const uploadNextRoute = (site, siteId) => `/sedes/${siteId}/analisis/nuevo/area`
+const legacyAnalyzeRoute = (site, siteId) => `/sedes/${siteId}/analisis/nuevo`
 
 export default function AppRouter() {
   return (
@@ -52,13 +50,9 @@ export default function AppRouter() {
       <Route element={<RequireAuth />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Navigate to="/empresas" replace />} />
-          <Route path="/inicio" element={<HomePage />} />
           <Route path="/empresas" element={<RetailersPage />} />
           <Route path="/empresas/:retailerId/sedes" element={<SitePickerPage />} />
-          <Route path="/retailers/:retailerId/sites" element={<SitePickerPage />} />
-          <Route path="/sites/:siteId" element={<SiteDashboardPage />} />
           <Route path="/sedes/:siteId" element={<SiteDashboardPage />} />
-          <Route path="/sedes/:siteId/analisis/entrada" element={<SiteRouteGate resolve={analysisEntryRoute} />} />
           <Route path="/sites/:siteId/video" element={<UploadPage />} />
           <Route path="/sedes/:siteId/analisis/nuevo" element={<UploadPage />} />
           <Route path="/sedes/:siteId/analisis/nuevo/siguiente" element={<SiteRouteGate resolve={uploadNextRoute} />} />
@@ -67,7 +61,7 @@ export default function AppRouter() {
           <Route path="/sites/:siteId/captura" element={<CapturePage />} />
           <Route path="/sites/:siteId/calibracion" element={<CalibrationPage />} />
           <Route path="/sites/:siteId/planograma" element={<PlanogramPage />} />
-          <Route path="/sites/:siteId/analizar" element={<AnalyzePage />} />
+          <Route path="/sites/:siteId/analizar" element={<SiteRouteGate resolve={legacyAnalyzeRoute} />} />
           <Route path="/historial" element={<HistoryPage />} />
           <Route path="/analyses/:analysisId/procesando" element={<ProcessingPage />} />
           <Route path="/analyses/:analysisId" element={<ResultsPage />} />

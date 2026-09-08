@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { useApp } from '../../context/AppProvider'
+import { calibrationStatusLabel, isMetricCalibrated, isSiteConfigured } from '../../utils/siteConfiguration'
 import { sessionStepIndex, sessionSteps } from './sessionSteps'
 
 const BrowserDots = () => (
@@ -33,8 +34,9 @@ export default function SiteFlowPage({ step, children, hideHeader = false }) {
   if (loading) return <section className="grid min-h-[calc(100vh-72px)] place-items-center bg-[#f6f6f4] p-6 text-sm font-black text-[#7d8392]">Cargando sede</section>
   if (!site) return <Navigate to="/" replace />
 
-  const uncalibrated = site.configuration?.camera?.calibration_status === 'uncalibrated'
-  const calibrationLabel = uncalibrated ? 'sin calibrar' : site.configuration?.camera?.calibration_status || 'lista'
+  const configured = isSiteConfigured(site)
+  const metricCalibrated = isMetricCalibrated(site)
+  const calibrationLabel = calibrationStatusLabel(site)
   const activeIndex = sessionStepIndex(step.id)
 
   return (
@@ -48,7 +50,7 @@ export default function SiteFlowPage({ step, children, hideHeader = false }) {
                 <span className="inline-flex items-center gap-2 text-sm font-black text-[#ff5b12]"><span className="text-[clamp(44px,6vw,70px)] leading-[.85] opacity-25">{step.number}</span> {step.eyebrow}</span>
                 <h1 className="m-0 text-[clamp(28px,4vw,44px)] font-black leading-[.92] text-[#151323]">{step.title} <span className="text-[#ff5b12]">{step.accent}</span></h1>
                 <p className="mt-2 text-sm font-medium text-[#6b7280] max-w-3xl leading-relaxed">{step.desc}</p>
-                <p className="mt-2 text-sm leading-6 text-[#7d8392]">{site.city} · {site.name} · Calibracion: <b className="text-[#151323]">{calibrationLabel}</b></p>
+                <p className="mt-2 text-sm leading-6 text-[#7d8392]">{site.city} - {site.name} - Estado: <b className="text-[#151323]">{calibrationLabel}</b></p>
               </div>
             </div>}
             {!hideHeader && (
@@ -65,9 +67,14 @@ export default function SiteFlowPage({ step, children, hideHeader = false }) {
                 })}
               </div>
             )}
-            {uncalibrated && (
+            {configured && !metricCalibrated && (
+              <div className="mb-5 rounded-md border border-[#bfe8d1] bg-[#f1fff7] px-4 py-3 text-sm font-bold text-[#12824c]">
+                Configuracion lista en modo rapido. Las gondolas y el plano se usaran para zonas calientes, interacciones y pick-ups.
+              </div>
+            )}
+            {!configured && !metricCalibrated && (
               <div className="mb-5 rounded-md border border-[#ffd2c2] bg-[#fff1eb] px-4 py-3 text-sm font-bold text-[#b43b1d]">
-                Camara sin calibrar. Ajusta la configuracion cuando necesites mediciones exactas.
+                Configuracion pendiente. Guarda el area y al menos una gondola para habilitar analisis trazables.
               </div>
             )}
             {children}

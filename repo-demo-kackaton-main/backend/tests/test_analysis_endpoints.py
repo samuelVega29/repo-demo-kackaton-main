@@ -3,6 +3,8 @@
 Each endpoint works strictly by ``analysis_id`` (no "latest analysis" of the
 site), reuses the stored ``Analysis.result`` and the same ``can_access`` gate.
 """
+from io import BytesIO
+
 import pytest
 
 from conftest import advanced_result, fast_result, make_analysis
@@ -82,6 +84,45 @@ def test_failed_state_exposes_safe_error(client, state):
     assert response.status_code == 422
     assert response.json()["status"] == "failed"
     assert "OpenCV" in response.json()["message"]
+
+
+def test_create_analysis_rejects_videos_longer_than_60_seconds(client, state, monkeypatch):
+    import app.routers.analyses as analyses_router
+
+    set_user(state, 1)
+    started = False
+
+    def fake_thread(*args, **kwargs):
+        nonlocal started
+        started = True
+        raise AssertionError("No debe iniciar el analisis")
+
+    monkeypatch.setattr(
+        analyses_router,
+        "get_video_duration_seconds",
+        lambda path: 61.0,
+    )
+    monkeypatch.setattr(
+        analyses_router.threading,
+        "Thread",
+        fake_thread,
+    )
+
+    response = client.post(
+        "/api/analyses",
+        data={"site_id": "1"},
+        files={
+            "video": (
+                "largo.mp4",
+                BytesIO(b"video"),
+                "video/mp4",
+            ),
+        },
+    )
+
+    assert response.status_code == 400
+    assert "60 segundos" in response.json()["detail"]
+    assert started is False
 
 
 def test_completed_fast_contracts(client, state):
