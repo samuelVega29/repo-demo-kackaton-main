@@ -11,6 +11,15 @@ export async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers })
   if (response.status === 401) setToken(null)
   const payload = response.headers.get('content-type')?.includes('application/json') ? await response.json() : null
-  if (!response.ok) throw new Error(payload?.detail || 'No fue posible completar la solicitud')
+  if (!response.ok) throw new Error(describeError(payload?.detail) || 'No fue posible completar la solicitud')
   return payload
+}
+
+function describeError(detail) {
+  if (!detail) return null
+  if (typeof detail === 'string') return detail
+  // FastAPI devuelve una lista de errores de validación: [{ loc, msg, type }, ...]
+  if (Array.isArray(detail)) return detail.map((item) => item?.msg || describeError(item)).filter(Boolean).join('; ')
+  if (typeof detail === 'object') return detail.msg || JSON.stringify(detail)
+  return String(detail)
 }

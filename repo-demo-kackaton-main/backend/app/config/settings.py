@@ -17,6 +17,18 @@ DATA_ROOT = REPO_ROOT / "data"
 MEDIA_ROOT = REPO_ROOT / "media"
 DATASET_ROOT = Path(os.environ.get("SCAPDER_DATASET", REPO_ROOT / "training" / "dataset"))
 ANNOTATIONS_ROOT = Path(os.environ.get("SCAPDER_ANNOTATIONS", REPO_ROOT / "training" / "annotations"))
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
+# Modelos alternativos para el chat: si el configurado está saturado (503) o
+# sin cuota (429), el backend prueba estos en orden antes de rendirse.
+GEMINI_FALLBACK_MODELS = [
+    item.strip()
+    for item in os.environ.get(
+        "GEMINI_FALLBACK_MODELS",
+        "gemini-3.1-flash-lite-preview,gemini-flash-lite-latest",
+    ).split(",")
+    if item.strip()
+]
 MODELS_ROOT = Path(os.environ.get("SCAPDER_MODELS", REPO_ROOT / "models"))
 EXPORTED_MODELS = MODELS_ROOT / "exported"
 BEHAVIOR_CONFIG = REPO_ROOT / "training" / "configs" / "behavior.yaml"
