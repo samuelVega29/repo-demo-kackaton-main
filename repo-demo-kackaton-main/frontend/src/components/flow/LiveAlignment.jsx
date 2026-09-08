@@ -204,9 +204,15 @@ export default function LiveAlignment({ frameCapture, configuration, interactive
         ctx.closePath()
         ctx.fillStyle = hexToRgba(color, .18)
         ctx.fill()
-        ctx.strokeStyle = (interactive && selectedId === gondola.id) ? '#ffffff' : color
+        ctx.save()
+        ctx.strokeStyle = (interactive && selectedId === gondola.id) ? '#ff876a' : color
         ctx.lineWidth = (interactive && selectedId === gondola.id) ? 6 : 3
+        if (interactive && selectedId === gondola.id) {
+          ctx.shadowColor = 'rgba(255, 135, 106, .85)'
+          ctx.shadowBlur = 14
+        }
         ctx.stroke()
+        ctx.restore()
         if (gondola.name) {
           ctx.fillStyle = 'rgba(6, 14, 12, .82)'
           const labelWidth = ctx.measureText(gondola.name).width + 18
