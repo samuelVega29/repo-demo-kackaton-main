@@ -19,12 +19,10 @@ import { Navigate, useParams } from 'react-router-dom'
 import robotSedes from '../assets/images/robot-sedes.png'
 import robotSedes1 from '../assets/images/robot-sedes1.png'
 
-/* Iconos alrededor del robot */
 import iconoAnalisis from '../assets/images/icono-analisis.png'
 import iconoUbicacion from '../assets/images/icono-ubicacion.png'
 import iconoDocumento from '../assets/images/icono-documento.png'
 
-/* Iconos de las métricas */
 import iconoAnalisis1 from '../assets/images/icono-analisis1.png'
 import iconoCamara from '../assets/images/icono-camara.png'
 import iconoUbicacion1 from '../assets/images/icono-ubicacion1.png'
@@ -32,63 +30,91 @@ import iconoUbicacion1 from '../assets/images/icono-ubicacion1.png'
 import { useApp } from '../context/AppProvider'
 
 /* =========================================================
-   IMÁGENES DE LAS SEDES
+   FORMULARIO INICIAL
 ========================================================= */
-
-const siteImagePool = [
-  'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?auto=format&fit=crop&w=1000&q=88',
-  'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=1000&q=88',
-  'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=1000&q=88',
-  'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1000&q=88',
-]
 
 const initialForm = {
   name: '',
   city: '',
-  camera_name: 'Camara principal',
+  camera_name: '',
   floor_width: 12,
   floor_depth: 8,
 }
 
-function getSiteImage(site, index) {
-  if (site.image_url) {
-    return site.image_url
+/* =========================================================
+   FORMATEAR ERRORES DEL BACKEND
+========================================================= */
+
+function getErrorMessage(error, fallback) {
+  if (!error) return fallback
+
+  if (typeof error === 'string') {
+    return error
   }
 
-  const source = `${site.name || ''} ${site.city || ''}`.toLowerCase()
+  if (Array.isArray(error)) {
+    return error
+      .map((item) => {
+        if (typeof item === 'string') return item
 
-  if (source.includes('centro')) {
-    return siteImagePool[0]
+        if (item?.msg) {
+          const field = Array.isArray(item.loc)
+            ? item.loc[item.loc.length - 1]
+            : ''
+
+          return field ? `${field}: ${item.msg}` : item.msg
+        }
+
+        if (item?.message) {
+          return item.message
+        }
+
+        return ''
+      })
+      .filter(Boolean)
+      .join(' · ')
   }
 
-  if (
-    source.includes('norte') ||
-    source.includes('exito') ||
-    source.includes('éxito')
-  ) {
-    return siteImagePool[1]
+  if (Array.isArray(error?.detail)) {
+    return getErrorMessage(error.detail, fallback)
   }
 
-  if (source.includes('sur') || source.includes('carulla')) {
-    return siteImagePool[2]
+  if (typeof error?.detail === 'string') {
+    return error.detail
   }
 
-  return siteImagePool[index % siteImagePool.length]
+  if (typeof error?.message === 'string') {
+    if (
+      error.message !== '[object Object]' &&
+      !error.message.includes('[object Object],[object Object]')
+    ) {
+      return error.message
+    }
+  }
+
+  if (error?.response?.data?.detail) {
+    return getErrorMessage(error.response.data.detail, fallback)
+  }
+
+  return fallback
 }
 
 /* =========================================================
-   ESTADO DE LAS SEDES
+   ESTADO DE LA SEDE
 ========================================================= */
 
 function getSiteStatus(site) {
-  if (site.status === 'inactive') {
+  if (site?.status === 'inactive') {
     return {
       label: 'Inactiva',
       dot: 'bg-[#ff294d]',
     }
   }
 
-  if (site.status === 'setup' || site.status === 'configuring') {
+  if (
+    site?.status === 'setup' ||
+    site?.status === 'configuring'
+  ) {
     return {
       label: 'En configuración',
       dot: 'bg-[#ffc928]',
@@ -121,22 +147,29 @@ export default function SitePickerPage() {
 
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
+
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
 
-  const mobileCarouselRef = useRef(null)
-
   const [form, setForm] = useState(initialForm)
 
+  const mobileCarouselRef = useRef(null)
+
   const sitesPerPage = 4
+
+  const currentSites = useMemo(
+    () => (Array.isArray(sites) ? sites : []),
+    [sites]
+  )
 
   /* =========================================================
      CARGAR EMPRESA
   ========================================================= */
 
   useEffect(() => {
-    if (!retailer && retailerId && retailers.length) {
+    if (!retailer && retailerId && retailers?.length) {
       const found = retailers.find(
         (item) => String(item.id) === String(retailerId)
       )
@@ -148,7 +181,7 @@ export default function SitePickerPage() {
   }, [retailer, retailerId, retailers, setRetailer])
 
   /* =========================================================
-     REINICIAR PAGINACIÓN CUANDO CAMBIA LA BÚSQUEDA
+     REINICIAR PAGINACIÓN
   ========================================================= */
 
   useEffect(() => {
@@ -161,25 +194,25 @@ export default function SitePickerPage() {
   }, [search])
 
   /* =========================================================
-     FILTRAR
+     FILTRAR SEDES
   ========================================================= */
 
   const filteredSites = useMemo(() => {
     const term = search.trim().toLowerCase()
 
     if (!term) {
-      return sites
+      return currentSites
     }
 
-    return sites.filter((site) => {
+    return currentSites.filter((site) => {
       const searchable = `
-        ${site.name || ''}
-        ${site.city || ''}
+        ${site?.name || ''}
+        ${site?.city || ''}
       `.toLowerCase()
 
       return searchable.includes(term)
     })
-  }, [sites, search])
+  }, [currentSites, search])
 
   /* =========================================================
      PAGINACIÓN
@@ -235,36 +268,59 @@ export default function SitePickerPage() {
      MÉTRICAS
   ========================================================= */
 
-  const totalCameras = sites.reduce((total, site) => {
-    const configuration = site.configuration ?? {}
+  const totalCameras = useMemo(() => {
+    return currentSites.reduce((total, site) => {
+      const camera = site?.configuration?.camera
 
-    return total + (configuration.camera ? 1 : 0)
-  }, 0)
+      return total + (camera ? 1 : 0)
+    }, 0)
+  }, [currentSites])
 
-  const totalAnalyses = sites.reduce(
-    (total, site) =>
-      total +
-      Number(
-        site.analysis_count ??
-          site.analyses_count ??
-          site.analysisCount ??
-          0
-      ),
-    0
-  )
+  const totalAnalyses = useMemo(() => {
+    return currentSites.reduce((total, site) => {
+      return (
+        total +
+        Number(
+          site?.analysis_count ??
+            site?.analyses_count ??
+            site?.analysisCount ??
+            0
+        )
+      )
+    }, 0)
+  }, [currentSites])
 
   /* =========================================================
-     ABRIR / CERRAR FORMULARIO
+     ABRIR / CERRAR CREAR SEDE
   ========================================================= */
 
   const toggleCreate = () => {
     setError('')
-    setShowCreate((value) => !value)
+
+    setShowCreate((current) => {
+      if (current) {
+        setForm(initialForm)
+      }
+
+      return !current
+    })
   }
 
   const closeCreate = () => {
-    setError('')
     setShowCreate(false)
+    setError('')
+    setForm(initialForm)
+  }
+
+  /* =========================================================
+     CAMBIAR CAMPOS
+  ========================================================= */
+
+  const changeForm = (field, value) => {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }))
   }
 
   /* =========================================================
@@ -303,20 +359,33 @@ export default function SitePickerPage() {
       floor_depth: Number(form.floor_depth) || 8,
     }
 
-    setCreating(true)
-    setError('')
-
     try {
+      setCreating(true)
+      setError('')
+
+      console.log(
+        'Payload enviado para crear sede:',
+        payload
+      )
+
       await createSite(payload)
 
-      setForm(initialForm)
+      setForm({
+        ...initialForm,
+      })
+
       setShowCreate(false)
     } catch (requestError) {
-      console.error('Error creando sede:', requestError)
+      console.error(
+        'Error creando sede:',
+        requestError
+      )
 
       setError(
-        requestError?.message ||
+        getErrorMessage(
+          requestError,
           'No fue posible crear la sede. Intenta nuevamente.'
+        )
       )
     } finally {
       setCreating(false)
@@ -328,21 +397,45 @@ export default function SitePickerPage() {
   ========================================================= */
 
   const removeSite = async (event, site) => {
+    event.preventDefault()
     event.stopPropagation()
 
+    if (!site?.id) {
+      setError(
+        'No se encontró el identificador de la sede.'
+      )
+      return
+    }
+
+    if (deletingId !== null) return
+
     const confirmation = window.confirm(
-      `¿Eliminar la sede ${site.name} con sus análisis?`
+      `¿Seguro que deseas eliminar la sede "${
+        site.name || 'Sin nombre'
+      }"?`
     )
 
     if (!confirmation) return
 
     try {
+      setError('')
+      setDeletingId(site.id)
+
       await deleteSite(site)
     } catch (requestError) {
-      setError(
-        requestError?.message ||
-          'No fue posible eliminar la sede.'
+      console.error(
+        'Error eliminando sede:',
+        requestError
       )
+
+      setError(
+        getErrorMessage(
+          requestError,
+          'No fue posible eliminar la sede.'
+        )
+      )
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -360,9 +453,7 @@ export default function SitePickerPage() {
         text-white
       "
     >
-      {/* =====================================================
-          FONDO
-      ===================================================== */}
+      {/* FONDO */}
 
       <div
         className="
@@ -387,8 +478,6 @@ export default function SitePickerPage() {
           blur-[135px]
         "
       />
-
-      {/* ESQUINA NARANJA */}
 
       <div
         className="
@@ -444,11 +533,6 @@ export default function SitePickerPage() {
           rounded-full
           border-[2px]
           border-[#1596ff]/55
-
-          max-sm:-left-[435px]
-          max-sm:top-[415px]
-          max-sm:h-[650px]
-          max-sm:w-[650px]
         "
       />
 
@@ -568,9 +652,7 @@ export default function SitePickerPage() {
         "
       />
 
-      {/* =====================================================
-          CONTENIDO
-      ===================================================== */}
+      {/* CONTENIDO */}
 
       <div
         className="
@@ -617,9 +699,7 @@ export default function SitePickerPage() {
           Empresas
         </button>
 
-        {/* =====================================================
-            HERO
-        ===================================================== */}
+        {/* HERO */}
 
         <div
           className="
@@ -762,9 +842,7 @@ export default function SitePickerPage() {
             </p>
           </div>
 
-          {/* =================================================
-              ROBOT
-          ================================================= */}
+          {/* ROBOT */}
 
           <div
             className="
@@ -794,183 +872,38 @@ export default function SitePickerPage() {
               lg:max-w-none
             "
           >
-            <div
-              className="
-                pointer-events-none
-                absolute
-                left-1/2
-                top-[20px]
-                h-[90px]
-                w-[120px]
-                -translate-x-1/2
-                rounded-full
-                bg-[#006cff]/20
-                blur-[30px]
+            <div className="pointer-events-none absolute left-1/2 top-[20px] h-[90px] w-[120px] -translate-x-1/2 rounded-full bg-[#006cff]/20 blur-[30px] sm:h-[135px] sm:w-[180px] lg:top-0 lg:h-[190px] lg:w-[230px] lg:blur-[50px]" />
 
-                sm:h-[135px]
-                sm:w-[180px]
+            <div className="pointer-events-none absolute left-1/2 top-[22px] h-[85px] w-[145px] -translate-x-1/2 -rotate-[15deg] rounded-[50%] border border-[#168fff]/40 sm:h-[120px] sm:w-[215px] lg:top-[15px] lg:h-[150px] lg:w-[260px]" />
 
-                lg:top-0
-                lg:h-[190px]
-                lg:w-[230px]
-                lg:blur-[50px]
-              "
-            />
-
-            <div
-              className="
-                pointer-events-none
-                absolute
-                left-1/2
-                top-[22px]
-                h-[85px]
-                w-[145px]
-                -translate-x-1/2
-                -rotate-[15deg]
-                rounded-[50%]
-                border
-                border-[#168fff]/40
-
-                sm:h-[120px]
-                sm:w-[215px]
-
-                lg:top-[15px]
-                lg:h-[150px]
-                lg:w-[260px]
-              "
-            />
-
-            <div
-              className="
-                pointer-events-none
-                absolute
-                left-1/2
-                top-[27px]
-                h-[82px]
-                w-[140px]
-                -translate-x-1/2
-                rotate-[17deg]
-                rounded-[50%]
-                border
-                border-[#ff681e]/35
-
-                sm:h-[125px]
-                sm:w-[205px]
-
-                lg:top-[22px]
-                lg:h-[155px]
-                lg:w-[250px]
-              "
-            />
+            <div className="pointer-events-none absolute left-1/2 top-[27px] h-[82px] w-[140px] -translate-x-1/2 rotate-[17deg] rounded-[50%] border border-[#ff681e]/35 sm:h-[125px] sm:w-[205px] lg:top-[22px] lg:h-[155px] lg:w-[250px]" />
 
             <img
               src={iconoAnalisis}
               alt=""
-              className="
-                pointer-events-none
-                absolute
-                left-[-2px]
-                top-[12px]
-                z-20
-                h-[27px]
-                w-[27px]
-                object-contain
-
-                sm:left-[8px]
-                sm:top-[12px]
-                sm:h-[42px]
-                sm:w-[42px]
-
-                lg:left-[5px]
-                lg:top-[-12px]
-                lg:h-[56px]
-                lg:w-[56px]
-              "
+              className="pointer-events-none absolute left-[-2px] top-[12px] z-20 h-[27px] w-[27px] object-contain sm:left-[8px] sm:top-[12px] sm:h-[42px] sm:w-[42px] lg:left-[5px] lg:top-[-12px] lg:h-[56px] lg:w-[56px]"
             />
 
             <img
               src={iconoUbicacion}
               alt=""
-              className="
-                pointer-events-none
-                absolute
-                right-[-3px]
-                top-[31px]
-                z-20
-                h-[28px]
-                w-[28px]
-                object-contain
-
-                sm:right-[5px]
-                sm:top-[48px]
-                sm:h-[43px]
-                sm:w-[43px]
-
-                lg:right-0
-                lg:top-[38px]
-                lg:h-[58px]
-                lg:w-[58px]
-              "
+              className="pointer-events-none absolute right-[-3px] top-[31px] z-20 h-[28px] w-[28px] object-contain sm:right-[5px] sm:top-[48px] sm:h-[43px] sm:w-[43px] lg:right-0 lg:top-[38px] lg:h-[58px] lg:w-[58px]"
             />
 
             <img
               src={iconoDocumento}
               alt=""
-              className="
-                pointer-events-none
-                absolute
-                bottom-[17px]
-                right-[6px]
-                z-20
-                h-[26px]
-                w-[26px]
-                object-contain
-
-                sm:bottom-[16px]
-                sm:right-[15px]
-                sm:h-[38px]
-                sm:w-[38px]
-
-                lg:bottom-auto
-                lg:right-[12px]
-                lg:top-[105px]
-                lg:h-[56px]
-                lg:w-[56px]
-              "
+              className="pointer-events-none absolute bottom-[17px] right-[6px] z-20 h-[26px] w-[26px] object-contain sm:bottom-[16px] sm:right-[15px] sm:h-[38px] sm:w-[38px] lg:bottom-auto lg:right-[12px] lg:top-[105px] lg:h-[56px] lg:w-[56px]"
             />
 
             <img
               src={robotSedes}
               alt="Asistente Scapder"
-              className="
-                pointer-events-none
-                absolute
-                bottom-[11px]
-                left-1/2
-                z-10
-                h-[125px]
-                w-[125px]
-                -translate-x-1/2
-                object-contain
-                object-bottom
-
-                min-[390px]:h-[135px]
-                min-[390px]:w-[135px]
-
-                sm:h-[175px]
-                sm:w-[175px]
-
-                lg:bottom-auto
-                lg:top-[-23px]
-                lg:h-[205px]
-                lg:w-[205px]
-              "
+              className="pointer-events-none absolute bottom-[11px] left-1/2 z-10 h-[125px] w-[125px] -translate-x-1/2 object-contain object-bottom min-[390px]:h-[135px] min-[390px]:w-[135px] sm:h-[175px] sm:w-[175px] lg:bottom-auto lg:top-[-23px] lg:h-[205px] lg:w-[205px]"
             />
           </div>
 
-          {/* =================================================
-              MÉTRICAS
-          ================================================= */}
+          {/* MÉTRICAS */}
 
           <div
             className="
@@ -1004,19 +937,12 @@ export default function SitePickerPage() {
               lg:py-3
             "
           >
-            <div
-              className="
-                pointer-events-none
-                absolute
-                inset-0
-                bg-[linear-gradient(120deg,rgba(17,81,168,.035),transparent_58%)]
-              "
-            />
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(17,81,168,.035),transparent_58%)]" />
 
             <div className="relative grid grid-cols-3">
               <TopMetric
                 image={iconoUbicacion1}
-                value={sites.length}
+                value={currentSites.length}
                 label="Sedes registradas"
                 border
               />
@@ -1037,9 +963,7 @@ export default function SitePickerPage() {
           </div>
         </div>
 
-        {/* =====================================================
-            BUSCADOR Y CONTROLES
-        ===================================================== */}
+        {/* BUSCADOR */}
 
         <div
           className="
@@ -1058,27 +982,7 @@ export default function SitePickerPage() {
             lg:gap-3
           "
         >
-          <label
-            className="
-              flex
-              h-[38px]
-              items-center
-              gap-2
-              rounded-[12px]
-              border
-              border-[#1e4b6f]
-              bg-[#061725]/95
-              px-3
-              transition
-              focus-within:border-[#168aff]
-
-              sm:h-[50px]
-              sm:px-4
-
-              lg:h-[52px]
-              lg:px-5
-            "
-          >
+          <label className="flex h-[38px] items-center gap-2 rounded-[12px] border border-[#1e4b6f] bg-[#061725]/95 px-3 transition focus-within:border-[#168aff] sm:h-[50px] sm:px-4 lg:h-[52px] lg:px-5">
             <Search
               size={15}
               className="shrink-0 text-white"
@@ -1086,48 +990,17 @@ export default function SitePickerPage() {
 
             <input
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) =>
+                setSearch(event.target.value)
+              }
               placeholder="Buscar sede..."
-              className="
-                min-w-0
-                flex-1
-                border-0
-                bg-transparent
-                text-[9px]
-                text-white
-                outline-none
-                placeholder:text-[#748aa0]
-
-                min-[390px]:text-[10px]
-                sm:text-[12px]
-                lg:text-[13px]
-              "
+              className="min-w-0 flex-1 border-0 bg-transparent text-[9px] text-white outline-none placeholder:text-[#748aa0] min-[390px]:text-[10px] sm:text-[12px] lg:text-[13px]"
             />
           </label>
 
           <button
             type="button"
-            className="
-              inline-flex
-              h-[38px]
-              items-center
-              justify-center
-              gap-3
-              rounded-[12px]
-              border
-              border-[#1e4b6f]
-              bg-[#061725]/95
-              text-[11px]
-              font-black
-              text-white
-              transition
-              hover:border-[#ff681e]
-
-              sm:h-[48px]
-              sm:text-[12px]
-
-              lg:h-[52px]
-            "
+            className="inline-flex h-[38px] items-center justify-center gap-3 rounded-[12px] border border-[#1e4b6f] bg-[#061725]/95 text-[11px] font-black text-white transition hover:border-[#ff681e] sm:h-[48px] sm:text-[12px] lg:h-[52px]"
           >
             <SlidersHorizontal size={14} />
             Filtrar
@@ -1139,83 +1012,42 @@ export default function SitePickerPage() {
           <button
             type="button"
             onClick={toggleCreate}
-            className="
-              inline-flex
-              h-[42px]
-              items-center
-              justify-center
-              gap-2
-              rounded-[14px]
-              bg-[linear-gradient(90deg,#ff5510,#ff7022)]
-              text-[11px]
-              font-black
-              text-white
-              shadow-[0_10px_24px_-15px_rgba(255,91,18,.85)]
-              transition
-              hover:brightness-110
-
-              sm:h-[52px]
-              sm:text-[12px]
-
-              lg:w-[205px]
-              lg:rounded-[22px]
-            "
+            className="inline-flex h-[42px] items-center justify-center gap-2 rounded-[14px] bg-[linear-gradient(90deg,#ff5510,#ff7022)] text-[11px] font-black text-white shadow-[0_10px_24px_-15px_rgba(255,91,18,.85)] transition hover:brightness-110 sm:h-[52px] sm:text-[12px] lg:w-[205px] lg:rounded-[22px]"
           >
-            <span
-              className="
-                grid
-                h-6
-                w-6
-                place-items-center
-                rounded-full
-                bg-white
-                text-[#ff5b12]
-
-                sm:h-7
-                sm:w-7
-              "
-            >
-              <Plus size={14} strokeWidth={3} />
+            <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-[#ff5b12] sm:h-7 sm:w-7">
+              <Plus
+                size={14}
+                strokeWidth={3}
+              />
             </span>
 
-            {showCreate ? 'Cancelar' : 'Crear sede'}
+            {showCreate
+              ? 'Cancelar'
+              : 'Crear sede'}
           </button>
         </div>
 
-        {/* =====================================================
-            FORMULARIO MÓVIL
-        ===================================================== */}
+        {/* ERROR GENERAL */}
+
+        {error && !showCreate && (
+          <div className="relative z-30 mt-3 rounded-[12px] border border-[#ff594d]/30 bg-[#ff594d]/10 px-4 py-3 text-[12px] font-bold text-[#ff998f]">
+            {error}
+          </div>
+        )}
+
+        {/* FORMULARIO MÓVIL */}
 
         {showCreate && (
           <form
             onSubmit={submit}
-            className="
-              relative
-              z-30
-              mt-3
-              grid
-              gap-3
-              rounded-[18px]
-              border
-              border-[#17486e]
-              bg-[#061725]/95
-              p-3
-
-              md:grid-cols-2
-              md:p-5
-
-              lg:hidden
-            "
+            className="relative z-30 mt-3 grid gap-3 rounded-[18px] border border-[#17486e] bg-[#061725]/95 p-3 md:grid-cols-2 md:p-5 lg:hidden"
           >
             <FormField
               label="Nombre"
               placeholder="Ej. Sede Centro"
               value={form.name}
               onChange={(value) =>
-                setForm((current) => ({
-                  ...current,
-                  name: value,
-                }))
+                changeForm('name', value)
               }
             />
 
@@ -1224,41 +1056,30 @@ export default function SitePickerPage() {
               placeholder="Ej. Bogotá"
               value={form.city}
               onChange={(value) =>
-                setForm((current) => ({
-                  ...current,
-                  city: value,
-                }))
+                changeForm('city', value)
               }
             />
 
             <FormField
               label="Cámara"
-              placeholder="Cámara principal"
+              placeholder="Ej. Cámara principal"
               value={form.camera_name}
               onChange={(value) =>
-                setForm((current) => ({
-                  ...current,
-                  camera_name: value,
-                }))
+                changeForm(
+                  'camera_name',
+                  value
+                )
               }
             />
 
             <button
               disabled={creating}
               type="submit"
-              className="
-                min-h-[46px]
-                rounded-[14px]
-                bg-[#ff681e]
-                font-black
-                text-white
-                transition
-                hover:brightness-110
-                disabled:cursor-not-allowed
-                disabled:opacity-60
-              "
+              className="min-h-[46px] rounded-[14px] bg-[#ff681e] font-black text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {creating ? 'Creando...' : 'Crear sede'}
+              {creating
+                ? 'Creando...'
+                : 'Crear sede'}
             </button>
 
             {error && (
@@ -1269,18 +1090,9 @@ export default function SitePickerPage() {
           </form>
         )}
 
-        {/* =====================================================
-            TARJETAS
-        ===================================================== */}
+        {/* TARJETAS */}
 
-        <div
-          className="
-            relative
-            z-20
-            mt-2
-            sm:mt-5
-          "
-        >
+        <div className="relative z-20 mt-2 sm:mt-5">
           {filteredSites.length ? (
             <>
               {/* MÓVIL */}
@@ -1288,197 +1100,153 @@ export default function SitePickerPage() {
               <div className="md:hidden">
                 <div
                   ref={mobileCarouselRef}
-                  className="
-                    -mx-3
-                    flex
-                    snap-x
-                    snap-mandatory
-                    gap-3
-                    overflow-x-auto
-                    px-3
-                    py-3
-                    scroll-smooth
-                    [scrollbar-width:none]
-                    [&::-webkit-scrollbar]:hidden
-                  "
+                  className="-mx-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-3 py-3 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
-                  {filteredSites.map((site, originalIndex) => {
-                    const camera =
-                      site.configuration?.camera ?? {}
+                  {filteredSites.map(
+                    (site, originalIndex) => {
+                      const camera =
+                        site?.configuration?.camera ??
+                        {}
 
-                    return (
-                      <SiteCard
-                        key={site.id}
-                        site={site}
-                        originalIndex={originalIndex}
-                        camera={camera}
-                        status={getSiteStatus(site)}
-                        selectSite={selectSite}
-                        removeSite={removeSite}
-                        mobile
-                      />
-                    )
-                  })}
+                      return (
+                        <SiteCard
+                          key={site.id}
+                          site={site}
+                          originalIndex={
+                            originalIndex
+                          }
+                          camera={camera}
+                          status={getSiteStatus(
+                            site
+                          )}
+                          selectSite={
+                            selectSite
+                          }
+                          removeSite={
+                            removeSite
+                          }
+                          deleting={
+                            String(
+                              deletingId
+                            ) ===
+                            String(site.id)
+                          }
+                          mobile
+                        />
+                      )
+                    }
+                  )}
                 </div>
 
-                {filteredSites.length > 1 && (
-                  <div
-                    className="
-                      mt-1
-                      flex
-                      items-center
-                      justify-between
-                      px-1
-                    "
-                  >
+                {filteredSites.length >
+                  1 && (
+                  <div className="mt-1 flex items-center justify-between px-1">
                     <button
                       type="button"
-                      onClick={scrollMobileLeft}
+                      onClick={
+                        scrollMobileLeft
+                      }
                       aria-label="Anterior"
-                      className="
-                        grid
-                        h-8
-                        w-8
-                        place-items-center
-                        rounded-full
-                        border
-                        border-[#214d6f]
-                        bg-[#061725]
-                      "
+                      className="grid h-8 w-8 place-items-center rounded-full border border-[#214d6f] bg-[#061725]"
                     >
-                      <ChevronLeft size={17} />
+                      <ChevronLeft
+                        size={17}
+                      />
                     </button>
 
                     <span className="h-[5px] w-7 rounded-full bg-[#ff681e]" />
 
                     <button
                       type="button"
-                      onClick={scrollMobileRight}
+                      onClick={
+                        scrollMobileRight
+                      }
                       aria-label="Siguiente"
-                      className="
-                        grid
-                        h-8
-                        w-8
-                        place-items-center
-                        rounded-full
-                        border
-                        border-[#214d6f]
-                        bg-[#061725]
-                      "
+                      className="grid h-8 w-8 place-items-center rounded-full border border-[#214d6f] bg-[#061725]"
                     >
-                      <ChevronRight size={17} />
+                      <ChevronRight
+                        size={17}
+                      />
                     </button>
                   </div>
                 )}
               </div>
 
-              {/* TABLET / DESKTOP */}
+              {/* DESKTOP */}
 
               <div className="hidden md:block">
-                {filteredSites.length > sitesPerPage && (
+                {filteredSites.length >
+                  sitesPerPage && (
                   <button
                     type="button"
                     onClick={previousPage}
                     aria-label="Página anterior"
-                    className="
-                      absolute
-                      -left-7
-                      top-[45%]
-                      z-30
-                      hidden
-                      h-12
-                      w-12
-                      -translate-y-1/2
-                      place-items-center
-                      rounded-full
-                      border
-                      border-[#204f74]
-                      bg-[#061725]
-                      transition
-                      hover:bg-[#ff681e]
-
-                      lg:grid
-                    "
+                    className="absolute -left-7 top-[45%] z-30 hidden h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-[#204f74] bg-[#061725] transition hover:bg-[#ff681e] lg:grid"
                   >
-                    <ChevronLeft size={23} />
+                    <ChevronLeft
+                      size={23}
+                    />
                   </button>
                 )}
 
-                <div
-                  className="
-                    grid
-                    gap-5
-                    py-3
+                <div className="grid gap-5 py-3 md:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+                  {visibleSites.map(
+                    (site) => {
+                      const originalIndex =
+                        filteredSites.indexOf(
+                          site
+                        )
 
-                    md:grid-cols-2
+                      const camera =
+                        site?.configuration
+                          ?.camera ?? {}
 
-                    lg:grid-cols-4
-                    lg:gap-6
-                  "
-                >
-                  {visibleSites.map((site) => {
-                    const originalIndex =
-                      filteredSites.indexOf(site)
-
-                    const camera =
-                      site.configuration?.camera ?? {}
-
-                    return (
-                      <SiteCard
-                        key={site.id}
-                        site={site}
-                        originalIndex={originalIndex}
-                        camera={camera}
-                        status={getSiteStatus(site)}
-                        selectSite={selectSite}
-                        removeSite={removeSite}
-                      />
-                    )
-                  })}
+                      return (
+                        <SiteCard
+                          key={site.id}
+                          site={site}
+                          originalIndex={
+                            originalIndex
+                          }
+                          camera={camera}
+                          status={getSiteStatus(
+                            site
+                          )}
+                          selectSite={
+                            selectSite
+                          }
+                          removeSite={
+                            removeSite
+                          }
+                          deleting={
+                            String(
+                              deletingId
+                            ) ===
+                            String(site.id)
+                          }
+                        />
+                      )
+                    }
+                  )}
                 </div>
 
-                {filteredSites.length > sitesPerPage && (
+                {filteredSites.length >
+                  sitesPerPage && (
                   <button
                     type="button"
                     onClick={nextPage}
                     aria-label="Página siguiente"
-                    className="
-                      absolute
-                      -right-7
-                      top-[45%]
-                      z-30
-                      hidden
-                      h-12
-                      w-12
-                      -translate-y-1/2
-                      place-items-center
-                      rounded-full
-                      border
-                      border-[#204f74]
-                      bg-[#061725]
-                      transition
-                      hover:bg-[#ff681e]
-
-                      lg:grid
-                    "
+                    className="absolute -right-7 top-[45%] z-30 hidden h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-[#204f74] bg-[#061725] transition hover:bg-[#ff681e] lg:grid"
                   >
-                    <ChevronRight size={23} />
+                    <ChevronRight
+                      size={23}
+                    />
                   </button>
                 )}
               </div>
             </>
           ) : (
-            <div
-              className="
-                rounded-[24px]
-                border
-                border-dashed
-                border-[#235077]
-                bg-[#061725]/95
-                p-8
-                text-center
-              "
-            >
+            <div className="rounded-[24px] border border-dashed border-[#235077] bg-[#061725]/95 p-8 text-center">
               <Building2
                 size={38}
                 className="mx-auto text-[#ff681e]"
@@ -1489,7 +1257,9 @@ export default function SitePickerPage() {
               </h2>
 
               <p className="mt-2 text-sm text-[#96aabd]">
-                Busca por nombre o ciudad.
+                {search
+                  ? 'No hay sedes que coincidan con la búsqueda.'
+                  : 'Todavía no hay sedes registradas.'}
               </p>
             </div>
           )}
@@ -1498,23 +1268,19 @@ export default function SitePickerPage() {
         {/* PAGINACIÓN */}
 
         {totalPages > 1 && (
-          <div
-            className="
-              relative
-              z-20
-              mt-5
-              hidden
-              justify-center
-              gap-3
-              md:flex
-            "
-          >
-            {Array.from({ length: totalPages }).map((_, index) => (
+          <div className="relative z-20 mt-5 hidden justify-center gap-3 md:flex">
+            {Array.from({
+              length: totalPages,
+            }).map((_, index) => (
               <button
                 key={index}
                 type="button"
-                onClick={() => setPage(index)}
-                aria-label={`Página ${index + 1}`}
+                onClick={() =>
+                  setPage(index)
+                }
+                aria-label={`Página ${
+                  index + 1
+                }`}
                 className={`
                   h-2
                   rounded-full
@@ -1533,29 +1299,10 @@ export default function SitePickerPage() {
         <div className="h-4 sm:h-6" />
       </div>
 
-      {/* =====================================================
-          MODAL CREAR SEDE DESKTOP
-      ===================================================== */}
+      {/* MODAL CREAR SEDE */}
 
       {showCreate && (
-        <div
-          className="
-            fixed
-            inset-0
-            z-[100]
-            hidden
-            items-center
-            justify-center
-            bg-[#01060c]/85
-            px-6
-            py-6
-            backdrop-blur-[10px]
-
-            lg:flex
-          "
-        >
-          {/* FONDO PARA CERRAR */}
-
+        <div className="fixed inset-0 z-[100] hidden items-center justify-center bg-[#01060c]/85 px-6 py-6 backdrop-blur-[10px] lg:flex">
           <button
             type="button"
             aria-label="Cerrar modal"
@@ -1563,59 +1310,11 @@ export default function SitePickerPage() {
             className="absolute inset-0 z-0 cursor-default"
           />
 
-          {/* CONTENEDOR */}
+          <div className="relative z-10 grid w-full max-w-[900px] grid-cols-[42%_58%] overflow-hidden rounded-[26px] border border-[#16689f] bg-[#03111f] shadow-[0_35px_90px_-25px_rgba(0,0,0,.95)]">
+            {/* ROBOT */}
 
-          <div
-            className="
-              relative
-              z-10
-              grid
-              w-full
-              max-w-[900px]
-              grid-cols-[42%_58%]
-              overflow-hidden
-              rounded-[26px]
-              border
-              border-[#16689f]
-              bg-[#03111f]
-              shadow-[0_35px_90px_-25px_rgba(0,0,0,.95)]
-            "
-          >
-            {/* =================================================
-                ROBOT MODAL
-            ================================================= */}
-
-            <div
-              className="
-                relative
-                min-h-[500px]
-                overflow-hidden
-                border-r
-                border-[#123b5d]
-                bg-[radial-gradient(circle_at_50%_60%,rgba(0,102,255,.17),transparent_52%)]
-              "
-            >
-              {/* MENSAJE */}
-
-              <div
-                className="
-                  absolute
-                  left-1/2
-                  top-[35px]
-                  z-30
-                  w-[255px]
-                  -translate-x-1/2
-                  -rotate-[3deg]
-                  rounded-[18px]
-                  border
-                  border-[#168fff]
-                  bg-[#06192b]/95
-                  px-5
-                  py-3
-                  text-center
-                  shadow-[0_12px_35px_-18px_rgba(0,112,255,.8)]
-                "
-              >
+            <div className="relative min-h-[500px] overflow-hidden border-r border-[#123b5d] bg-[radial-gradient(circle_at_50%_60%,rgba(0,102,255,.17),transparent_52%)]">
+              <div className="absolute left-1/2 top-[35px] z-30 w-[255px] -translate-x-1/2 -rotate-[3deg] rounded-[18px] border border-[#168fff] bg-[#06192b]/95 px-5 py-3 text-center shadow-[0_12px_35px_-18px_rgba(0,112,255,.8)]">
                 <p className="text-[15px] font-black leading-tight text-white">
                   ¡Crea una nueva sede
                 </p>
@@ -1625,203 +1324,59 @@ export default function SitePickerPage() {
                 </p>
               </div>
 
-              {/* LUZ */}
+              <div className="pointer-events-none absolute bottom-[35px] left-1/2 h-[290px] w-[290px] -translate-x-1/2 rounded-full bg-[#0074ff]/10 blur-[45px]" />
 
-              <div
-                className="
-                  pointer-events-none
-                  absolute
-                  bottom-[35px]
-                  left-1/2
-                  h-[290px]
-                  w-[290px]
-                  -translate-x-1/2
-                  rounded-full
-                  bg-[#0074ff]/10
-                  blur-[45px]
-                "
-              />
+              <div className="pointer-events-none absolute bottom-[55px] left-1/2 h-[285px] w-[285px] -translate-x-1/2 rounded-full border border-[#168fff]/30" />
 
-              {/* CÍRCULO AZUL */}
-
-              <div
-                className="
-                  pointer-events-none
-                  absolute
-                  bottom-[55px]
-                  left-1/2
-                  h-[285px]
-                  w-[285px]
-                  -translate-x-1/2
-                  rounded-full
-                  border
-                  border-[#168fff]/30
-                "
-              />
-
-              {/* CÍRCULO NARANJA */}
-
-              <div
-                className="
-                  pointer-events-none
-                  absolute
-                  bottom-[45px]
-                  left-1/2
-                  h-[260px]
-                  w-[260px]
-                  -translate-x-1/2
-                  rotate-[17deg]
-                  rounded-full
-                  border
-                  border-[#ff681e]/30
-                "
-              />
-
-              {/* ICONOS */}
+              <div className="pointer-events-none absolute bottom-[45px] left-1/2 h-[260px] w-[260px] -translate-x-1/2 rotate-[17deg] rounded-full border border-[#ff681e]/30" />
 
               <img
                 src={iconoAnalisis}
                 alt=""
-                className="
-                  pointer-events-none
-                  absolute
-                  left-[28px]
-                  top-[190px]
-                  z-30
-                  h-[58px]
-                  w-[58px]
-                  object-contain
-                "
+                className="pointer-events-none absolute left-[28px] top-[190px] z-30 h-[58px] w-[58px] object-contain"
               />
 
               <img
                 src={iconoUbicacion}
                 alt=""
-                className="
-                  pointer-events-none
-                  absolute
-                  right-[25px]
-                  top-[175px]
-                  z-30
-                  h-[62px]
-                  w-[62px]
-                  object-contain
-                "
+                className="pointer-events-none absolute right-[25px] top-[175px] z-30 h-[62px] w-[62px] object-contain"
               />
 
               <img
                 src={iconoDocumento}
                 alt=""
-                className="
-                  pointer-events-none
-                  absolute
-                  bottom-[48px]
-                  right-[30px]
-                  z-30
-                  h-[58px]
-                  w-[58px]
-                  object-contain
-                "
+                className="pointer-events-none absolute bottom-[48px] right-[30px] z-30 h-[58px] w-[58px] object-contain"
               />
-
-              {/* ROBOT */}
 
               <img
                 src={robotSedes1}
                 alt="Asistente para crear sede"
-                className="
-                  pointer-events-none
-                  absolute
-                  bottom-[-12px]
-                  left-1/2
-                  z-20
-                  h-[340px]
-                  w-[340px]
-                  -translate-x-1/2
-                  object-contain
-                  object-bottom
-                "
+                className="pointer-events-none absolute bottom-[-12px] left-1/2 z-20 h-[340px] w-[340px] -translate-x-1/2 object-contain object-bottom"
               />
             </div>
 
-            {/* =================================================
-                FORMULARIO MODAL
-            ================================================= */}
+            {/* FORMULARIO */}
 
             <form
               onSubmit={submit}
-              className="
-                relative
-                z-20
-                flex
-                min-h-[500px]
-                flex-col
-                justify-center
-                px-10
-                py-8
-              "
+              className="relative z-20 flex min-h-[500px] flex-col justify-center px-10 py-8"
             >
-              {/* CERRAR */}
-
               <button
                 type="button"
                 aria-label="Cerrar"
                 onClick={closeCreate}
-                className="
-                  absolute
-                  right-5
-                  top-5
-                  grid
-                  h-9
-                  w-9
-                  place-items-center
-                  rounded-full
-                  border
-                  border-white/10
-                  bg-white/[0.04]
-                  text-[21px]
-                  text-white
-                  transition
-                  hover:border-[#ff681e]
-                  hover:text-[#ff681e]
-                "
+                className="absolute right-5 top-5 grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-[21px] text-white transition hover:border-[#ff681e] hover:text-[#ff681e]"
               >
                 ×
               </button>
 
-              <span
-                className="
-                  mb-3
-                  block
-                  h-[3px]
-                  w-10
-                  rounded-full
-                  bg-[#ff681e]
-                "
-              />
+              <span className="mb-3 block h-[3px] w-10 rounded-full bg-[#ff681e]" />
 
-              <p
-                className="
-                  mb-2
-                  text-[10px]
-                  font-black
-                  uppercase
-                  tracking-[0.14em]
-                  text-[#ff681e]
-                "
-              >
+              <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#ff681e]">
                 Nueva sede
               </p>
 
-              <h2
-                className="
-                  text-[31px]
-                  font-black
-                  leading-[.98]
-                  tracking-[-0.04em]
-                  text-white
-                "
-              >
+              <h2 className="text-[31px] font-black leading-[.98] tracking-[-0.04em] text-white">
                 Crea un nuevo
 
                 <span className="block text-[#ff681e]">
@@ -1829,32 +1384,27 @@ export default function SitePickerPage() {
                 </span>
               </h2>
 
-              <p
-                className="
-                  mt-3
-                  max-w-[450px]
-                  text-[12px]
-                  leading-5
-                  text-[#9fb2c4]
-                "
-              >
-                Registra la información básica de la sede para comenzar a
-                configurarla.
+              <p className="mt-3 max-w-[450px] text-[12px] leading-5 text-[#9fb2c4]">
+                Registra la información
+                básica de la sede para
+                comenzar a configurarla.
               </p>
-
-              {/* CAMPOS */}
 
               <div className="mt-6 grid gap-4">
                 <CompactDesktopFormField
                   label="Nombre"
                   placeholder="Ej. Sede Centro"
                   value={form.name}
-                  icon={<Building2 size={18} />}
+                  icon={
+                    <Building2
+                      size={18}
+                    />
+                  }
                   onChange={(value) =>
-                    setForm((current) => ({
-                      ...current,
-                      name: value,
-                    }))
+                    changeForm(
+                      'name',
+                      value
+                    )
                   }
                 />
 
@@ -1862,60 +1412,50 @@ export default function SitePickerPage() {
                   label="Ciudad"
                   placeholder="Ej. Bogotá"
                   value={form.city}
-                  icon={<MapPin size={18} />}
+                  icon={
+                    <MapPin
+                      size={18}
+                    />
+                  }
                   onChange={(value) =>
-                    setForm((current) => ({
-                      ...current,
-                      city: value,
-                    }))
+                    changeForm(
+                      'city',
+                      value
+                    )
                   }
                 />
 
                 <CompactDesktopFormField
                   label="Cámara"
-                  placeholder="Cámara principal"
-                  value={form.camera_name}
-                  icon={<Camera size={18} />}
+                  placeholder="Ej. Cámara principal"
+                  value={
+                    form.camera_name
+                  }
+                  icon={
+                    <Camera
+                      size={18}
+                    />
+                  }
                   onChange={(value) =>
-                    setForm((current) => ({
-                      ...current,
-                      camera_name: value,
-                    }))
+                    changeForm(
+                      'camera_name',
+                      value
+                    )
                   }
                 />
               </div>
 
               {error && (
-                <p className="mt-3 text-[12px] font-bold text-[#ff8968]">
+                <div className="mt-4 rounded-[12px] border border-[#ff654d]/30 bg-[#ff654d]/10 px-4 py-3 text-[11px] font-bold leading-4 text-[#ff9b8f]">
                   {error}
-                </p>
+                </div>
               )}
 
-              {/* BOTONES */}
-
-              <div
-                className="
-                  mt-6
-                  grid
-                  grid-cols-[1fr_1.15fr]
-                  gap-3
-                "
-              >
+              <div className="mt-6 grid grid-cols-[1fr_1.15fr] gap-3">
                 <button
                   type="button"
                   onClick={closeCreate}
-                  className="
-                    h-[48px]
-                    rounded-[14px]
-                    border
-                    border-[#1d557e]
-                    bg-[#05182a]
-                    text-[13px]
-                    font-black
-                    text-white
-                    transition
-                    hover:border-[#168fff]
-                  "
+                  className="h-[48px] rounded-[14px] border border-[#1d557e] bg-[#05182a] text-[13px] font-black text-white transition hover:border-[#168fff]"
                 >
                   Cancelar
                 </button>
@@ -1923,28 +1463,17 @@ export default function SitePickerPage() {
                 <button
                   disabled={creating}
                   type="submit"
-                  className="
-                    inline-flex
-                    h-[48px]
-                    items-center
-                    justify-center
-                    gap-2
-                    rounded-[14px]
-                    bg-[linear-gradient(90deg,#ff5510,#ff7423)]
-                    text-[13px]
-                    font-black
-                    text-white
-                    shadow-[0_15px_30px_-14px_rgba(255,91,18,.8)]
-                    transition
-                    hover:-translate-y-0.5
-                    hover:brightness-110
-                    disabled:cursor-not-allowed
-                    disabled:opacity-60
-                  "
+                  className="inline-flex h-[48px] items-center justify-center gap-2 rounded-[14px] bg-[linear-gradient(90deg,#ff5510,#ff7423)] text-[13px] font-black text-white shadow-[0_15px_30px_-14px_rgba(255,91,18,.8)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {creating ? 'Creando...' : 'Crear sede'}
+                  {creating
+                    ? 'Creando...'
+                    : 'Crear sede'}
 
-                  {!creating && <ArrowRight size={16} />}
+                  {!creating && (
+                    <ArrowRight
+                      size={16}
+                    />
+                  )}
                 </button>
               </div>
             </form>
@@ -1966,8 +1495,29 @@ function SiteCard({
   status,
   selectSite,
   removeSite,
+  deleting,
   mobile = false,
 }) {
+  const hasImage =
+    typeof site?.image_url === 'string' &&
+    site.image_url.trim().length > 0
+
+  const openSite = () => {
+    if (!deleting) {
+      selectSite(site)
+    }
+  }
+
+  const handleImageKeyDown = (event) => {
+    if (
+      event.key === 'Enter' ||
+      event.key === ' '
+    ) {
+      event.preventDefault()
+      openSite()
+    }
+  }
+
   return (
     <article
       className={`
@@ -1992,13 +1542,24 @@ function SiteCard({
         md:hover:shadow-[0_0_12px_rgba(37,170,255,.95),0_0_28px_rgba(0,119,255,.55)]
       `}
     >
-      {/* FOTO */}
+      {/* FOTO - AHORA ES CLICKEABLE */}
 
       <div
+        role="button"
+        tabIndex={0}
+        aria-label={`Abrir ${site.name || 'sede'}`}
+        onClick={openSite}
+        onKeyDown={handleImageKeyDown}
         className={`
           relative
+          cursor-pointer
           overflow-hidden
           bg-[#eaf2f8]
+          outline-none
+          transition
+
+          focus-visible:ring-4
+          focus-visible:ring-[#25aaff]/50
 
           ${
             mobile
@@ -2007,34 +1568,52 @@ function SiteCard({
           }
         `}
       >
-        <img
-          src={getSiteImage(site, originalIndex)}
-          alt={site.name}
-          className="
-            h-full
-            w-full
-            object-cover
-            transition
-            duration-700
-            group-hover:scale-105
-          "
-        />
+        {hasImage ? (
+          <img
+            src={site.image_url}
+            alt={site.name || 'Sede'}
+            className="
+              h-full
+              w-full
+              object-cover
+              transition
+              duration-700
+              group-hover:scale-105
+            "
+          />
+        ) : (
+          <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[linear-gradient(135deg,#eef5fa_0%,#dceaf4_50%,#c8deed_100%)]">
+            <div className="absolute bottom-0 left-0 right-0 h-[58%] bg-[linear-gradient(180deg,#9bbacf_0%,#6389a4_100%)]" />
 
-        <div
-          className="
-            absolute
-            inset-0
-            bg-gradient-to-t
-            from-black/25
-            via-transparent
-            to-transparent
-          "
-        />
+            <div className="absolute bottom-[17%] left-1/2 h-[48%] w-[76%] -translate-x-1/2 rounded-t-[6px] bg-[#e9edf0] shadow-[0_10px_25px_rgba(0,0,0,.15)]">
+              <div className="grid h-full grid-cols-4 gap-[5%] px-[8%] py-[9%]">
+                {Array.from({
+                  length: 8,
+                }).map((_, index) => (
+                  <span
+                    key={index}
+                    className="bg-[#5b8099]"
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="absolute bottom-[17%] left-1/2 h-[23%] w-[18%] -translate-x-1/2 bg-[#375e79]" />
+
+            <Building2
+              size={mobile ? 23 : 34}
+              className="absolute bottom-3 right-3 text-white/70"
+            />
+          </div>
+        )}
+
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
 
         {/* NÚMERO */}
 
         <span
           className={`
+            pointer-events-none
             absolute
             grid
             place-items-center
@@ -2050,13 +1629,16 @@ function SiteCard({
             }
           `}
         >
-          {String(originalIndex + 1).padStart(2, '0')}
+          {String(
+            originalIndex + 1
+          ).padStart(2, '0')}
         </span>
 
         {/* ESTADO */}
 
         <span
           className={`
+            pointer-events-none
             absolute
             inline-flex
             items-center
@@ -2093,10 +1675,16 @@ function SiteCard({
 
         <button
           type="button"
-          onClick={(event) => removeSite(event, site)}
-          aria-label={`Eliminar ${site.name}`}
+          disabled={deleting}
+          onClick={(event) =>
+            removeSite(event, site)
+          }
+          aria-label={`Eliminar ${
+            site.name || 'sede'
+          }`}
           className={`
             absolute
+            z-30
             grid
             place-items-center
             rounded-full
@@ -2106,6 +1694,8 @@ function SiteCard({
             transition
             hover:bg-[#ff5b12]
             hover:text-white
+            disabled:cursor-not-allowed
+            disabled:opacity-60
 
             ${
               mobile
@@ -2114,7 +1704,13 @@ function SiteCard({
             }
           `}
         >
-          <Trash2 size={mobile ? 11 : 15} />
+          {deleting ? (
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#ff5b12] border-t-transparent" />
+          ) : (
+            <Trash2
+              size={mobile ? 11 : 15}
+            />
+          )}
         </button>
       </div>
 
@@ -2128,7 +1724,7 @@ function SiteCard({
           ${
             mobile
               ? 'min-h-[110px] px-3 pb-3 pt-3'
-              : 'min-h-[160px] px-5 pb-5 pt-4'
+              : 'min-h-[145px] px-5 pb-5 pt-4'
           }
         `}
       >
@@ -2162,7 +1758,8 @@ function SiteCard({
             }
           `}
         >
-          {site.name}
+          {site.name ||
+            'Sede sin nombre'}
         </h2>
 
         <p
@@ -2208,75 +1805,36 @@ function SiteCard({
             strokeWidth={2.8}
           />
 
-          {camera.name ? 1 : 0}{' '}
-          {camera.name ? 'cámara' : 'cámaras'}
+          {camera?.name ? 1 : 0}{' '}
+          {camera?.name
+            ? 'cámara'
+            : 'cámaras'}
         </p>
 
-        <div
-          className={`
-            flex
-            items-center
-            justify-between
+        {/* VER SEDE SIN FLECHA */}
 
-            ${mobile ? 'mt-2' : 'mt-4'}
+        <button
+          type="button"
+          onClick={openSite}
+          className={`
+            mt-4
+            border-0
+            bg-transparent
+            p-0
+            font-black
+            text-[#111111]
+            transition
+            hover:text-[#ff681e]
+
+            ${
+              mobile
+                ? 'mt-2 text-[7px]'
+                : 'text-[12px]'
+            }
           `}
         >
-          <button
-            type="button"
-            onClick={() => selectSite(site)}
-            className={`
-              inline-flex
-              items-center
-              gap-1
-              border-0
-              bg-transparent
-              p-0
-              font-black
-              text-[#111111]
-              transition
-              hover:text-[#ff681e]
-
-              ${
-                mobile
-                  ? 'text-[7px]'
-                  : 'text-[12px]'
-              }
-            `}
-          >
-            Ver sede
-
-            <ArrowRight
-              size={mobile ? 10 : 15}
-              className="text-[#ff681e]"
-            />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => selectSite(site)}
-            aria-label={`Ver ${site.name}`}
-            className={`
-              grid
-              place-items-center
-              rounded-full
-              border-0
-              bg-[linear-gradient(145deg,#ff5510,#ff7824)]
-              text-white
-              shadow-[0_12px_25px_-10px_rgba(255,91,18,.95)]
-              transition
-              hover:scale-105
-              hover:brightness-110
-
-              ${
-                mobile
-                  ? 'h-7 w-7'
-                  : 'h-11 w-11'
-              }
-            `}
-          >
-            <ArrowRight size={mobile ? 13 : 20} />
-          </button>
-        </div>
+          Ver sede
+        </button>
       </div>
     </article>
   )
@@ -2321,78 +1879,20 @@ function TopMetric({
         }
       `}
     >
-      <div
-        className="
-          flex
-          h-8
-          w-8
-          shrink-0
-          items-center
-          justify-center
-
-          min-[390px]:h-9
-          min-[390px]:w-9
-
-          sm:h-11
-          sm:w-11
-
-          lg:h-[58px]
-          lg:w-[58px]
-        "
-      >
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center min-[390px]:h-9 min-[390px]:w-9 sm:h-11 sm:w-11 lg:h-[58px] lg:w-[58px]">
         <img
           src={image}
           alt=""
-          className="
-            h-full
-            w-full
-            object-contain
-            drop-shadow-[0_4px_7px_rgba(0,0,0,.12)]
-          "
+          className="h-full w-full object-contain drop-shadow-[0_4px_7px_rgba(0,0,0,.12)]"
         />
       </div>
 
       <div className="min-w-0">
-        <strong
-          className="
-            block
-            text-[14px]
-            font-black
-            leading-none
-            text-black
-
-            min-[390px]:text-[16px]
-
-            sm:text-[20px]
-
-            lg:text-[26px]
-          "
-        >
+        <strong className="block text-[14px] font-black leading-none text-black min-[390px]:text-[16px] sm:text-[20px] lg:text-[26px]">
           {value}
         </strong>
 
-        <span
-          className="
-            mt-1
-            block
-            max-w-[48px]
-            text-[4.5px]
-            font-black
-            leading-[6px]
-            text-black
-
-            min-[390px]:max-w-[55px]
-            min-[390px]:text-[5px]
-
-            sm:max-w-[75px]
-            sm:text-[7px]
-            sm:leading-[9px]
-
-            lg:max-w-none
-            lg:whitespace-nowrap
-            lg:text-[8px]
-          "
-        >
+        <span className="mt-1 block max-w-[48px] text-[4.5px] font-black leading-[6px] text-black min-[390px]:max-w-[55px] min-[390px]:text-[5px] sm:max-w-[75px] sm:text-[7px] sm:leading-[9px] lg:max-w-none lg:whitespace-nowrap lg:text-[8px]">
           {label}
         </span>
       </div>
@@ -2419,30 +1919,17 @@ function FormField({
         minLength={2}
         value={value}
         placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        className="
-          min-h-[44px]
-          rounded-[13px]
-          border
-          border-[#1d4b70]
-          bg-[#03111e]
-          px-4
-          text-sm
-          text-white
-          outline-none
-          transition
-          placeholder:text-[#60798e]
-          focus:border-[#ff681e]
-          focus:ring-4
-          focus:ring-[#ff681e]/10
-        "
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
+        className="min-h-[44px] rounded-[13px] border border-[#1d4b70] bg-[#03111e] px-4 text-sm text-white outline-none transition placeholder:text-[#60798e] focus:border-[#ff681e] focus:ring-4 focus:ring-[#ff681e]/10"
       />
     </label>
   )
 }
 
 /* =========================================================
-   CAMPO DEL MODAL COMPACTO
+   CAMPO MODAL
 ========================================================= */
 
 function CompactDesktopFormField({
@@ -2454,32 +1941,11 @@ function CompactDesktopFormField({
 }) {
   return (
     <label className="grid gap-2">
-      <span
-        className="
-          text-[11px]
-          font-black
-          text-[#dce7f1]
-        "
-      >
+      <span className="text-[11px] font-black text-[#dce7f1]">
         {label}
       </span>
 
-      <div
-        className="
-          flex
-          h-[50px]
-          items-center
-          gap-3
-          rounded-[14px]
-          border
-          border-[#18557f]
-          bg-[#031321]
-          px-4
-          transition
-          focus-within:border-[#168fff]
-          focus-within:shadow-[0_0_0_3px_rgba(0,112,255,.08)]
-        "
-      >
+      <div className="flex h-[50px] items-center gap-3 rounded-[14px] border border-[#18557f] bg-[#031321] px-4 transition focus-within:border-[#168fff] focus-within:shadow-[0_0_0_3px_rgba(0,112,255,.08)]">
         <span className="shrink-0 text-[#ff681e]">
           {icon}
         </span>
@@ -2489,18 +1955,12 @@ function CompactDesktopFormField({
           minLength={2}
           value={value}
           placeholder={placeholder}
-          onChange={(event) => onChange(event.target.value)}
-          className="
-            min-w-0
-            flex-1
-            border-0
-            bg-transparent
-            text-[13px]
-            font-semibold
-            text-white
-            outline-none
-            placeholder:text-[#667f95]
-          "
+          onChange={(event) =>
+            onChange(
+              event.target.value
+            )
+          }
+          className="min-w-0 flex-1 border-0 bg-transparent text-[13px] font-semibold text-white outline-none placeholder:text-[#667f95]"
         />
       </div>
     </label>
