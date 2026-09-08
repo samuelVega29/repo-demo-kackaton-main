@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import GondolaStep from '../components/GondolaStep'
 import FlowNav from '../components/flow/FlowNav'
 import PlanogramPreview3D from '../components/flow/PlanogramPreview3D'
@@ -18,8 +18,15 @@ export default function PlanogramPage() {
         <GondolaStep configuration={site.configuration} frameCapture={frameCapture} onChange={updateConfiguration} onSave={saveConfiguration} />
       </div>
       <div className="rounded-lg border border-[#e5e7ee] bg-white shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)] mt-5 p-5">
-        <h3 className="text-xl font-black text-[#151323]">Vista 3D del plano</h3>
-        <p className="mb-4 mt-1 text-sm font-semibold text-[#7d8392]">Revisa el plano de la tienda, sus gondolas y productos antes de analizar.</p>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-xl font-black text-[#151323]">Vista 3D del plano</h3>
+            <p className="mt-1 text-sm font-semibold text-[#7d8392]">Revisa la configuracion guardada de esta sede antes de analizar nuevos videos.</p>
+          </div>
+          <Link className="inline-flex min-h-[40px] items-center justify-center rounded-md border border-[#e5e7ee] bg-white px-4 text-[13px] font-black text-[#151323] no-underline transition hover:-translate-y-px hover:border-[#ff5b12]" to={`/sites/${siteId}/captura`}>
+            Volver a configurar camara
+          </Link>
+        </div>
         <PlanogramPreview3D configuration={site.configuration} />
       </div>
       <FlowNav

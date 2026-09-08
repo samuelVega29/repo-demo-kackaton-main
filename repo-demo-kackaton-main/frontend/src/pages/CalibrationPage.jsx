@@ -1,5 +1,4 @@
 import { useParams } from 'react-router-dom'
-import FlowStep from '../components/FlowStep'
 import CameraCalibration from '../components/flow/CameraCalibration'
 import FlowNav from '../components/flow/FlowNav'
 import SiteFlowPage from '../components/flow/SiteFlowPage'
@@ -15,9 +14,9 @@ export default function CalibrationPage() {
   return (
     <SiteFlowPage step={step}>
       <div className="flex flex-col gap-4">
-        <FlowStep number={step.number} eyebrow="VERTICES DEL PISO" title="Elige P1, P2, P3 y P4" desc={step.desc} open badge={calibrated ? 'calibrada' : 'pendiente'} onToggle={() => {}}>
+        <section className="rounded-lg border border-[#e5e7ee] bg-white p-5 shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)]">
           <CameraCalibration preview={preview} externalCapture={frameCapture} configuration={site.configuration} onChange={updateConfiguration} onSave={saveConfiguration} onCapture={onFrameCapture} onClose={() => {}} />
-        </FlowStep>
+        </section>
       </div>
       <FlowNav
         back={`/sites/${siteId}/captura`}

@@ -1,8 +1,9 @@
-import { ArrowRight, Camera, Clock, Flame, Plus, Store, Video } from 'lucide-react'
+import { ArrowRight, Camera, CheckCircle2, Clock, Flame, Plus, Settings2, Store, Video } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppProvider'
 import { artifactUrl, listAnalyses } from '../services/analyses'
+import { isSiteConfigured } from '../utils/siteConfiguration'
 
 const completed = (analysis) => analysis.status === 'completed' && analysis.result
 const formatDate = (value) => value ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : ''
@@ -38,6 +39,8 @@ export default function SiteDashboardPage() {
   const latest = useMemo(() => analyses.find(completed), [analyses])
   const configuration = site?.configuration ?? {}
   const cameras = configuration.camera ? 1 : 0
+  const configured = isSiteConfigured(site)
+  const gondolas = configuration.gondolas || []
   const metrics = latest?.result?.metrics || {}
   const video = latest?.result?.video || {}
   const hotZones = (latest?.result?.zones || []).filter((zone) => zone.classification === 'hot')
@@ -58,16 +61,40 @@ export default function SiteDashboardPage() {
                 <h1 className="m-0 text-[clamp(28px,4vw,44px)] font-black leading-[.92] text-[#151323]">Sede {site.name}</h1>
                 <p className="mt-2 text-sm leading-6 text-[#7d8392]">{site.city || 'Ciudad no registrada'} · Dashboard con análisis de esta sede.</p>
               </div>
-              <Link className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-md bg-[#ff5b12] px-4 text-[13px] font-black text-white no-underline transition hover:-translate-y-px hover:bg-[#e94d08]" to={`/sedes/${site.id}/analisis/nuevo`}><Plus size={16} /> Nuevo analisis</Link>
+              <div className="flex flex-wrap gap-2">
+                <Link className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-md bg-[#ff5b12] px-4 text-[13px] font-black text-white no-underline transition hover:-translate-y-px hover:bg-[#e94d08]" to={`/sedes/${site.id}/analisis/nuevo`}><Plus size={16} /> Subir video</Link>
+                <Link className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-md border border-[#d6e4f1] bg-white px-4 text-[13px] font-black text-[#151323] no-underline transition hover:-translate-y-px hover:border-[#ff5b12]" to={`/sedes/${site.id}/historial`}>Historial <ArrowRight size={16} /></Link>
+              </div>
             </div>
 
             {error && <p className="mb-5 rounded-md border border-[#ffd2c2] bg-[#fff1eb] px-4 py-3 text-sm font-bold text-[#b43b1d]">{error}</p>}
 
+            <article className={`mb-5 rounded-lg border p-5 shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)] ${configured ? 'border-[#bfe8d1] bg-[#f1fff7]' : 'border-[#ffd7c4] bg-[#fff7f2]'}`}>
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-start gap-3">
+                  <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-md ${configured ? 'bg-[#17a964] text-white' : 'bg-[#ff5b12] text-white'}`}>
+                    {configured ? <CheckCircle2 size={22} /> : <Settings2 size={22} />}
+                  </span>
+                  <div>
+                    <h2 className="text-xl font-black text-[#151323]">{configured ? 'Pipeline activo para esta sede' : 'Configuracion pendiente'}</h2>
+                    <p className="mt-1 text-sm font-semibold leading-6 text-[#64748b]">
+                      {configured
+                        ? 'La camara calibrada y las gondolas ya estan guardadas. Puedes subir un video y analizarlo sin volver a configurar.'
+                        : 'Primero guarda la calibracion de camara y las gondolas para activar el analisis por pipeline.'}
+                    </p>
+                  </div>
+                </div>
+                <Link className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-md border border-[#d6e4f1] bg-white px-4 text-[13px] font-black text-[#151323] no-underline transition hover:-translate-y-px hover:border-[#ff5b12]" to={configured ? `/sites/${site.id}/planograma` : `/sites/${site.id}/video`}>
+                  {configured ? 'Ver configuracion' : 'Configurar sede'}
+                </Link>
+              </div>
+            </article>
+
             <div className="mb-5 grid gap-4 md:grid-cols-4">
               <Metric icon={<Camera size={20} />} label="Camaras" value={cameras || '-'} />
               <Metric icon={<Video size={20} />} label="Analisis" value={analyses.length} />
+              <Metric icon={<Store size={20} />} label="Gondolas" value={gondolas.length} />
               <Metric icon={<Clock size={20} />} label="Ultimo analisis" value={latest ? 'Hoy' : '-'} />
-              <Metric icon={<Flame size={20} />} label="Zonas calientes" value={hotZones.length} />
             </div>
 
             <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
