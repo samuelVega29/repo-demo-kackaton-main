@@ -13,17 +13,8 @@ import {
   Trash2,
 } from 'lucide-react'
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
-
-import {
-  Navigate,
-  useParams,
-} from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Navigate, useParams } from 'react-router-dom'
 
 import robotSedes from '../assets/images/robot-sedes.png'
 import robotSedes1 from '../assets/images/robot-sedes1.png'
@@ -51,6 +42,14 @@ const siteImagePool = [
   'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1000&q=88',
 ]
 
+const initialForm = {
+  name: '',
+  city: '',
+  camera_name: 'Camara principal',
+  floor_width: 12,
+  floor_depth: 8,
+}
+
 function getSiteImage(site, index) {
   if (site.image_url) {
     return site.image_url
@@ -70,10 +69,7 @@ function getSiteImage(site, index) {
     return siteImagePool[1]
   }
 
-  if (
-    source.includes('sur') ||
-    source.includes('carulla')
-  ) {
+  if (source.includes('sur') || source.includes('carulla')) {
     return siteImagePool[2]
   }
 
@@ -92,10 +88,7 @@ function getSiteStatus(site) {
     }
   }
 
-  if (
-    site.status === 'setup' ||
-    site.status === 'configuring'
-  ) {
+  if (site.status === 'setup' || site.status === 'configuring') {
     return {
       label: 'En configuración',
       dot: 'bg-[#ffc928]',
@@ -134,11 +127,7 @@ export default function SitePickerPage() {
 
   const mobileCarouselRef = useRef(null)
 
-  const [form, setForm] = useState({
-    name: '',
-    city: '',
-    camera_name: 'Camara principal',
-  })
+  const [form, setForm] = useState(initialForm)
 
   const sitesPerPage = 4
 
@@ -156,12 +145,11 @@ export default function SitePickerPage() {
         setRetailer(found)
       }
     }
-  }, [
-    retailer,
-    retailerId,
-    retailers,
-    setRetailer,
-  ])
+  }, [retailer, retailerId, retailers, setRetailer])
+
+  /* =========================================================
+     REINICIAR PAGINACIÓN CUANDO CAMBIA LA BÚSQUEDA
+  ========================================================= */
 
   useEffect(() => {
     setPage(0)
@@ -215,17 +203,13 @@ export default function SitePickerPage() {
 
   const previousPage = () => {
     setPage((current) =>
-      current === 0
-        ? totalPages - 1
-        : current - 1
+      current === 0 ? totalPages - 1 : current - 1
     )
   }
 
   const nextPage = () => {
     setPage((current) =>
-      current === totalPages - 1
-        ? 0
-        : current + 1
+      current === totalPages - 1 ? 0 : current + 1
     )
   }
 
@@ -251,14 +235,11 @@ export default function SitePickerPage() {
      MÉTRICAS
   ========================================================= */
 
-  const totalCameras = sites.reduce(
-    (total, site) => {
-      const configuration = site.configuration ?? {}
+  const totalCameras = sites.reduce((total, site) => {
+    const configuration = site.configuration ?? {}
 
-      return total + (configuration.camera ? 1 : 0)
-    },
-    0
-  )
+    return total + (configuration.camera ? 1 : 0)
+  }, 0)
 
   const totalAnalyses = sites.reduce(
     (total, site) =>
@@ -273,29 +254,69 @@ export default function SitePickerPage() {
   )
 
   /* =========================================================
+     ABRIR / CERRAR FORMULARIO
+  ========================================================= */
+
+  const toggleCreate = () => {
+    setError('')
+    setShowCreate((value) => !value)
+  }
+
+  const closeCreate = () => {
+    setError('')
+    setShowCreate(false)
+  }
+
+  /* =========================================================
      CREAR SEDE
   ========================================================= */
 
   const submit = async (event) => {
     event.preventDefault()
 
+    if (creating) return
+
+    const name = form.name.trim()
+    const city = form.city.trim()
+    const cameraName = form.camera_name.trim()
+
+    if (name.length < 2) {
+      setError('Escribe un nombre válido para la sede.')
+      return
+    }
+
+    if (city.length < 2) {
+      setError('Escribe una ciudad válida.')
+      return
+    }
+
+    if (cameraName.length < 2) {
+      setError('Escribe un nombre válido para la cámara.')
+      return
+    }
+
+    const payload = {
+      name,
+      city,
+      camera_name: cameraName,
+      floor_width: Number(form.floor_width) || 12,
+      floor_depth: Number(form.floor_depth) || 8,
+    }
+
     setCreating(true)
     setError('')
 
     try {
-      await createSite(form)
+      await createSite(payload)
 
-      setForm({
-        name: '',
-        city: '',
-        camera_name: 'Camara principal',
-      })
-
+      setForm(initialForm)
       setShowCreate(false)
     } catch (requestError) {
+      console.error('Error creando sede:', requestError)
+
       setError(
-        requestError.message ||
-          'No fue posible crear la sede.'
+        requestError?.message ||
+          'No fue posible crear la sede. Intenta nuevamente.'
       )
     } finally {
       setCreating(false)
@@ -319,19 +340,14 @@ export default function SitePickerPage() {
       await deleteSite(site)
     } catch (requestError) {
       setError(
-        requestError.message ||
+        requestError?.message ||
           'No fue posible eliminar la sede.'
       )
     }
   }
 
   if (!retailer) {
-    return (
-      <Navigate
-        to="/empresas"
-        replace
-      />
-    )
+    return <Navigate to="/empresas" replace />
   }
 
   return (
@@ -624,7 +640,7 @@ export default function SitePickerPage() {
             lg:gap-6
           "
         >
-          {/* TEXTO IZQUIERDA */}
+          {/* TEXTO */}
 
           <div
             className="
@@ -666,7 +682,6 @@ export default function SitePickerPage() {
                 text-[#ff681e]
 
                 sm:text-[11px]
-
                 lg:text-[12px]
               "
             >
@@ -680,9 +695,7 @@ export default function SitePickerPage() {
                 tracking-[-0.045em]
 
                 min-[390px]:max-w-[200px]
-
                 sm:max-w-[300px]
-
                 lg:max-w-[365px]
               "
             >
@@ -694,7 +707,6 @@ export default function SitePickerPage() {
                   text-white
 
                   min-[390px]:text-[21px]
-
                   sm:text-[28px]
 
                   lg:whitespace-nowrap
@@ -713,7 +725,6 @@ export default function SitePickerPage() {
                   text-[#ff681e]
 
                   min-[390px]:text-[21px]
-
                   sm:text-[28px]
 
                   lg:whitespace-nowrap
@@ -752,7 +763,7 @@ export default function SitePickerPage() {
           </div>
 
           {/* =================================================
-              ROBOT DERECHA
+              ROBOT
           ================================================= */}
 
           <div
@@ -783,8 +794,6 @@ export default function SitePickerPage() {
               lg:max-w-none
             "
           >
-            {/* RESPLANDOR */}
-
             <div
               className="
                 pointer-events-none
@@ -807,8 +816,6 @@ export default function SitePickerPage() {
                 lg:blur-[50px]
               "
             />
-
-            {/* ÓRBITA AZUL */}
 
             <div
               className="
@@ -833,8 +840,6 @@ export default function SitePickerPage() {
               "
             />
 
-            {/* ÓRBITA NARANJA */}
-
             <div
               className="
                 pointer-events-none
@@ -857,8 +862,6 @@ export default function SitePickerPage() {
                 lg:w-[250px]
               "
             />
-
-            {/* ICONO ANÁLISIS */}
 
             <img
               src={iconoAnalisis}
@@ -885,8 +888,6 @@ export default function SitePickerPage() {
               "
             />
 
-            {/* ICONO UBICACIÓN */}
-
             <img
               src={iconoUbicacion}
               alt=""
@@ -911,8 +912,6 @@ export default function SitePickerPage() {
                 lg:w-[58px]
               "
             />
-
-            {/* ICONO DOCUMENTO */}
 
             <img
               src={iconoDocumento}
@@ -939,8 +938,6 @@ export default function SitePickerPage() {
                 lg:w-[56px]
               "
             />
-
-            {/* ROBOT */}
 
             <img
               src={robotSedes}
@@ -1061,8 +1058,6 @@ export default function SitePickerPage() {
             lg:gap-3
           "
         >
-          {/* BUSCADOR */}
-
           <label
             className="
               flex
@@ -1091,9 +1086,7 @@ export default function SitePickerPage() {
 
             <input
               value={search}
-              onChange={(event) =>
-                setSearch(event.target.value)
-              }
+              onChange={(event) => setSearch(event.target.value)}
               placeholder="Buscar sede..."
               className="
                 min-w-0
@@ -1106,15 +1099,11 @@ export default function SitePickerPage() {
                 placeholder:text-[#748aa0]
 
                 min-[390px]:text-[10px]
-
                 sm:text-[12px]
-
                 lg:text-[13px]
               "
             />
           </label>
-
-          {/* FILTRAR */}
 
           <button
             type="button"
@@ -1141,21 +1130,15 @@ export default function SitePickerPage() {
             "
           >
             <SlidersHorizontal size={14} />
-
             Filtrar
-
             <ChevronDown size={13} />
           </button>
 
           <div className="hidden lg:block" />
 
-          {/* CREAR SEDE */}
-
           <button
             type="button"
-            onClick={() =>
-              setShowCreate((value) => !value)
-            }
+            onClick={toggleCreate}
             className="
               inline-flex
               h-[42px]
@@ -1192,15 +1175,10 @@ export default function SitePickerPage() {
                 sm:w-7
               "
             >
-              <Plus
-                size={14}
-                strokeWidth={3}
-              />
+              <Plus size={14} strokeWidth={3} />
             </span>
 
-            {showCreate
-              ? 'Cancelar'
-              : 'Crear sede'}
+            {showCreate ? 'Cancelar' : 'Crear sede'}
           </button>
         </div>
 
@@ -1234,10 +1212,10 @@ export default function SitePickerPage() {
               placeholder="Ej. Sede Centro"
               value={form.name}
               onChange={(value) =>
-                setForm({
-                  ...form,
+                setForm((current) => ({
+                  ...current,
                   name: value,
-                })
+                }))
               }
             />
 
@@ -1246,10 +1224,10 @@ export default function SitePickerPage() {
               placeholder="Ej. Bogotá"
               value={form.city}
               onChange={(value) =>
-                setForm({
-                  ...form,
+                setForm((current) => ({
+                  ...current,
                   city: value,
-                })
+                }))
               }
             />
 
@@ -1258,10 +1236,10 @@ export default function SitePickerPage() {
               placeholder="Cámara principal"
               value={form.camera_name}
               onChange={(value) =>
-                setForm({
-                  ...form,
+                setForm((current) => ({
+                  ...current,
                   camera_name: value,
-                })
+                }))
               }
             />
 
@@ -1275,13 +1253,12 @@ export default function SitePickerPage() {
                 font-black
                 text-white
                 transition
+                hover:brightness-110
                 disabled:cursor-not-allowed
                 disabled:opacity-60
               "
             >
-              {creating
-                ? 'Creando...'
-                : 'Crear sede'}
+              {creating ? 'Creando...' : 'Crear sede'}
             </button>
 
             {error && (
@@ -1301,7 +1278,6 @@ export default function SitePickerPage() {
             relative
             z-20
             mt-2
-
             sm:mt-5
           "
         >
@@ -1326,25 +1302,23 @@ export default function SitePickerPage() {
                     [&::-webkit-scrollbar]:hidden
                   "
                 >
-                  {filteredSites.map(
-                    (site, originalIndex) => {
-                      const camera =
-                        site.configuration?.camera ?? {}
+                  {filteredSites.map((site, originalIndex) => {
+                    const camera =
+                      site.configuration?.camera ?? {}
 
-                      return (
-                        <SiteCard
-                          key={site.id}
-                          site={site}
-                          originalIndex={originalIndex}
-                          camera={camera}
-                          status={getSiteStatus(site)}
-                          selectSite={selectSite}
-                          removeSite={removeSite}
-                          mobile
-                        />
-                      )
-                    }
-                  )}
+                    return (
+                      <SiteCard
+                        key={site.id}
+                        site={site}
+                        originalIndex={originalIndex}
+                        camera={camera}
+                        status={getSiteStatus(site)}
+                        selectSite={selectSite}
+                        removeSite={removeSite}
+                        mobile
+                      />
+                    )
+                  })}
                 </div>
 
                 {filteredSites.length > 1 && (
@@ -1532,13 +1506,10 @@ export default function SitePickerPage() {
               hidden
               justify-center
               gap-3
-
               md:flex
             "
           >
-            {Array.from({
-              length: totalPages,
-            }).map((_, index) => (
+            {Array.from({ length: totalPages }).map((_, index) => (
               <button
                 key={index}
                 type="button"
@@ -1548,7 +1519,6 @@ export default function SitePickerPage() {
                   h-2
                   rounded-full
                   transition-all
-
                   ${
                     page === index
                       ? 'w-7 bg-[#ff681e]'
@@ -1564,7 +1534,7 @@ export default function SitePickerPage() {
       </div>
 
       {/* =====================================================
-          MODAL CREAR SEDE DESKTOP - COMPACTO
+          MODAL CREAR SEDE DESKTOP
       ===================================================== */}
 
       {showCreate && (
@@ -1584,13 +1554,13 @@ export default function SitePickerPage() {
             lg:flex
           "
         >
-          {/* CLICK FUERA */}
+          {/* FONDO PARA CERRAR */}
 
           <button
             type="button"
             aria-label="Cerrar modal"
-            onClick={() => setShowCreate(false)}
-            className="absolute inset-0 cursor-default"
+            onClick={closeCreate}
+            className="absolute inset-0 z-0 cursor-default"
           />
 
           {/* CONTENEDOR */}
@@ -1796,7 +1766,7 @@ export default function SitePickerPage() {
               <button
                 type="button"
                 aria-label="Cerrar"
-                onClick={() => setShowCreate(false)}
+                onClick={closeCreate}
                 className="
                   absolute
                   right-5
@@ -1881,10 +1851,10 @@ export default function SitePickerPage() {
                   value={form.name}
                   icon={<Building2 size={18} />}
                   onChange={(value) =>
-                    setForm({
-                      ...form,
+                    setForm((current) => ({
+                      ...current,
                       name: value,
-                    })
+                    }))
                   }
                 />
 
@@ -1894,10 +1864,10 @@ export default function SitePickerPage() {
                   value={form.city}
                   icon={<MapPin size={18} />}
                   onChange={(value) =>
-                    setForm({
-                      ...form,
+                    setForm((current) => ({
+                      ...current,
                       city: value,
-                    })
+                    }))
                   }
                 />
 
@@ -1907,10 +1877,10 @@ export default function SitePickerPage() {
                   value={form.camera_name}
                   icon={<Camera size={18} />}
                   onChange={(value) =>
-                    setForm({
-                      ...form,
+                    setForm((current) => ({
+                      ...current,
                       camera_name: value,
-                    })
+                    }))
                   }
                 />
               </div>
@@ -1933,7 +1903,7 @@ export default function SitePickerPage() {
               >
                 <button
                   type="button"
-                  onClick={() => setShowCreate(false)}
+                  onClick={closeCreate}
                   className="
                     h-[48px]
                     rounded-[14px]
@@ -1972,11 +1942,9 @@ export default function SitePickerPage() {
                     disabled:opacity-60
                   "
                 >
-                  {creating
-                    ? 'Creando...'
-                    : 'Crear sede'}
+                  {creating ? 'Creando...' : 'Crear sede'}
 
-                  <ArrowRight size={16} />
+                  {!creating && <ArrowRight size={16} />}
                 </button>
               </div>
             </form>
@@ -2125,9 +2093,7 @@ function SiteCard({
 
         <button
           type="button"
-          onClick={(event) =>
-            removeSite(event, site)
-          }
+          onClick={(event) => removeSite(event, site)}
           aria-label={`Eliminar ${site.name}`}
           className={`
             absolute
@@ -2166,8 +2132,6 @@ function SiteCard({
           }
         `}
       >
-        {/* LÍNEA NARANJA */}
-
         <span
           className={`
             absolute
@@ -2185,8 +2149,6 @@ function SiteCard({
           `}
         />
 
-        {/* NOMBRE */}
-
         <h2
           className={`
             truncate
@@ -2202,8 +2164,6 @@ function SiteCard({
         >
           {site.name}
         </h2>
-
-        {/* CIUDAD */}
 
         <p
           className={`
@@ -2228,8 +2188,6 @@ function SiteCard({
           {site.city || 'Sin ciudad'}
         </p>
 
-        {/* CÁMARA */}
-
         <p
           className={`
             flex
@@ -2251,12 +2209,8 @@ function SiteCard({
           />
 
           {camera.name ? 1 : 0}{' '}
-          {camera.name
-            ? 'cámara'
-            : 'cámaras'}
+          {camera.name ? 'cámara' : 'cámaras'}
         </p>
-
-        {/* BOTONES */}
 
         <div
           className={`
@@ -2264,18 +2218,12 @@ function SiteCard({
             items-center
             justify-between
 
-            ${
-              mobile
-                ? 'mt-2'
-                : 'mt-4'
-            }
+            ${mobile ? 'mt-2' : 'mt-4'}
           `}
         >
           <button
             type="button"
-            onClick={() =>
-              selectSite(site)
-            }
+            onClick={() => selectSite(site)}
             className={`
               inline-flex
               items-center
@@ -2305,9 +2253,7 @@ function SiteCard({
 
           <button
             type="button"
-            onClick={() =>
-              selectSite(site)
-            }
+            onClick={() => selectSite(site)}
             aria-label={`Ver ${site.name}`}
             className={`
               grid
@@ -2328,9 +2274,7 @@ function SiteCard({
               }
             `}
           >
-            <ArrowRight
-              size={mobile ? 13 : 20}
-            />
+            <ArrowRight size={mobile ? 13 : 20} />
           </button>
         </div>
       </div>
@@ -2377,8 +2321,6 @@ function TopMetric({
         }
       `}
     >
-      {/* ICONO */}
-
       <div
         className="
           flex
@@ -2409,8 +2351,6 @@ function TopMetric({
           "
         />
       </div>
-
-      {/* TEXTO */}
 
       <div className="min-w-0">
         <strong
@@ -2479,9 +2419,7 @@ function FormField({
         minLength={2}
         value={value}
         placeholder={placeholder}
-        onChange={(event) =>
-          onChange(event.target.value)
-        }
+        onChange={(event) => onChange(event.target.value)}
         className="
           min-h-[44px]
           rounded-[13px]
@@ -2499,73 +2437,6 @@ function FormField({
           focus:ring-[#ff681e]/10
         "
       />
-    </label>
-  )
-}
-
-/* =========================================================
-   CAMPO DESKTOP NORMAL
-========================================================= */
-
-function DesktopFormField({
-  label,
-  placeholder,
-  value,
-  icon,
-  onChange,
-}) {
-  return (
-    <label className="grid gap-2.5">
-      <span
-        className="
-          text-[13px]
-          font-black
-          text-[#dce7f1]
-        "
-      >
-        {label}
-      </span>
-
-      <div
-        className="
-          flex
-          h-[58px]
-          items-center
-          gap-4
-          rounded-[16px]
-          border
-          border-[#18557f]
-          bg-[#031321]
-          px-5
-          transition
-          focus-within:border-[#168fff]
-        "
-      >
-        <span className="shrink-0 text-[#ff681e]">
-          {icon}
-        </span>
-
-        <input
-          required
-          minLength={2}
-          value={value}
-          placeholder={placeholder}
-          onChange={(event) =>
-            onChange(event.target.value)
-          }
-          className="
-            min-w-0
-            flex-1
-            border-0
-            bg-transparent
-            text-[14px]
-            font-semibold
-            text-white
-            outline-none
-            placeholder:text-[#667f95]
-          "
-        />
-      </div>
     </label>
   )
 }
@@ -2618,9 +2489,7 @@ function CompactDesktopFormField({
           minLength={2}
           value={value}
           placeholder={placeholder}
-          onChange={(event) =>
-            onChange(event.target.value)
-          }
+          onChange={(event) => onChange(event.target.value)}
           className="
             min-w-0
             flex-1
