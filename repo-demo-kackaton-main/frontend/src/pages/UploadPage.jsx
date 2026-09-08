@@ -16,7 +16,7 @@ const uploadStep = {
   accent: 'video.',
 }
 
-const MAX_VIDEO_DURATION_SECONDS = 60
+const MAX_VIDEO_DURATION_SECONDS = 120
 
 const formatBytes = (bytes) => {
   if (!bytes) return ''
@@ -32,7 +32,7 @@ const formatDuration = (seconds) => {
 }
 
 export default function UploadPage() {
-  const { file, preview, chooseFile, inputRef, site } = useApp()
+  const { file, preview, chooseFile, clearFile, inputRef, site } = useApp()
   const { siteId } = useParams()
   const [metadata, setMetadata] = useState(null)
   const [acceptedConfig, setAcceptedConfig] = useState(false)
@@ -229,6 +229,15 @@ export default function UploadPage() {
                 <small className="mt-2 block text-sm font-semibold text-[#7d8392]">{file ? `Maximo ${MAX_VIDEO_DURATION_SECONDS} segundos` : 'o haz clic para seleccionar'}</small>
               </span>
             </button>
+            {file ? (
+              <button
+                className="mt-3 inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-md border border-[#ffd7c4] bg-white px-4 text-[13px] font-black text-[#b43b1d] transition hover:-translate-y-px hover:bg-[#fff1eb]"
+                onClick={clearFile}
+                type="button"
+              >
+                <X size={16} /> Quitar video seleccionado
+              </button>
+            ) : null}
           </div>
           )}
 
@@ -264,6 +273,13 @@ export default function UploadPage() {
                 >
                   {nextLabel} <ArrowRight size={16} />
                 </Link>
+                <button
+                  className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-md border border-[#e5e7ee] bg-white px-4 text-[13px] font-black text-[#151323] transition hover:-translate-y-px hover:border-[#ff5b12]"
+                  onClick={clearFile}
+                  type="button"
+                >
+                  <X size={16} /> Eliminar este video
+                </button>
               </div>
             ) : (
               <p className="mt-4 text-sm font-semibold leading-6 text-[#7d8392]">Cuando selecciones un video, SCAPDER mostrara sus datos reales aqui.</p>

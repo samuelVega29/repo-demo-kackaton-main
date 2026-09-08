@@ -7,6 +7,7 @@ import pieIcon from '../assets/images/icono_pastel_3d.png'
 import locationIcon from '../assets/images/icono_ubicacion_3d.png'
 import vendedorRobot from '../assets/images/vendedor_robot.png'
 import { useApp } from '../context/AppProvider'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 
 const supermarketImages = [
   'https://pbs.twimg.com/media/FE_fYS9WYAgve_k?format=jpg&name=large',
@@ -47,6 +48,7 @@ export default function RetailersPage() {
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [form, setForm] = useState({ name: '', code: '' })
+  const [retailerToDelete, setRetailerToDelete] = useState(null)
 
   const filteredRetailers = useMemo(() => retailers.filter((item) => {
     const status = getStatus(item).value
@@ -73,13 +75,17 @@ export default function RetailersPage() {
     }
   }
 
-  const removeRetailer = async (event, item) => {
+  const removeRetailer = (event, item) => {
     event.stopPropagation()
-    const confirmed = window.confirm(`¿Quieres eliminar "${item.name}"? Tambien se eliminaran sus sedes, configuraciones y analisis.`)
-    if (!confirmed) return
-    setDeletingId(item.id)
+    setRetailerToDelete(item)
+  }
+
+  const confirmRemoveRetailer = async () => {
+    if (!retailerToDelete) return
+    setDeletingId(retailerToDelete.id)
     try {
-      await deleteRetailer(item)
+      await deleteRetailer(retailerToDelete)
+      setRetailerToDelete(null)
     } catch (requestError) {
       setError(requestError.message)
     } finally {
@@ -264,6 +270,16 @@ export default function RetailersPage() {
           </form>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(retailerToDelete)}
+        title="Eliminar empresa"
+        message={`Se eliminara "${retailerToDelete?.name || 'esta empresa'}" junto con sus sedes, configuraciones y analisis.`}
+        confirmLabel="Eliminar empresa"
+        loading={deletingId === retailerToDelete?.id}
+        onCancel={() => setRetailerToDelete(null)}
+        onConfirm={confirmRemoveRetailer}
+      />
 
       <nav className="fixed inset-x-4 bottom-4 z-40 grid grid-cols-4 rounded-[24px] border border-white/10 bg-[#071d25]/95 px-4 py-3 text-xs font-bold text-[#8da0bb] shadow-[0_18px_60px_-28px_rgba(7,29,37,.85)] backdrop-blur md:hidden">
         <span className="grid place-items-center gap-1 text-[#ff7a1a]"><Building2 size={22} />Empresas</span>

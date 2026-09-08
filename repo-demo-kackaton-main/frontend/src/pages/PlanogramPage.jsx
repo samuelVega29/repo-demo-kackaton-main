@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import GondolaStep from '../components/GondolaStep'
 import FlowNav from '../components/flow/FlowNav'
@@ -7,9 +8,20 @@ import { sessionSteps } from '../components/flow/sessionSteps'
 import { useApp } from '../context/AppProvider'
 
 export default function PlanogramPage() {
-  const { site, frameCapture, updateConfiguration, saveConfiguration } = useApp()
+  const { site, loadSite, frameCapture, updateConfiguration, saveConfiguration } = useApp()
   const { siteId } = useParams()
   const step = sessionSteps[3]
+
+  useEffect(() => {
+    if (siteId && (!site || String(site.id) !== String(siteId))) {
+      if (loadSite) loadSite(siteId)
+    }
+  }, [siteId, site, loadSite])
+
+  if (!site || !site.configuration) {
+    return <div className="flex h-[50vh] items-center justify-center text-sm font-bold text-gray-400">Cargando datos del espacio...</div>
+  }
+
   const hasGondolas = site.configuration.gondolas.length > 0
 
   return (

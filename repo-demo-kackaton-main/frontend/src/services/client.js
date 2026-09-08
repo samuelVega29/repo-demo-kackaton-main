@@ -1,4 +1,17 @@
 const TOKEN_KEY = 'scapder_token'
+const DEFAULT_API_ORIGIN = 'http://127.0.0.1:8000'
+
+function resolveApiUrl(path) {
+  if (/^https?:\/\//i.test(path)) return path
+  const configuredOrigin = import.meta.env.VITE_API_BASE_URL
+  if (configuredOrigin) return `${configuredOrigin.replace(/\/$/, '')}${path}`
+
+  const isLocalFrontend = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+  const isBackendPort = window.location.port === '8000'
+  if (isLocalFrontend && !isBackendPort) return `${DEFAULT_API_ORIGIN}${path}`
+
+  return path
+}
 
 export const getToken = () =>
   window.localStorage.getItem(TOKEN_KEY)
@@ -29,7 +42,7 @@ export async function api(path, options = {}) {
   let response
 
   try {
-    response = await fetch(path, {
+    response = await fetch(resolveApiUrl(path), {
       ...options,
       headers,
     })
