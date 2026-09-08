@@ -6,7 +6,7 @@ import StoreScene from '../components/StoreScene'
 import ShelfMatrix from '../components/ShelfMatrix'
 import AnalysisVideo from '../components/AnalysisVideo'
 
-const modes = [['traffic', 'Trafico'], ['dwell', 'Permanencia'], ['interaction', 'Interaccion']]
+const modes = [['traffic', 'Trafico'], ['dwell', 'Permanencia'], ['interaction', 'Interaccion'], ['pickup', 'Pick-up']]
 
 export default function ResultsPage() {
   const { job, site, mode, setMode, selectedId, setSelectedId, loadAnalysis } = useApp()
@@ -30,6 +30,7 @@ export default function ResultsPage() {
   const selected = (result.gondolas || []).find((item) => item.id === selectedId)
   const heatmapUrl = artifactUrl(analysis.id, `${mode}.png`)
   const interactionAvailable = Boolean(result.heatmaps?.interaction)
+  const pickupAvailable = Boolean(result.heatmaps?.pickup)
   const metrics = result.metrics || {}
   const video = result.video || {}
   const zones = result.zones || []
@@ -67,6 +68,7 @@ export default function ResultsPage() {
           {modes.map(([value, label]) => (
             <button role="tab" aria-selected={mode === value} className={`min-w-[130px] rounded-md border-0 bg-transparent p-3 px-[18px] text-[11px] text-[#7d8392] max-[760px]:min-w-0 max-[760px]:flex-1 max-[760px]:px-[5px] max-[760px]:p-[11px] max-[390px]:text-[9px] ${mode === value ? 'bg-[#ff6b3d] font-extrabold text-white' : ''}`} onClick={() => setMode(value)} key={value}>
               {label}{value === 'interaction' && !interactionAvailable && <small className="mt-[3px] block text-[6px]">evidencia insuficiente</small>}
+              {value === 'pickup' && !pickupAvailable && <small className="mt-[3px] block text-[6px]">sin eventos</small>}
             </button>
           ))}
         </div>
@@ -83,7 +85,7 @@ export default function ResultsPage() {
         </div>
       </div>
 
-      <div className="mt-[90px] grid grid-cols-[1.45fr_.55fr] gap-[65px] max-[980px]:grid-cols-1 max-[760px]:mt-[75px] max-[760px]:gap-[65px]">
+      <div className="mt-[90px] grid grid-cols-[minmax(0,1.4fr)_minmax(340px,.6fr)] gap-[45px] max-[1120px]:grid-cols-1 max-[760px]:mt-[75px] max-[760px]:gap-[45px]">
         <section>
           <div className="mb-7"><span className="font-[ui-monospace,monospace] text-[10px] font-semibold tracking-[.17em] text-[#1f6feb]">EVIDENCIA VISUAL</span><h2 className="mt-[9px] text-[clamp(33px,4vw,52px)] tracking-[-.045em] text-[#151323]">Frames y detecciones</h2></div>
           <div className="grid grid-cols-3 gap-[7px] max-[980px]:grid-cols-3 max-[760px]:grid-cols-2 max-[390px]:grid-cols-1">{(result.annotated_frames || []).map((filename, index) => <figure key={filename} className="relative m-0 aspect-video overflow-hidden rounded-lg bg-[#0e1916]"><img className="h-full w-full object-cover" src={artifactUrl(analysis.id, filename)} alt={`Frame procesado ${index + 1}`} /><figcaption className="absolute bottom-[7px] left-[7px] bg-[rgba(5,10,8,.83)] px-[7px] p-[5px] font-[ui-monospace,monospace] text-[7px] font-medium text-[#aac0b7]">FRAME {index + 1}</figcaption></figure>)}</div>
@@ -94,7 +96,7 @@ export default function ResultsPage() {
           {(hotZones.length > 0 || coldZones.length > 0) && (
             <div className="mb-8">
               <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-[#151323]">Zonas de calor y frio <span className="text-[#7d8392]">· según clasificacion del analisis</span></h3>
-              <div className="grid grid-cols-2 gap-[7px] max-[980px]:grid-cols-2 max-[400px]:grid-cols-1">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-[7px]">
                 {hotZones.map((zone, index) => (
                   <ZoneCard key={`hot-${zone.zone_id || index}`} zone={zone} kind="hot" />
                 ))}
@@ -108,7 +110,7 @@ export default function ResultsPage() {
           {recommendations.length > 0 && (
             <div className="mb-8">
               <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-[#151323]">Recomendaciones</h3>
-              <div className="grid gap-[7px]">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-[7px]">
                 {recommendations.map((recommendation, index) => (
                   <RecommendationCard key={`${recommendation.rule}-${index}`} recommendation={recommendation} />
                 ))}

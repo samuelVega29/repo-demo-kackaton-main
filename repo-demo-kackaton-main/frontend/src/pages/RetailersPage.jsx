@@ -1,4 +1,4 @@
-import { ArrowRight, BarChart3, Building2, Grid2X2, List, MapPin, MoreHorizontal, Search } from 'lucide-react'
+import { ArrowRight, BarChart3, Building2, Grid2X2, Hash, List, MapPin, MoreHorizontal, Plus, Search, Trash2, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import flujoPuntos from '../assets/images/flujo_puntos.png'
 import gondolas from '../assets/images/gondolas.png'
@@ -39,9 +39,10 @@ function formatPerformance(value) {
 }
 
 export default function RetailersPage() {
-  const { retailers, selectRetailer, createRetailer } = useApp()
+  const { retailers, selectRetailer, createRetailer, deleteRetailer } = useApp()
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -69,6 +70,20 @@ export default function RetailersPage() {
       setError(requestError.message)
     } finally {
       setCreating(false)
+    }
+  }
+
+  const removeRetailer = async (event, item) => {
+    event.stopPropagation()
+    const confirmed = window.confirm(`¿Quieres eliminar "${item.name}"? Tambien se eliminaran sus sedes, configuraciones y analisis.`)
+    if (!confirmed) return
+    setDeletingId(item.id)
+    try {
+      await deleteRetailer(item)
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -156,9 +171,12 @@ export default function RetailersPage() {
           {featuredRetailers.map((item, index) => {
             const status = getStatus(item)
             return (
-              <button className="group relative h-[350px] min-w-[min(88vw,390px)] snap-start overflow-hidden rounded-[22px] bg-[#071d25] text-left shadow-[0_26px_70px_-42px_rgba(7,29,37,.9)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_34px_90px_-46px_rgba(7,29,37,.95)] md:min-w-[380px] xl:min-w-[400px]" key={item.id} onClick={() => selectRetailer(item)} type="button">
+              <article className="group relative h-[350px] min-w-[min(88vw,390px)] snap-start cursor-pointer overflow-hidden rounded-[22px] bg-[#071d25] text-left shadow-[0_26px_70px_-42px_rgba(7,29,37,.9)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_34px_90px_-46px_rgba(7,29,37,.95)] md:min-w-[380px] xl:min-w-[400px]" key={item.id} onClick={() => selectRetailer(item)} onKeyDown={(event) => { if (event.key === 'Enter') selectRetailer(item) }} role="button" tabIndex={0}>
                 <img src={getSupermarketImage(index)} alt={item.name} className="absolute inset-x-0 top-0 h-[205px] w-full object-cover transition duration-700 group-hover:scale-110" onError={(event) => { event.currentTarget.src = gondolas }} />
                 <div className="absolute inset-x-0 top-0 h-[205px] bg-[linear-gradient(180deg,rgba(7,29,37,.04)_0%,rgba(7,29,37,.10)_58%,rgba(7,29,37,.72)_100%)]" />
+                <button className="absolute left-4 top-4 z-20 grid h-10 w-10 place-items-center rounded-full border border-white/15 bg-[#071d25]/80 text-white shadow-[0_16px_32px_-22px_rgba(0,0,0,.9)] backdrop-blur transition hover:border-[#ff5b12] hover:bg-[#ff5b12]" onClick={(event) => removeRetailer(event, item)} disabled={deletingId === item.id} type="button" aria-label={`Eliminar empresa ${item.name}`} title="Eliminar empresa">
+                  <Trash2 size={17} />
+                </button>
                 <span className={`absolute right-4 top-4 z-10 inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-black shadow-[0_12px_26px_-20px_rgba(7,29,37,.8)] ${status.className}`}>
                   <span className="h-1.5 w-1.5 rounded-full bg-current" /> {status.label}
                 </span>
@@ -175,7 +193,7 @@ export default function RetailersPage() {
                     <ArrowRight size={19} />
                   </span>
                 </div>
-              </button>
+              </article>
             )
           })}
         </div>
@@ -190,42 +208,55 @@ export default function RetailersPage() {
 
       {showCreate && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-[#071d25]/55 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="create-retailer-title">
-          <form className="relative grid w-full max-w-[860px] overflow-hidden rounded-[24px] bg-white shadow-[0_34px_90px_-42px_rgba(7,29,37,.95)] md:grid-cols-[320px_1fr]" onSubmit={submit}>
-            <button className="absolute right-4 top-4 z-20 grid h-9 w-9 place-items-center rounded-full border border-[#d6e3f2] bg-white text-[#071d25] transition hover:border-[#ff5b12] hover:text-[#ff5b12]" onClick={() => setShowCreate(false)} type="button" aria-label="Cerrar modal">
-              x
+          <form className="relative grid max-h-[calc(100vh-32px)] w-full max-w-[980px] overflow-hidden rounded-[24px] bg-white shadow-[0_34px_90px_-42px_rgba(7,29,37,.95)] md:grid-cols-[360px_1fr]" onSubmit={submit}>
+            <button className="absolute right-4 top-4 z-20 grid h-10 w-10 place-items-center rounded-full border border-[#d6e3f2] bg-white/95 text-[#071d25] shadow-[0_16px_38px_-28px_rgba(7,29,37,.8)] transition hover:border-[#ff5b12] hover:text-[#ff5b12]" onClick={() => setShowCreate(false)} type="button" aria-label="Cerrar modal">
+              <X size={18} />
             </button>
-            <div className="relative isolate min-h-[260px] overflow-hidden bg-[#202021] p-6 text-white">
+            <div className="relative isolate min-h-[390px] overflow-hidden bg-[linear-gradient(180deg,#07182a_10%,#0b2338_10%,#0f324b_10%,#123f5b_10%)] p-6 text-white md:min-h-[520px] md:p-8">
               <img src={flujoPuntos} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[.18] mix-blend-screen" />
+              <div className="pointer-events-none absolute left-[18%] top-[18%] h-32 w-32 rounded-full  blur-3xl" />
+              <div className="pointer-events-none absolute right-[-20px] top-[22%] h-40 w-40 rounded-full bg-[#ff7a1a]/15 blur-3xl" />
               <div className="pointer-events-none absolute -left-16 -top-16 h-44 w-44 rounded-full border-[16px] border-[#ff7a1a]" />
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#202021] to-transparent" />
-              <img src={vendedorRobot} alt="" className="absolute bottom-0 left-1/2 w-[260px] -translate-x-1/2 object-contain drop-shadow-[0_24px_38px_rgba(0,0,0,.42)]" />
-              <div className="relative z-10">
-                <span className="text-[11px] font-bold uppercase tracking-[.24em] text-[#7dc3ff]">Paso 1</span>
-                <h2 id="create-retailer-title" className="mt-3 text-3xl font-extrabold leading-none">Nueva empresa</h2>
-                <p className="mt-3 max-w-[220px] text-sm font-medium leading-6 text-white/70">Crea el negocio y luego configura sus sedes para iniciar el analisis.</p>
+              <div className="pointer-events-none absolute -right-20 bottom-10 h-48 w-48 rounded-full border-[22px] border-[#ff7a1a]/35" />
+              <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-[62%] bg-[linear-gradient(180deg,rgba(2,6,11,.96),rgba(2,6,11,.78)_40%,transparent)]" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-36 bg-gradient-to-t from-[#02060b] to-transparent" />
+              <img src={vendedorRobot} alt="" className="absolute bottom-0 left-1/2 w-[250px] -translate-x-1/2 object-contain drop-shadow-[0_24px_38px_rgba(0,0,0,.42)] sm:w-[280px] md:w-[330px]" />
+              <div className="relative z-10 flex min-h-[330px] max-w-[270px] flex-col md:min-h-[455px]">
+               
+                <h3 id="create-retailer-title" className="mt-4 text-[clamp(34px,8vw,44px)] font-semibold leading-[.9] ">Nueva empresa</h3>
               </div>
             </div>
-            <div className="p-6 sm:p-8">
+            <div className="overflow-y-auto p-6 sm:p-8 md:p-10">
               <div className="mb-6">
-                <h3 className="text-2xl font-extrabold text-[#07132c]">Datos de la empresa</h3>
-                <p className="mt-2 text-sm font-medium leading-6 text-[#58708f]">Usa un nombre claro y un codigo unico para identificarla rapido.</p>
+                <span className="mb-3 inline-flex items-center gap-2 rounded-full bg-[#fff1eb] px-3 py-1 text-[10px] font-black uppercase text-[#ff5b12]">
+                  <Building2 size={14} />
+                  Registro empresarial
+                </span>
+                <h3 className="text-[clamp(26px,4vw,34px)] font-black leading-tight text-[#07132c]">Datos de la empresa</h3>
+                <p className="mt-2 text-sm font-semibold leading-6 text-[#58708f]">Usa un nombre claro y un codigo unico para identificarla rapido.</p>
               </div>
               <div className="grid gap-4">
-                <label className="grid gap-2 text-xs font-bold text-[#58708f]">
+                <label className="grid gap-2 text-xs font-black uppercase text-[#58708f]">
                   Nombre
-                  <input className="min-h-[52px] w-full rounded-xl border border-[#d6e3f2] bg-[#f8fbff] px-4 text-[#151323] outline-none focus:border-[#ff5b12] focus:ring-4 focus:ring-[#ff5b12]/10" required minLength="2" maxLength="120" placeholder="Ej. Mercado Central" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+                  <span className="relative block">
+                    <Building2 className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#ff5b12]" size={18} />
+                    <input className="min-h-[56px] w-full rounded-xl border border-[#d6e3f2] bg-[#f8fbff] pl-12 pr-4 text-sm font-bold normal-case text-[#151323] outline-none transition placeholder:text-[#9aa7ba] focus:border-[#ff5b12] focus:bg-white focus:ring-4 focus:ring-[#ff5b12]/10" required minLength="2" maxLength="120" placeholder="Ej. Mercado Central" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+                  </span>
                 </label>
-                <label className="grid gap-2 text-xs font-bold text-[#58708f]">
+                <label className="grid gap-2 text-xs font-black uppercase text-[#58708f]">
                   NIT
-                  <input className="min-h-[52px] w-full rounded-xl border border-[#d6e3f2] bg-[#f8fbff] px-4 text-[#151323] outline-none focus:border-[#1683ff] focus:ring-4 focus:ring-[#1683ff]/10" required minLength="2" maxLength="50" placeholder="nit de la empresa" value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} />
+                  <span className="relative block">
+                    <Hash className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#1683ff]" size={18} />
+                    <input className="min-h-[56px] w-full rounded-xl border border-[#d6e3f2] bg-[#f8fbff] pl-12 pr-4 text-sm font-bold normal-case text-[#151323] outline-none transition placeholder:text-[#9aa7ba] focus:border-[#1683ff] focus:bg-white focus:ring-4 focus:ring-[#1683ff]/10" required minLength="2" maxLength="50" placeholder="Nit de la empresa" value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} />
+                  </span>
                 </label>
               </div>
-              {error && <p className="mt-4 text-sm font-bold text-[#b43b1d]" role="alert">{error}</p>}
+              {error && <p className="mt-4 rounded-lg border border-[#ffd2c2] bg-[#fff1eb] px-4 py-3 text-sm font-bold text-[#b43b1d]" role="alert">{error}</p>}
               <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-[#d6e3f2] bg-white px-5 text-sm font-bold text-[#58708f] transition hover:border-[#071d25] hover:text-[#071d25]" onClick={() => setShowCreate(false)} type="button">
+                <button className="inline-flex min-h-[50px] items-center justify-center rounded-xl border border-[#d6e3f2] bg-white px-5 text-sm font-black text-[#58708f] transition hover:border-[#071d25] hover:text-[#071d25]" onClick={() => setShowCreate(false)} type="button">
                   Cancelar
                 </button>
-                <button className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#ff5b12] px-5 text-sm font-bold text-white shadow-[0_16px_34px_-22px_rgba(255,91,18,.85)] transition hover:-translate-y-px hover:bg-[#e94d08]" disabled={creating} type="submit">
+                <button className="inline-flex min-h-[50px] items-center justify-center gap-2 rounded-xl bg-[#ff5b12] px-6 text-sm font-black text-white shadow-[0_18px_42px_-24px_rgba(255,91,18,.95)] transition hover:-translate-y-px hover:bg-[#e94d08] disabled:cursor-not-allowed disabled:opacity-70" disabled={creating} type="submit">
                   {creating ? 'Creando...' : 'Crear empresa'} <ArrowRight size={16} />
                 </button>
               </div>

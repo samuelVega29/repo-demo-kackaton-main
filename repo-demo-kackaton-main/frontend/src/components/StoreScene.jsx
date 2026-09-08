@@ -531,13 +531,20 @@ function TimeScrubber({ entries, mode, index, onChange }) {
 }
 
 export default function StoreScene({ result, mode, selectedId, onSelect, heatmapUrl, slices, analysisId }) {
-  const floor = result.site.configuration.floor
+  const floor = result?.site?.configuration?.floor
   const sliceEntries = useMemo(
     () => (slices || []).filter((entry) => entry[mode]),
     [slices, mode],
   )
   const [sliceIndex, setSliceIndex] = useState(0)
   useEffect(() => setSliceIndex(0), [mode, heatmapUrl, analysisId, sliceEntries.length])
+  if (!floor?.width || !floor?.depth) {
+    return (
+      <div className="grid h-full min-h-[520px] place-items-center px-6 text-center text-sm font-semibold leading-6 text-[#90a69d]">
+        No hay plano 3D disponible para este analisis. Revisa la configuracion de la sede y vuelve a procesar el video.
+      </div>
+    )
+  }
   return (
     <div className="absolute inset-0 [&_canvas]:touch-none">
       <Canvas shadows camera={{ position: [floor.width * 0.7, 9, floor.depth * 0.8], fov: 43 }} dpr={[1, 1.5]}>
