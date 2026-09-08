@@ -1,10 +1,11 @@
-import { ArrowLeft, Camera, Crosshair, Play, ScanLine } from 'lucide-react'
+import { ArrowLeft, Camera, Crosshair, Play, ScanLine, Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppProvider'
 import SiteFlowPage from '../components/flow/SiteFlowPage'
 import PlanogramEditor from '../components/flow/PlanogramEditor'
 import { forwardHomography, projectFloor } from '../utils/homography'
+import { api } from '../services/client'
 
 const areaStep = {
   id: 'area',
@@ -12,6 +13,38 @@ const areaStep = {
   eyebrow: 'AREA DE ANALISIS',
   title: 'Selecciona el',
   accent: 'espacio.',
+}
+
+const CONFIDENCE_CONFIG = {
+  alta: { label: 'Alta', color: '#177345', score: 100 },
+  media: { label: 'Media', color: '#b26500', score: 60 },
+  baja: { label: 'Baja', color: '#b43b1d', score: 25 },
+}
+
+function ConfidencePanel({ result }) {
+  if (!result?.gondolas?.length) return null
+  const gondolas = result.gondolas
+  const scores = gondolas.map((g) => CONFIDENCE_CONFIG[g.confianza]?.score ?? 60)
+  const globalScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+
+  return (
+    <div className="mt-4 rounded-lg border border-[#e5e7ee] bg-[#fff4ee] p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-[#ff5b12]">Sugerencia de IA aplicada</span>
+          <h4 className="text-sm font-black text-[#151323]">Claude detectó {gondolas.length} góndolas (Acierto global: {globalScore}%)</h4>
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {gondolas.map((g, i) => (
+          <span key={i} className="inline-flex items-center gap-1 rounded bg-white px-2 py-1 text-xs font-bold text-[#151323] border border-[#e5e7ee]">
+            <span className="h-2 w-2 rounded-full" style={{ background: CONFIDENCE_CONFIG[g.confianza]?.color || '#ff5b12' }} />
+            {g.name}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export default function AnalysisAreaPage() {
@@ -22,6 +55,41 @@ export default function AnalysisAreaPage() {
   const [points, setPoints] = useState(analysisArea || [])
   const [zoneSaved, setZoneSaved] = useState(false)
   const running = job && !['completed', 'failed'].includes(job.status)
+
+  // Estados para la IA de Góndolas
+  const [layoutSuggesting, setLayoutSuggesting] = useState(false)
+  const [layoutMessage, setLayoutMessage] = useState('')
+  const [layoutResult, setLayoutResult] = useState(null)
+
+  // Función para sugerir góndolas usando automáticamente el video que ya está cargado en el contexto
+  const suggestLayoutAutomatically = async () => {
+    if (!file) {
+      setLayoutMessage('Error: No se encontró un video cargado.')
+      return
+    }
+    setLayoutSuggesting(true)
+    setLayoutMessage('')
+    setLayoutResult(null)
+    try {
+      const body = new FormData()
+      body.append('video', file, file.name || 'video.mp4')
+      const result = await api(`/api/sites/${siteId}/layout-suggestions`, { method: 'POST', body })
+      
+      // Mapeamos los colores de la IA a cada góndola
+      const coloredGondolas = result.gondolas.map((g) => ({
+        ...g,
+        color: CONFIDENCE_CONFIG[g.confianza]?.color ?? '#b26500' // Usa el color de la configuración o un default
+      }))
+
+      updateConfiguration({ ...site.configuration, gondolas: coloredGondolas })
+      setLayoutResult(result)
+      setLayoutMessage(`¡Éxito! Claude sugirió ${result.gondolas.length} góndolas.`)
+    } catch (error) {
+      setLayoutMessage(`Error: ${error.message}`)
+    } finally {
+      setLayoutSuggesting(false)
+    }
+  }
 
   useEffect(() => {
     setAnalysisArea(mode === 'zone' ? points : null)
@@ -96,8 +164,7 @@ export default function AnalysisAreaPage() {
     try {
       await saveConfiguration(site.configuration)
     } catch {
-      // Si el plano no se pudo persistir, el análisis usará la última configuración
-      // guardada; continuamos para no bloquear el análisis sin aviso.
+      // Continuamos para no bloquear el análisis
     }
     analyze(mode === 'zone' ? points : null)
   }
@@ -149,6 +216,7 @@ export default function AnalysisAreaPage() {
         </aside>
       </section>
 
+      {/* SECCIÓN DE GÓNDOLAS Y PLANO: BOTONES COMPACTOS Y ALINEADOS A LA DERECHA */}
       <section className="mt-5 rounded-lg border border-[#e5e7ee] bg-white shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)] p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
@@ -156,8 +224,42 @@ export default function AnalysisAreaPage() {
             <h2 className="mt-1 text-3xl font-black leading-none text-[#151323]">Dibuja las gondolas</h2>
             <p className="mt-2 text-sm font-semibold text-[#7d8392]">Crea y calibra las gondolas sobre el mapa; la proyeccion se ve en vivo sobre el frame del video.</p>
           </div>
-          <button className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-md border border-[#ff5b12] bg-white px-4 text-[13px] font-black text-[#ff5b12] no-underline transition hover:-translate-y-px hover:bg-[#fff4ee]" onClick={captureFrame} type="button"><Camera size={16} /> {frameCapture ? 'Recapturar frame del video' : 'Capturar frame del video'}</button>
+          
+          {/* Contenedor alineado a la derecha con botones más compactos */}
+          <div className="flex flex-col items-end gap-1 md:ml-auto">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button 
+                className="inline-flex h-[38px] items-center justify-center gap-1.5 rounded-md bg-[#151323] px-3 text-xs font-black text-white transition hover:bg-[#29263d] disabled:opacity-50" 
+                onClick={suggestLayoutAutomatically} 
+                disabled={layoutSuggesting}
+                type="button"
+              >
+                <Sparkles size={14} className="text-[#ff5b12]" /> 
+                {layoutSuggesting ? 'Analizando...' : 'Sugerir góndolas con IA'}
+              </button>
+
+              <button 
+                className="inline-flex h-[38px] items-center justify-center gap-1.5 rounded-md border border-[#ff5b12] bg-white px-3 text-xs font-black text-[#ff5b12] transition hover:bg-[#fff4ee]" 
+                onClick={captureFrame} 
+                type="button"
+              >
+                <Camera size={14} /> {frameCapture ? 'Recapturar frame' : 'Capturar frame'}
+              </button>
+          </div>
+          <span className="text-[10px] font-semibold text-[#7d8392]">
+              <b className="text-[#ff5b12]">Opcional:</b> Tarda ~4 min. Puedes saltarlo y dibujar a mano.
+            </span>
         </div>
+        </div>
+
+        {layoutMessage && (
+          <p className={`mt-3 text-xs font-bold ${layoutMessage.includes('Error') ? 'text-red-600' : 'text-[#177345]'}`}>
+            {layoutMessage}
+          </p>
+        )}
+
+        {layoutResult && <ConfidencePanel result={layoutResult} />}
+
         <div className="mt-5">
           <PlanogramEditor configuration={site.configuration} onChange={updateConfiguration} onSave={saveConfiguration} frameCapture={frameCapture} zone={mode === 'zone' ? points : null} />
         </div>
@@ -165,4 +267,3 @@ export default function AnalysisAreaPage() {
     </SiteFlowPage>
   )
 }
-

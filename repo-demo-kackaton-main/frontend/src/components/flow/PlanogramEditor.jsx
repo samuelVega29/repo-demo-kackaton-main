@@ -5,6 +5,17 @@ import { pointInPolygon, nearestPointInPolygon } from '../../utils/floorOutline'
 
 const GRID_SNAP = 0.25
 
+function hexToRgba(hex, alpha = 1) {
+  if (!hex) return `rgba(92, 136, 120, ${alpha})`;
+  const clean = hex.replace('#', '')
+  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean
+  const bigint = parseInt(full, 16)
+  const r = (bigint >> 16) & 255
+  const g = (bigint >> 8) & 255
+  const b = bigint & 255
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
 function snapToGrid(value, gridSize = GRID_SNAP) {
   return Math.round(value / gridSize) * gridSize
 }
@@ -271,28 +282,33 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture, zone }
             })}
           </svg>
           {configuration.gondolas.map((item) => {
-            const isSelected = selectedId === item.id
-            const isDragging = dragInfo && pointer.current?.item?.id === item.id
-            return (
-              <div
-                className={`absolute grid min-w-[25px] min-h-[20px] touch-none place-items-center border border-[#5c8878] bg-[#264c41] p-0 text-[#dcebe5] shadow-[0_4px_15px_rgba(0,0,0,.25)] transition-shadow duration-150 hover:z-[2] hover:border-[#d4ff70] hover:bg-[#355e50] hover:shadow-[0_4px_20px_rgba(212,255,112,.15)] ${isSelected ? 'z-[2] border-[#d4ff70] bg-[#355e50] shadow-[0_4px_20px_rgba(212,255,112,.15)]' : ''}`}
-                key={item.id}
-                style={{
-                  left: `${(item.x - view.minX) / view.width * 100}%`,
-                  top: `${(item.z - view.minZ) / view.depth * 100}%`,
-                  width: `${item.width / view.width * 100}%`,
-                  height: `${item.depth / view.depth * 100}%`,
-                  transform: `rotate(${item.rotation || 0}deg)`,
-                }}
-                onPointerDown={(event) => startPointer(event, item, 'move')}
-              >
-                <span className="pointer-events-none max-w-[92%] overflow-hidden text-ellipsis whitespace-nowrap text-[9px] font-semibold font-[ui-monospace,monospace]">{item.name}</span>
-                <span className="pointer-events-none absolute bottom-[-18px] left-1/2 -translate-x-1/2 whitespace-nowrap border border-[rgba(97,222,192,.12)] bg-[rgba(9,21,18,.85)] px-1 py-[1px] text-[8px] font-medium font-[ui-monospace,monospace] text-[#7a9b8e]">{item.width.toFixed(1)}×{item.depth.toFixed(1)}m</span>
-                <i className="after:absolute after:top-full after:left-1/2 after:h-[13px] after:w-px after:-translate-x-1/2 after:bg-[#d4ff70] after:content-[''] absolute right-auto bottom-auto top-[-24px] left-1/2 h-3 w-3 -translate-x-1/2 cursor-grab touch-none rounded-full border border-[#d4ff70] bg-[#142a23] active:cursor-grabbing" onPointerDown={(event) => startPointer(event, item, 'rotate')} title="Rotar" />
-                <i className="absolute -right-px -bottom-px h-4 w-4 touch-none bg-[linear-gradient(135deg,transparent_45%,#d4ff70_46%_55%,transparent_56%)] cursor-nwse-resize" onPointerDown={(event) => startPointer(event, item, 'resize')} />
-              </div>
-            )
-          })}
+  const isSelected = selectedId === item.id
+  const isDragging = dragInfo && pointer.current?.item?.id === item.id
+  const confidenceColor = item.color || '#5c8878' // Fallback para góndolas manuales
+
+  return (
+    <div
+      className={`absolute grid min-w-[25px] min-h-[20px] touch-none place-items-center border p-0 text-[#dcebe5] shadow-[0_4px_15px_rgba(0,0,0,.25)] transition-shadow duration-150 hover:z-[2] ${isSelected ? 'z-[2] shadow-[0_4px_20px_rgba(212,255,112,.2)]' : ''}`}
+      key={item.id}
+      style={{
+        left: `${(item.x - view.minX) / view.width * 100}%`,
+        top: `${(item.z - view.minZ) / view.depth * 100}%`,
+        width: `${item.width / view.width * 100}%`,
+        height: `${item.depth / view.depth * 100}%`,
+        transform: `rotate(${item.rotation || 0}deg)`,
+        borderColor: isSelected ? '#d4ff70' : confidenceColor,
+        borderWidth: isSelected ? '2px' : '1px',
+        backgroundColor: hexToRgba(confidenceColor, isSelected ? 0.5 : 0.32),
+      }}
+      onPointerDown={(event) => startPointer(event, item, 'move')}
+    >
+      <span className="pointer-events-none max-w-[92%] overflow-hidden text-ellipsis whitespace-nowrap text-[9px] font-semibold font-[ui-monospace,monospace]">{item.name}</span>
+      <span className="pointer-events-none absolute bottom-[-18px] left-1/2 -translate-x-1/2 whitespace-nowrap border border-[rgba(97,222,192,.12)] bg-[rgba(9,21,18,.85)] px-1 py-[1px] text-[8px] font-medium font-[ui-monospace,monospace] text-[#7a9b8e]">{item.width.toFixed(1)}×{item.depth.toFixed(1)}m</span>
+      <i className="after:absolute after:top-full after:left-1/2 after:h-[13px] after:w-px after:-translate-x-1/2 after:bg-[#d4ff70] after:content-[''] absolute right-auto bottom-auto top-[-24px] left-1/2 h-3 w-3 -translate-x-1/2 cursor-grab touch-none rounded-full border border-[#d4ff70] bg-[#142a23] active:cursor-grabbing" onPointerDown={(event) => startPointer(event, item, 'rotate')} title="Rotar" />
+      <i className="absolute -right-px -bottom-px h-4 w-4 touch-none bg-[linear-gradient(135deg,transparent_45%,#d4ff70_46%_55%,transparent_56%)] cursor-nwse-resize" onPointerDown={(event) => startPointer(event, item, 'resize')} />
+    </div>
+  )
+})}
           {!configuration.gondolas.length && <button className="absolute inset-[35%] grid cursor-pointer place-items-center border border-dashed border-[#49675c] bg-[rgba(9,21,18,.8)] text-[10px] text-[#d4ff70]" onClick={addGondola}>＋ Dibuja tu primera góndola</button>}
         </div>
         <aside className="min-w-0 border-l border-[rgba(206,236,221,.14)] bg-[#0a1512] p-[25px] max-[980px]:border-l-0 max-[980px]:border-t max-[980px]:border-t-[rgba(206,236,221,.14)] max-[760px]:p-[20px] max-[760px]:px-[14px] max-[760px]:py-[20px]">
