@@ -1,4 +1,4 @@
-import { ArrowRight, BarChart3, Building2, Grid2X2, Hash, List, MapPin, MoreHorizontal, Plus, Search, X } from 'lucide-react'
+import { ArrowRight, BarChart3, Building2, Grid2X2, Hash, List, MapPin, MoreHorizontal, Plus, Search, Trash2, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import flujoPuntos from '../assets/images/flujo_puntos.png'
 import gondolas from '../assets/images/gondolas.png'
@@ -39,9 +39,10 @@ function formatPerformance(value) {
 }
 
 export default function RetailersPage() {
-  const { retailers, selectRetailer, createRetailer } = useApp()
+  const { retailers, selectRetailer, createRetailer, deleteRetailer } = useApp()
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -69,6 +70,20 @@ export default function RetailersPage() {
       setError(requestError.message)
     } finally {
       setCreating(false)
+    }
+  }
+
+  const removeRetailer = async (event, item) => {
+    event.stopPropagation()
+    const confirmed = window.confirm(`¿Quieres eliminar "${item.name}"? Tambien se eliminaran sus sedes, configuraciones y analisis.`)
+    if (!confirmed) return
+    setDeletingId(item.id)
+    try {
+      await deleteRetailer(item)
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -156,9 +171,12 @@ export default function RetailersPage() {
           {featuredRetailers.map((item, index) => {
             const status = getStatus(item)
             return (
-              <button className="group relative h-[350px] min-w-[min(88vw,390px)] snap-start overflow-hidden rounded-[22px] bg-[#071d25] text-left shadow-[0_26px_70px_-42px_rgba(7,29,37,.9)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_34px_90px_-46px_rgba(7,29,37,.95)] md:min-w-[380px] xl:min-w-[400px]" key={item.id} onClick={() => selectRetailer(item)} type="button">
+              <article className="group relative h-[350px] min-w-[min(88vw,390px)] snap-start cursor-pointer overflow-hidden rounded-[22px] bg-[#071d25] text-left shadow-[0_26px_70px_-42px_rgba(7,29,37,.9)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_34px_90px_-46px_rgba(7,29,37,.95)] md:min-w-[380px] xl:min-w-[400px]" key={item.id} onClick={() => selectRetailer(item)} onKeyDown={(event) => { if (event.key === 'Enter') selectRetailer(item) }} role="button" tabIndex={0}>
                 <img src={getSupermarketImage(index)} alt={item.name} className="absolute inset-x-0 top-0 h-[205px] w-full object-cover transition duration-700 group-hover:scale-110" onError={(event) => { event.currentTarget.src = gondolas }} />
                 <div className="absolute inset-x-0 top-0 h-[205px] bg-[linear-gradient(180deg,rgba(7,29,37,.04)_0%,rgba(7,29,37,.10)_58%,rgba(7,29,37,.72)_100%)]" />
+                <button className="absolute left-4 top-4 z-20 grid h-10 w-10 place-items-center rounded-full border border-white/15 bg-[#071d25]/80 text-white shadow-[0_16px_32px_-22px_rgba(0,0,0,.9)] backdrop-blur transition hover:border-[#ff5b12] hover:bg-[#ff5b12]" onClick={(event) => removeRetailer(event, item)} disabled={deletingId === item.id} type="button" aria-label={`Eliminar empresa ${item.name}`} title="Eliminar empresa">
+                  <Trash2 size={17} />
+                </button>
                 <span className={`absolute right-4 top-4 z-10 inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-black shadow-[0_12px_26px_-20px_rgba(7,29,37,.8)] ${status.className}`}>
                   <span className="h-1.5 w-1.5 rounded-full bg-current" /> {status.label}
                 </span>
@@ -175,7 +193,7 @@ export default function RetailersPage() {
                     <ArrowRight size={19} />
                   </span>
                 </div>
-              </button>
+              </article>
             )
           })}
         </div>

@@ -1,8 +1,9 @@
-import { ArrowDown, ArrowRight, FileText, FileVideo, UploadCloud } from 'lucide-react'
+import { ArrowDown, ArrowRight, CheckCircle2, Eye, FileText, FileVideo, HelpCircle, Settings2, Store, UploadCloud, Wrench, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppProvider'
 import SiteFlowPage from '../components/flow/SiteFlowPage'
+import { artifactUrl, listAnalyses } from '../services/analyses'
 import { isSiteConfigured } from '../utils/siteConfiguration'
 import analisisRobot from '../assets/images/analisis_robot.png'
 
@@ -32,10 +33,29 @@ export default function UploadPage() {
   const { file, preview, chooseFile, inputRef, site } = useApp()
   const { siteId } = useParams()
   const [metadata, setMetadata] = useState(null)
+  const [acceptedConfig, setAcceptedConfig] = useState(false)
+  const [instructionsOpen, setInstructionsOpen] = useState(false)
+  const [history, setHistory] = useState([])
+  const [historyError, setHistoryError] = useState('')
   const configured = isSiteConfigured(site)
   const calibrationLabel = site?.configuration?.camera?.calibration_status || 'lista'
+  const gondolaCount = site?.configuration?.gondolas?.length || 0
+  const referenceFrame = site?.configuration?.reference_frame
+  const latestFrameAnalysis = history.find((item) => item.result?.annotated_frames?.length)
+  const latestFrame = latestFrameAnalysis?.result?.annotated_frames?.[0]
+  const previewFrameSrc = referenceFrame?.dataUrl || (latestFrameAnalysis && latestFrame ? artifactUrl(latestFrameAnalysis.id, latestFrame) : '')
+  const previewFrameCaption = referenceFrame?.dataUrl
+    ? `Frame guardado de la calibracion${referenceFrame?.width && referenceFrame?.height ? ` (${referenceFrame.width} x ${referenceFrame.height})` : ''}`
+    : latestFrame
+      ? `Previsualizacion tomada de ${latestFrameAnalysis.filename || 'un analisis anterior'}`
+      : 'Sin previsualizacion disponible'
+  const mustReviewConfiguration = configured && !acceptedConfig
   const nextPath = `/sedes/${siteId}/analisis/nuevo/siguiente`
   const nextLabel = 'Continuar a zona'
+
+  useEffect(() => {
+    setAcceptedConfig(false)
+  }, [site?.id])
 
   useEffect(() => {
     if (!preview) {
@@ -54,6 +74,15 @@ export default function UploadPage() {
     }
     return () => { video.src = '' }
   }, [preview])
+
+  useEffect(() => {
+    if (!siteId) return undefined
+    let active = true
+    listAnalyses({ site_id: siteId })
+      .then((items) => { if (active) setHistory(items || []) })
+      .catch((error) => { if (active) setHistoryError(error.message) })
+    return () => { active = false }
+  }, [siteId])
 
   return (
     <SiteFlowPage step={uploadStep} hideHeader>
@@ -98,13 +127,25 @@ export default function UploadPage() {
                 Selecciona la fuente y carga un video real de tu punto de venta para que Scapde, lo analice y genere insights de tus gondolas
               </p>
               <p className="mt-3 text-sm leading-6 text-white/60">{site?.city || 'Sede'} - {site?.name || 'Punto de venta'} - Calibracion: <b className="text-white">{calibrationLabel}</b></p>
+              <div className="mt-5 grid gap-2 text-xs font-bold text-white/75 sm:grid-cols-3">
+                <StatusPill icon={Settings2} active={calibrationLabel === 'calibrated'} label={calibrationLabel === 'calibrated' ? 'Camara lista' : 'Falta calibrar'} />
+                <StatusPill icon={Store} active={gondolaCount > 0} label={`${gondolaCount} gondolas`} />
+                <StatusPill icon={CheckCircle2} active={configured} label={configured ? 'Pipeline listo' : 'Config pendiente'} />
+              </div>
               <button
                 className="mt-7 inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full border border-[#ff8a4d]/40 bg-[#ff5b12] px-5 text-sm font-black text-white shadow-[0_0_26px_rgba(255,91,18,.45),0_18px_42px_-24px_rgba(255,91,18,.95)] transition hover:-translate-y-px hover:bg-[#e94d08]"
                 onClick={() => document.getElementById('upload-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 type="button"
               >
-                Sube tu video
+                {configured ? 'Revisar configuracion' : 'Sube tu video'}
                 <ArrowDown size={18} strokeWidth={3} />
+              </button>
+              <button
+                className="ml-0 mt-3 inline-flex min-h-[42px] items-center justify-center gap-2 rounded-full border border-white/15 bg-white/8 px-4 text-xs font-black text-white/85 transition hover:border-[#66d6ff]/50 hover:text-white sm:ml-3 sm:mt-7"
+                onClick={() => setInstructionsOpen(true)}
+                type="button"
+              >
+                <HelpCircle size={16} /> Instrucciones
               </button>
             </div>
           </div>
@@ -119,9 +160,55 @@ export default function UploadPage() {
         </section>
 
         <section id="upload-panel" className="relative z-10 scroll-mt-6 grid gap-5 px-5 pb-8 sm:px-7 lg:grid-cols-[1fr_330px] lg:px-8">
-          <div className="rounded-lg border border-[#e5e7ee] bg-white shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)] p-5">
+          {mustReviewConfiguration && (
+            <div className="rounded-lg border border-[#e5e7ee] bg-white p-5 shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)] lg:col-span-2">
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
+                <div>
+                  <span className="text-xs font-black uppercase text-[#ff5b12]">Configuracion guardada</span>
+                  <h3 className="mt-1 text-2xl font-black text-[#151323]">Revisa la configuracion de esta sede</h3>
+                  <p className="mt-2 max-w-[760px] text-sm font-semibold leading-6 text-[#7d8392]">
+                    Esta sede ya tiene camara y gondolas guardadas. Verifica la previsualizacion; si coincide con la camara actual, acepta y sube el nuevo video sin repetir la calibracion.
+                  </p>
+                  <figure className="mt-5 overflow-hidden rounded-lg border border-[#d6e4f1] bg-[#071d25]">
+                    {previewFrameSrc ? (
+                      <img src={previewFrameSrc} alt="Previsualizacion de la configuracion guardada" className="block aspect-video w-full object-cover" />
+                    ) : (
+                      <div className="grid aspect-video place-items-center px-6 text-center text-sm font-bold text-white/65">
+                        No hay frame guardado para previsualizar. Reconfigura una vez la camara para guardar una imagen de referencia.
+                      </div>
+                    )}
+                    <figcaption className="border-t border-white/10 px-4 py-3 text-xs font-semibold text-white/70">{previewFrameCaption}</figcaption>
+                  </figure>
+                </div>
+
+                <aside className="rounded-lg border border-[#e5e7ee] bg-[#f8fafc] p-4">
+                  <CheckCircle2 className="mb-3 text-[#17a964]" size={32} />
+                  <h3 className="text-lg font-black text-[#151323]">Pipeline listo</h3>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-[#7d8392]">Acepta esta configuracion para habilitar la carga del video.</p>
+                  <div className="mt-4 grid gap-2">
+                    <PipelineItem icon={Settings2} active={calibrationLabel === 'calibrated'} label="Camara" value={calibrationLabel === 'calibrated' ? 'Calibrada' : 'Pendiente'} />
+                    <PipelineItem icon={Store} active={gondolaCount > 0} label="Gondolas" value={gondolaCount > 0 ? `${gondolaCount} guardadas` : 'Pendientes'} />
+                    <PipelineItem icon={Eye} active={Boolean(previewFrameSrc)} label="Previsualizacion" value={previewFrameSrc ? 'Disponible' : 'Pendiente'} />
+                  </div>
+                  <button className="mt-5 inline-flex min-h-[46px] w-full items-center justify-center gap-2 rounded-md bg-[#ff5b12] px-4 text-[13px] font-black text-white transition hover:-translate-y-px hover:bg-[#e94d08]" onClick={() => setAcceptedConfig(true)} type="button">
+                    <CheckCircle2 size={17} /> Usar esta configuracion
+                  </button>
+                  <Link className="mt-3 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-md border border-[#ffd7c4] bg-[#fff7f2] px-4 text-[13px] font-black text-[#ff5b12] no-underline transition hover:-translate-y-px hover:bg-[#ffefe6]" to={`/sites/${siteId}/captura`}>
+                    <Wrench size={16} /> Reconfigurar camara
+                  </Link>
+                </aside>
+              </div>
+            </div>
+          )}
+
+          {!mustReviewConfiguration && (
+          <div className="rounded-lg border border-[#e5e7ee] bg-white p-5 shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)]">
+            <div className="mb-4">
+              <span className="text-xs font-black uppercase text-[#ff5b12]">Paso 2</span>
+              <h3 className="mt-1 text-xl font-black text-[#151323]">Sube el video del analisis</h3>
+            </div>
             <button
-              className={`relative z-10 mt-6 grid min-h-[240px] w-full place-items-center rounded-md border border-dashed p-8 text-center transition ${file ? 'border-[#ff5b12] bg-[#fff4ee]' : 'border-[#f5a782] bg-[#fffaf7] hover:border-[#ff5b12]'}`}
+              className={`relative z-10 grid min-h-[240px] w-full place-items-center rounded-md border border-dashed p-8 text-center transition ${file ? 'border-[#ff5b12] bg-[#fff4ee]' : 'border-[#f5a782] bg-[#fffaf7] hover:border-[#ff5b12]'}`}
               onClick={() => inputRef.current?.click()}
               type="button"
             >
@@ -133,15 +220,21 @@ export default function UploadPage() {
               </span>
             </button>
           </div>
+          )}
 
-          <aside className="rounded-lg border border-[#e5e7ee] bg-white shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)] p-5">
+          {!mustReviewConfiguration && <aside className="rounded-lg border border-[#e5e7ee] bg-white shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)] p-5">
             <FileVideo className="mb-3 text-[#ff5b12]" size={32} />
-            <h3 className="text-lg font-black text-[#151323]">Archivo seleccionado</h3>
+            <h3 className="text-lg font-black text-[#151323]">Paso 3: confirmar y analizar</h3>
             <p className="mt-2 text-sm font-semibold leading-6 text-[#7d8392]">
               {configured
-                ? 'Esta sede ya tiene calibracion y gondolas guardadas. Puedes elegir toda la camara o una zona y analizar sin configurar otra vez.'
-                : 'Esta sede necesita frame, vertices P1-P4 y gondolas para generar mapas de calor sobre el video.'}
+                ? 'Esta sede ya tiene calibracion y gondolas guardadas. Sube un video nuevo y SCAPDER lo analizara con esa configuracion.'
+                : 'Primero sube un video, captura un frame claro y guarda la calibracion/gondolas de esta sede.'}
             </p>
+            <div className="mt-4 grid gap-2">
+              <PipelineItem icon={Settings2} active={calibrationLabel === 'calibrated'} label="Calibracion de camara" value={calibrationLabel === 'calibrated' ? 'Guardada en esta sede' : 'Pendiente'} />
+              <PipelineItem icon={Store} active={gondolaCount > 0} label="Gondolas del plano" value={gondolaCount > 0 ? `${gondolaCount} guardadas` : 'Pendientes'} />
+              <PipelineItem icon={UploadCloud} active={Boolean(file)} label="Video del analisis" value={file ? 'Listo para procesar' : 'Selecciona un MP4'} />
+            </div>
             {file ? (
               <div className="mt-5 grid gap-3">
                 <Data label="Nombre" value={file.name} />
@@ -154,10 +247,80 @@ export default function UploadPage() {
             ) : (
               <p className="mt-4 text-sm font-semibold leading-6 text-[#7d8392]">Cuando selecciones un video, SCAPDER mostrara sus datos reales aqui.</p>
             )}
-          </aside>
+          </aside>}
         </section>
+        <section className="relative z-10 px-5 pb-10 sm:px-7 lg:px-8">
+          <div className="rounded-lg border border-[#e5e7ee] bg-white p-5 shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)]">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <span className="text-xs font-black uppercase text-[#ff5b12]">Historial</span>
+                <h3 className="mt-1 text-xl font-black text-[#151323]">Analisis anteriores de esta sede</h3>
+              </div>
+              <Link className="inline-flex min-h-[40px] items-center justify-center rounded-md border border-[#d6e4f1] bg-white px-4 text-[13px] font-black text-[#151323] no-underline transition hover:-translate-y-px hover:border-[#ff5b12]" to={`/sedes/${siteId}/historial`}>Ver historial completo</Link>
+            </div>
+            {historyError ? <p className="rounded-md bg-[#fff1eb] px-4 py-3 text-sm font-bold text-[#b43b1d]">{historyError}</p> : null}
+            <div className="grid gap-2">
+              {history.slice(0, 4).map((analysis) => (
+                <Link className="grid gap-2 rounded-md border border-[#e5e7ee] px-4 py-3 no-underline transition hover:border-[#ff5b12] sm:grid-cols-[1fr_auto_auto] sm:items-center" key={analysis.id} to={`/analyses/${analysis.id}`}>
+                  <b className="truncate text-sm text-[#151323]">{analysis.filename}</b>
+                  <span className="text-xs font-semibold text-[#7d8392]">{analysis.created_at ? new Date(analysis.created_at).toLocaleString('es-CO') : ''}</span>
+                  <span className={`w-fit rounded-full px-3 py-1 text-[11px] font-black ${analysis.status === 'completed' ? 'bg-[#eaf8ef] text-[#17803f]' : analysis.status === 'failed' ? 'bg-[#fff1eb] text-[#b43b1d]' : 'bg-[#eef5ff] text-[#2f7df6]'}`}>{analysis.status}</span>
+                </Link>
+              ))}
+              {!history.length && !historyError ? <p className="rounded-md border border-dashed border-[#e5e7ee] bg-[#f8fafc] px-4 py-6 text-center text-sm font-semibold text-[#7d8392]">Todavia no hay analisis previos para esta sede.</p> : null}
+            </div>
+          </div>
+        </section>
+        {instructionsOpen && <InstructionsModal onClose={() => setInstructionsOpen(false)} configured={configured} />}
       </div>
     </SiteFlowPage>
+  )
+}
+
+function InstructionsModal({ onClose, configured }) {
+  return (
+    <div className="fixed inset-0 z-[80] grid place-items-center bg-[#02060b]/70 px-4 backdrop-blur-sm">
+      <section className="w-full max-w-[560px] rounded-lg border border-[#d6e4f1] bg-white p-5 shadow-[0_30px_90px_rgba(0,0,0,.35)]">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <span className="text-xs font-black uppercase text-[#ff5b12]">Ayuda rapida</span>
+            <h2 className="mt-1 text-2xl font-black text-[#151323]">Como usar este pipeline</h2>
+          </div>
+          <button className="grid h-9 w-9 place-items-center rounded-full border border-[#e5e7ee] bg-white text-[#151323]" onClick={onClose} type="button" aria-label="Cerrar instrucciones">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="grid gap-3 text-sm font-semibold leading-6 text-[#64748b]">
+          <p><b className="text-[#151323]">1. Sube el video.</b> Usa un MP4 de la camara fija de la sede.</p>
+          <p><b className="text-[#151323]">2. Configura zonas.</b> Elige si vas a analizar toda la camara o solo un area del video.</p>
+          <p><b className="text-[#151323]">3. Dibuja el planograma.</b> En la siguiente pantalla puedes marcar gondolas y guardar el plano antes de analizar.</p>
+          {!configured && <p className="rounded-md border border-[#ffd7c4] bg-[#fff7f2] px-3 py-2 text-[#b43b1d]">Si la sede no tiene plano guardado, dibuja las gondolas en el paso de zonas antes de analizar.</p>}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function StatusPill({ icon: Icon, active, label }) {
+  return (
+    <span className={`inline-flex min-h-[34px] items-center gap-2 rounded-full border px-3 ${active ? 'border-[#66d6ff]/35 bg-[#0e2a3d]/70 text-white' : 'border-white/10 bg-white/5 text-white/55'}`}>
+      <Icon size={15} />
+      {label}
+    </span>
+  )
+}
+
+function PipelineItem({ icon: Icon, active, label, value }) {
+  return (
+    <div className={`flex items-center gap-3 rounded-md border px-3 py-2 ${active ? 'border-[#c9f3df] bg-[#f0fff7]' : 'border-[#e5e7ee] bg-[#f8fafc]'}`}>
+      <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${active ? 'bg-[#17a964] text-white' : 'bg-white text-[#7d8392]'}`}>
+        <Icon size={16} />
+      </span>
+      <span className="min-w-0">
+        <b className="block text-xs font-black text-[#151323]">{label}</b>
+        <small className="block text-xs font-semibold text-[#7d8392]">{value}</small>
+      </span>
+    </div>
   )
 }
 

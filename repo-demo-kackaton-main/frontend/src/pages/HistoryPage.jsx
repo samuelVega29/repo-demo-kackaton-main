@@ -9,10 +9,12 @@ import {
 } from 'lucide-react'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import robotHistorial from '../assets/images/robot-historial.png'
+import { useApp } from '../context/AppProvider'
 import { listAnalyses } from '../services/analyses'
+import { isSiteConfigured } from '../utils/siteConfiguration'
 
 const ITEMS_PER_PAGE = 7
 
@@ -53,6 +55,10 @@ const getStatus = (status) => {
 
 export default function HistoryPage() {
   const navigate = useNavigate()
+  const { siteId } = useParams()
+  const { site, loadSite } = useApp()
+  const currentSite = siteId && site && String(site.id) === String(siteId) ? site : null
+  const configured = isSiteConfigured(currentSite)
 
   const [analyses, setAnalyses] = useState([])
   const [loading, setLoading] = useState(true)
@@ -63,9 +69,14 @@ export default function HistoryPage() {
   const [currentPage, setCurrentPage] = useState(1)
 
   useEffect(() => {
+    if (!siteId || currentSite) return
+    loadSite(siteId).catch(() => {})
+  }, [currentSite, loadSite, siteId])
+
+  useEffect(() => {
     let active = true
 
-    listAnalyses()
+    listAnalyses(siteId ? { site_id: siteId } : undefined)
       .then((items) => {
         if (active) {
           setAnalyses(items || [])
@@ -85,7 +96,7 @@ export default function HistoryPage() {
     return () => {
       active = false
     }
-  }, [])
+  }, [siteId])
 
   const filteredAnalyses = useMemo(() => {
     return analyses.filter((analysis) => {
@@ -159,6 +170,28 @@ export default function HistoryPage() {
             </p>
 
           </div>
+
+          {siteId && (
+            <div className="relative z-20 -mt-2 mb-6">
+              <p className="max-w-[500px] text-sm font-bold leading-6 text-[#8fcfff]">
+                {currentSite ? `Estas viendo el historial de ${currentSite.name}.` : 'Estas viendo el historial de esta sede.'} La camara y el plano guardados se reutilizan para los nuevos analisis.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Link
+                  className="inline-flex min-h-[44px] items-center justify-center rounded-[12px] bg-[#ff5b12] px-5 text-sm font-black text-white no-underline shadow-[0_10px_24px_-12px_rgba(255,91,18,.9)] transition hover:-translate-y-0.5 hover:bg-[#e94d08]"
+                  to={`/sedes/${siteId}/analisis/nuevo`}
+                >
+                  Subir nuevo video
+                </Link>
+                <Link
+                  className="inline-flex min-h-[44px] items-center justify-center rounded-[12px] border border-[#2f84b7] bg-[#002341] px-5 text-sm font-black text-white no-underline transition hover:-translate-y-0.5 hover:border-[#ff641f] hover:text-[#ff641f]"
+                  to={configured ? `/sites/${siteId}/planograma` : `/sites/${siteId}/video`}
+                >
+                  {configured ? 'Ver configuracion' : 'Configurar sede'}
+                </Link>
+              </div>
+            </div>
+          )}
 
           {/* ROBOT ESCRITORIO */}
           <div className="relative z-30 hidden h-[245px] lg:block">
@@ -536,10 +569,10 @@ export default function HistoryPage() {
         {/* VOLVER */}
         <button
           type="button"
-          onClick={() => navigate('/inicio')}
+          onClick={() => navigate(siteId ? `/sedes/${siteId}` : '/inicio')}
           className="mt-5 rounded-[12px] border border-[#1c5f8c] bg-[#002341] px-5 py-3 text-sm font-black text-white transition hover:border-[#ff641f] hover:text-[#ff641f]"
         >
-          Volver a inicio
+          {siteId ? 'Volver a la sede' : 'Volver a inicio'}
         </button>
 
       </div>

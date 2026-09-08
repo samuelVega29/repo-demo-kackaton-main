@@ -17,7 +17,6 @@ import AnalyzePage from '../pages/AnalyzePage'
 import ResultsPage from '../pages/ResultsPage'
 import HistoryPage from '../pages/HistoryPage'
 import { useApp } from '../context/AppProvider'
-import { isSiteConfigured } from '../utils/siteConfiguration'
 
 function SiteRouteGate({ resolve }) {
   const { site, loadSite } = useApp()
@@ -43,7 +42,7 @@ function SiteRouteGate({ resolve }) {
   return <Navigate to={resolve(site, siteId)} replace />
 }
 
-const analysisEntryRoute = (site, siteId) => isSiteConfigured(site) ? `/sedes/${siteId}/analisis/nuevo` : `/sites/${siteId}/video`
+const analysisEntryRoute = (site, siteId) => `/sedes/${siteId}/analisis/nuevo`
 const uploadNextRoute = (site, siteId) => `/sedes/${siteId}/analisis/nuevo/area`
 
 export default function AppRouter() {
@@ -64,6 +63,7 @@ export default function AppRouter() {
           <Route path="/sedes/:siteId/analisis/nuevo" element={<UploadPage />} />
           <Route path="/sedes/:siteId/analisis/nuevo/siguiente" element={<SiteRouteGate resolve={uploadNextRoute} />} />
           <Route path="/sedes/:siteId/analisis/nuevo/area" element={<AnalysisAreaPage />} />
+          <Route path="/sedes/:siteId/historial" element={<HistoryPage />} />
           <Route path="/sites/:siteId/captura" element={<CapturePage />} />
           <Route path="/sites/:siteId/calibracion" element={<CalibrationPage />} />
           <Route path="/sites/:siteId/planograma" element={<PlanogramPage />} />

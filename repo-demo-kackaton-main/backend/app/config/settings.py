@@ -12,11 +12,41 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(REPO_ROOT / ".env")
+except ModuleNotFoundError:
+    _load_env_file(REPO_ROOT / ".env")
+
 BACKEND_ROOT = REPO_ROOT / "backend"
 DATA_ROOT = REPO_ROOT / "data"
 MEDIA_ROOT = REPO_ROOT / "media"
 DATASET_ROOT = Path(os.environ.get("SCAPDER_DATASET", REPO_ROOT / "training" / "dataset"))
 ANNOTATIONS_ROOT = Path(os.environ.get("SCAPDER_ANNOTATIONS", REPO_ROOT / "training" / "annotations"))
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
+GEMINI_FALLBACK_MODELS = [
+    item.strip()
+    for item in os.environ.get(
+        "GEMINI_FALLBACK_MODELS",
+        "gemini-3.1-flash-lite-preview,gemini-flash-lite-latest",
+    ).split(",")
+    if item.strip()
+]
 MODELS_ROOT = Path(os.environ.get("SCAPDER_MODELS", REPO_ROOT / "models"))
 EXPORTED_MODELS = MODELS_ROOT / "exported"
 BEHAVIOR_CONFIG = REPO_ROOT / "training" / "configs" / "behavior.yaml"

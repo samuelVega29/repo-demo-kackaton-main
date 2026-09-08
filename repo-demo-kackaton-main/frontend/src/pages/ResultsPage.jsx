@@ -6,7 +6,7 @@ import StoreScene from '../components/StoreScene'
 import ShelfMatrix from '../components/ShelfMatrix'
 import AnalysisVideo from '../components/AnalysisVideo'
 
-const modes = [['traffic', 'Trafico'], ['dwell', 'Permanencia'], ['interaction', 'Interaccion']]
+const modes = [['traffic', 'Trafico'], ['dwell', 'Permanencia'], ['interaction', 'Interaccion'], ['pickup', 'Pick-up']]
 
 export default function ResultsPage() {
   const { job, site, mode, setMode, selectedId, setSelectedId, loadAnalysis } = useApp()
@@ -30,6 +30,7 @@ export default function ResultsPage() {
   const selected = (result.gondolas || []).find((item) => item.id === selectedId)
   const heatmapUrl = artifactUrl(analysis.id, `${mode}.png`)
   const interactionAvailable = Boolean(result.heatmaps?.interaction)
+  const pickupAvailable = Boolean(result.heatmaps?.pickup)
   const metrics = result.metrics || {}
   const video = result.video || {}
   const zones = result.zones || []
@@ -67,6 +68,7 @@ export default function ResultsPage() {
           {modes.map(([value, label]) => (
             <button role="tab" aria-selected={mode === value} className={`min-w-[130px] rounded-md border-0 bg-transparent p-3 px-[18px] text-[11px] text-[#7d8392] max-[760px]:min-w-0 max-[760px]:flex-1 max-[760px]:px-[5px] max-[760px]:p-[11px] max-[390px]:text-[9px] ${mode === value ? 'bg-[#ff6b3d] font-extrabold text-white' : ''}`} onClick={() => setMode(value)} key={value}>
               {label}{value === 'interaction' && !interactionAvailable && <small className="mt-[3px] block text-[6px]">evidencia insuficiente</small>}
+              {value === 'pickup' && !pickupAvailable && <small className="mt-[3px] block text-[6px]">sin eventos</small>}
             </button>
           ))}
         </div>
