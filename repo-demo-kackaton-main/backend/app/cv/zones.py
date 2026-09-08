@@ -108,7 +108,7 @@ def compute_zone_metrics(
             "interactions": interactions,
             "heat_index": 0.0,
             "classification": "cold",
-            "source": "auto_grid" if mode == "fast" else "configured",
+            "source": zone.get("source") or ("auto_grid" if mode == "fast" else "configured"),
         })
     heat_indices = _heat_indices(rows)
     classifications = _classify(heat_indices)
