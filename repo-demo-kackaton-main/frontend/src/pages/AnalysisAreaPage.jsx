@@ -6,7 +6,6 @@ import {
   Crosshair,
   FileVideo,
   Info,
-  Lightbulb,
   Play,
   Save,
   ScanLine,
@@ -41,52 +40,75 @@ import {
 
 import { api } from '../services/client'
 
+/* =========================================================
+   CONFIGURACIÓN DE CONFIANZA IA
+========================================================= */
+
 const CONFIDENCE_CONFIG = {
   alta: {
     color: '#177345',
     score: 100,
   },
+
   media: {
     color: '#b26500',
     score: 60,
   },
+
   baja: {
     color: '#b43b1d',
     score: 25,
   },
 }
 
-function ConfidencePanel({ result }) {
-  if (!result?.gondolas?.length) {
+/* =========================================================
+   PANEL RESULTADO IA
+========================================================= */
+
+function ConfidencePanel({
+  result,
+}) {
+  if (
+    !result?.gondolas?.length
+  ) {
     return null
   }
 
-  const gondolas = result.gondolas
+  const gondolas =
+    result.gondolas
 
-  const scores = gondolas.map(
-    (gondola) =>
-      CONFIDENCE_CONFIG[
-        gondola.confianza
-      ]?.score ?? 60
-  )
+  const scores =
+    gondolas.map(
+      (gondola) =>
+        CONFIDENCE_CONFIG[
+          gondola.confianza
+        ]?.score ?? 60
+    )
 
-  const globalScore = Math.round(
-    scores.reduce(
-      (accumulator, current) =>
-        accumulator + current,
-      0
-    ) / scores.length
-  )
+  const globalScore =
+    Math.round(
+      scores.reduce(
+        (
+          accumulator,
+          current
+        ) =>
+          accumulator +
+          current,
+        0
+      ) /
+        scores.length
+    )
 
   return (
     <div
       className="
-        mt-4
-        rounded-[14px]
+        mt-3
+        rounded-[10px]
         border
         border-[#cfe2f3]
         bg-[#f4f9ff]
-        p-4
+        px-3
+        py-2.5
       "
     >
       <div
@@ -97,13 +119,13 @@ function ConfidencePanel({ result }) {
         "
       >
         <Sparkles
-          size={15}
+          size={13}
           className="text-[#ff641f]"
         />
 
         <span
           className="
-            text-[9px]
+            text-[8px]
             font-black
             uppercase
             tracking-[.08em]
@@ -114,36 +136,49 @@ function ConfidencePanel({ result }) {
         </span>
       </div>
 
-      <h4
-        className="
-          mt-2
-          text-[13px]
-          font-black
-          text-[#102033]
-        "
-      >
-        Claude detectó {gondolas.length} góndolas
-
-        <span
-          className="
-            ml-1
-            text-[#61758c]
-          "
-        >
-          · acierto global {globalScore}%
-        </span>
-      </h4>
-
       <div
         className="
-          mt-3
+          mt-2
           flex
           flex-wrap
+          items-center
           gap-2
         "
       >
+        <b
+          className="
+            text-[10px]
+            font-black
+            text-[#102033]
+          "
+        >
+          Claude detectó {gondolas.length} góndolas
+        </b>
+
+        <span
+          className="
+            text-[8px]
+            font-semibold
+            text-[#61758c]
+          "
+        >
+          Acierto global {globalScore}%
+        </span>
+      </div>
+
+      <div
+        className="
+          mt-2
+          flex
+          flex-wrap
+          gap-1.5
+        "
+      >
         {gondolas.map(
-          (gondola, index) => (
+          (
+            gondola,
+            index
+          ) => (
             <span
               key={`${gondola.name}-${index}`}
               className="
@@ -154,24 +189,25 @@ function ConfidencePanel({ result }) {
                 border
                 border-[#d8e5f0]
                 bg-white
-                px-3
-                py-1.5
-                text-[9px]
+                px-2.5
+                py-1
+                text-[8px]
                 font-black
                 text-[#102033]
               "
             >
               <span
                 className="
-                  h-2
-                  w-2
+                  h-1.5
+                  w-1.5
                   rounded-full
                 "
                 style={{
                   background:
                     CONFIDENCE_CONFIG[
                       gondola.confianza
-                    ]?.color || '#ff5b12',
+                    ]?.color ||
+                    '#ff5b12',
                 }}
               />
 
@@ -183,6 +219,10 @@ function ConfidencePanel({ result }) {
     </div>
   )
 }
+
+/* =========================================================
+   PÁGINA
+========================================================= */
 
 export default function AnalysisAreaPage() {
   const {
@@ -199,27 +239,65 @@ export default function AnalysisAreaPage() {
     onFrameCapture,
   } = useApp()
 
-  const { siteId } = useParams()
+  const {
+    siteId,
+  } = useParams()
 
-  const videoRef = useRef(null)
+  const videoRef =
+    useRef(null)
 
-  const [tab, setTab] =
-    useState('area')
+  /* =========================================================
+     ZONA GUARDADA DE LA SEDE
+  ========================================================= */
 
-  const [mode, setMode] =
-    useState(
-      analysisArea?.length
+  const savedAnalysisArea =
+    site?.configuration
+      ?.analysis_area ||
+    []
+
+  const hasSavedAnalysisArea =
+    Array.isArray(
+      savedAnalysisArea
+    ) &&
+    savedAnalysisArea.length >= 4
+
+  /* =========================================================
+     ESTADOS
+  ========================================================= */
+
+  const [
+    tab,
+    setTab,
+  ] = useState('area')
+
+  const [
+    mode,
+    setMode,
+  ] = useState(
+    analysisArea?.length >= 4
+      ? 'zone'
+      : hasSavedAnalysisArea
         ? 'zone'
         : 'all'
-    )
+  )
 
-  const [points, setPoints] =
-    useState(
-      analysisArea || []
-    )
+  const [
+    points,
+    setPoints,
+  ] = useState(
+    analysisArea?.length >= 4
+      ? analysisArea
+      : hasSavedAnalysisArea
+        ? savedAnalysisArea
+        : []
+  )
 
-  const [zoneSaved, setZoneSaved] =
-    useState(false)
+  const [
+    zoneSaved,
+    setZoneSaved,
+  ] = useState(
+    hasSavedAnalysisArea
+  )
 
   const [
     layoutSuggesting,
@@ -236,27 +314,28 @@ export default function AnalysisAreaPage() {
     setLayoutResult,
   ] = useState(null)
 
-  const [
-    videoMetadata,
-    setVideoMetadata,
-  ] = useState({
-    width: 0,
-    height: 0,
-    duration: 0,
-  })
+  /* =========================================================
+     ESTADOS DERIVADOS
+  ========================================================= */
 
   const running =
     job &&
     ![
       'completed',
       'failed',
-    ].includes(job.status)
+      'cancelled',
+    ].includes(
+      job.status
+    )
 
   const gondolas =
-    site?.configuration?.gondolas || []
+    site?.configuration
+      ?.gondolas ||
+    []
 
   const hasGondolas =
-    gondolas.length > 0
+    gondolas.length >
+    0
 
   const areaReady =
     mode === 'all' ||
@@ -285,6 +364,10 @@ export default function AnalysisAreaPage() {
         )
       : 0
 
+  /* =========================================================
+     SUGERENCIA AUTOMÁTICA DE GÓNDOLAS
+  ========================================================= */
+
   const suggestLayoutAutomatically =
     async () => {
       if (!file) {
@@ -295,9 +378,17 @@ export default function AnalysisAreaPage() {
         return
       }
 
-      setLayoutSuggesting(true)
-      setLayoutMessage('')
-      setLayoutResult(null)
+      setLayoutSuggesting(
+        true
+      )
+
+      setLayoutMessage(
+        ''
+      )
+
+      setLayoutResult(
+        null
+      )
 
       try {
         const body =
@@ -306,36 +397,45 @@ export default function AnalysisAreaPage() {
         body.append(
           'video',
           file,
-          file.name || 'video.mp4'
+          file.name ||
+            'video.mp4'
         )
 
-        const result = await api(
-          `/api/sites/${siteId}/layout-suggestions`,
-          {
-            method: 'POST',
-            body,
-          }
-        )
+        const result =
+          await api(
+            `/api/sites/${siteId}/layout-suggestions`,
+            {
+              method: 'POST',
+              body,
+            }
+          )
 
         const coloredGondolas =
           (
-            result.gondolas || []
-          ).map((gondola) => ({
-            ...gondola,
+            result.gondolas ||
+            []
+          ).map(
+            (gondola) => ({
+              ...gondola,
 
-            color:
-              CONFIDENCE_CONFIG[
-                gondola.confianza
-              ]?.color ??
-              '#b26500',
-          }))
+              color:
+                CONFIDENCE_CONFIG[
+                  gondola.confianza
+                ]?.color ??
+                '#b26500',
+            })
+          )
 
-        updateConfiguration({
+        const nextConfiguration = {
           ...site.configuration,
 
           gondolas:
             coloredGondolas,
-        })
+        }
+
+        updateConfiguration(
+          nextConfiguration
+        )
 
         setLayoutResult({
           ...result,
@@ -347,7 +447,9 @@ export default function AnalysisAreaPage() {
         setLayoutMessage(
           `Listo: Claude sugirió ${coloredGondolas.length} góndolas.`
         )
-      } catch (error) {
+      } catch (
+        error
+      ) {
         setLayoutMessage(
           `Error: ${error.message}`
         )
@@ -357,6 +459,10 @@ export default function AnalysisAreaPage() {
         )
       }
     }
+
+  /* =========================================================
+     SINCRONIZAR ÁREA ACTUAL CON CONTEXTO
+  ========================================================= */
 
   useEffect(() => {
     setAnalysisArea(
@@ -370,31 +476,93 @@ export default function AnalysisAreaPage() {
     setAnalysisArea,
   ])
 
+  /* =========================================================
+     RECUPERAR ZONA GUARDADA
+
+     IMPORTANTE:
+     Antes este useEffect borraba floor.outline.
+     Ahora recupera analysis_area y la dibuja.
+  ========================================================= */
+
   useEffect(() => {
-    setPoints([])
-    setMode('all')
-    setZoneSaved(false)
-    setTab('area')
+    setTab(
+      'area'
+    )
+
+    const storedArea =
+      site?.configuration
+        ?.analysis_area
 
     if (
-      site?.configuration
-        ?.floor?.outline
-        ?.length
+      Array.isArray(
+        storedArea
+      ) &&
+      storedArea.length >= 4
     ) {
-      updateConfiguration({
-        ...site.configuration,
+      setPoints(
+        storedArea
+      )
 
-        floor: {
-          ...site.configuration.floor,
-          outline: [],
-        },
-      })
+      setMode(
+        'zone'
+      )
+
+      setZoneSaved(
+        true
+      )
+
+      setAnalysisArea(
+        storedArea
+      )
+
+      return
     }
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preview])
+    if (
+      Array.isArray(
+        analysisArea
+      ) &&
+      analysisArea.length >= 4
+    ) {
+      setPoints(
+        analysisArea
+      )
 
-  if (!file || !preview) {
+      setMode(
+        'zone'
+      )
+
+      setZoneSaved(
+        true
+      )
+
+      return
+    }
+
+    setPoints(
+      []
+    )
+
+    setMode(
+      'all'
+    )
+
+    setZoneSaved(
+      false
+    )
+  }, [
+    preview,
+    site?.id,
+  ])
+
+  /* =========================================================
+     PROTEGER RUTA
+  ========================================================= */
+
+  if (
+    !file ||
+    !preview
+  ) {
     return (
       <Navigate
         to={`/sedes/${siteId}/analisis/nuevo`}
@@ -403,77 +571,117 @@ export default function AnalysisAreaPage() {
     )
   }
 
-  const addPoint = (event) => {
-    if (mode !== 'zone') {
-      return
+  /* =========================================================
+     AGREGAR PUNTOS
+  ========================================================= */
+
+  const addPoint =
+    (event) => {
+      if (
+        mode !== 'zone'
+      ) {
+        return
+      }
+
+      const rect =
+        event.currentTarget
+          .getBoundingClientRect()
+
+      const x =
+        Math.max(
+          0,
+          Math.min(
+            1,
+            (
+              event.clientX -
+              rect.left
+            ) /
+              rect.width
+          )
+        )
+
+      const y =
+        Math.max(
+          0,
+          Math.min(
+            1,
+            (
+              event.clientY -
+              rect.top
+            ) /
+              rect.height
+          )
+        )
+
+      setPoints(
+        (
+          current
+        ) => [
+          ...current,
+          [
+            Number(
+              x.toFixed(
+                4
+              )
+            ),
+
+            Number(
+              y.toFixed(
+                4
+              )
+            ),
+          ],
+        ]
+      )
+
+      setZoneSaved(
+        false
+      )
     }
 
-    const rect =
-      event.currentTarget
-        .getBoundingClientRect()
+  /* =========================================================
+     CAPTURAR FRAME
+  ========================================================= */
 
-    const x = Math.max(
-      0,
-      Math.min(
-        1,
-        (
-          event.clientX -
-          rect.left
-        ) / rect.width
-      )
-    )
+  const captureFrame =
+    () => {
+      const video =
+        videoRef.current
 
-    const y = Math.max(
-      0,
-      Math.min(
-        1,
-        (
-          event.clientY -
-          rect.top
-        ) / rect.height
-      )
-    )
+      if (
+        !video ||
+        !video.videoWidth
+      ) {
+        return false
+      }
 
-    setPoints((current) => [
-      ...current,
+      const width =
+        video.videoWidth
 
-      [
-        Number(x.toFixed(4)),
-        Number(y.toFixed(4)),
-      ],
-    ])
+      const height =
+        video.videoHeight
 
-    setZoneSaved(false)
-  }
+      const canvas =
+        document.createElement(
+          'canvas'
+        )
 
-  const captureFrame = () => {
-    const video =
-      videoRef.current
+      canvas.width =
+        width
 
-    if (
-      !video ||
-      !video.videoWidth
-    ) {
-      return false
-    }
+      canvas.height =
+        height
 
-    const width =
-      video.videoWidth
+      const context =
+        canvas.getContext(
+          '2d'
+        )
 
-    const height =
-      video.videoHeight
+      if (!context) {
+        return false
+      }
 
-    const canvas =
-      document.createElement(
-        'canvas'
-      )
-
-    canvas.width = width
-    canvas.height = height
-
-    canvas
-      .getContext('2d')
-      .drawImage(
+      context.drawImage(
         video,
         0,
         0,
@@ -481,17 +689,30 @@ export default function AnalysisAreaPage() {
         height
       )
 
-    onFrameCapture(
-      canvas.toDataURL(
-        'image/jpeg',
-        0.85
-      ),
-      width,
-      height
-    )
+      onFrameCapture(
+        canvas.toDataURL(
+          'image/jpeg',
+          0.85
+        ),
+        width,
+        height
+      )
 
-    return true
-  }
+      return true
+    }
+
+  /* =========================================================
+     GUARDAR ZONA
+
+     Guarda dos representaciones:
+
+     analysis_area:
+     puntos normalizados 0..1 para volver
+     a dibujar la zona sobre el video.
+
+     floor.outline:
+     puntos proyectados en el plano.
+  ========================================================= */
 
   const saveZone =
     async () => {
@@ -509,23 +730,36 @@ export default function AnalysisAreaPage() {
 
       const meters =
         points
-          .map(([nx, ny]) =>
-            forward
-              ? projectFloor(
-                  forward,
-                  nx,
-                  ny
-                )
-              : null
+          .map(
+            ([
+              nx,
+              ny,
+            ]) =>
+              forward
+                ? projectFloor(
+                    forward,
+                    nx,
+                    ny
+                  )
+                : null
           )
-          .filter(Boolean)
           .filter(
-            ([x, z]) =>
-              Number.isFinite(x) &&
-              Number.isFinite(z)
+            Boolean
+          )
+          .filter(
+            (point) =>
+              Number.isFinite(
+                point[0]
+              ) &&
+              Number.isFinite(
+                point[1]
+              )
           )
           .map(
-            ([x, z]) => [
+            ([
+              x,
+              z,
+            ]) => [
               Math.round(
                 x * 100
               ) / 100,
@@ -536,62 +770,203 @@ export default function AnalysisAreaPage() {
             ]
           )
 
-      if (meters.length < 3) {
+      /*
+        En modo calibrado esperamos poder
+        proyectar la zona al plano.
+
+        Si no existen puntos válidos,
+        no guardamos una zona incompleta.
+      */
+
+      if (
+        meters.length <
+        3
+      ) {
         return false
       }
+
+      const normalizedPoints =
+        points.map(
+          ([
+            x,
+            y,
+          ]) => [
+            Number(
+              x.toFixed(
+                4
+              )
+            ),
+
+            Number(
+              y.toFixed(
+                4
+              )
+            ),
+          ]
+        )
 
       const next = {
         ...site.configuration,
 
-        floor: {
-          ...site.configuration.floor,
+        /* =============================================
+           NUEVO:
+           guarda exactamente la zona sobre el video
+        ============================================= */
 
-          outline: meters,
+        analysis_area:
+          normalizedPoints,
+
+        floor: {
+          ...site
+            .configuration
+            .floor,
+
+          outline:
+            meters,
         },
       }
 
-      updateConfiguration(next)
+      updateConfiguration(
+        next
+      )
 
       try {
-        await saveConfiguration(next)
+        await saveConfiguration(
+          next
+        )
 
-        setZoneSaved(true)
+        setPoints(
+          normalizedPoints
+        )
+
+        setAnalysisArea(
+          normalizedPoints
+        )
+
+        setZoneSaved(
+          true
+        )
 
         return true
       } catch {
-        setZoneSaved(false)
+        setZoneSaved(
+          false
+        )
 
         return false
       }
     }
+
+  /* =========================================================
+     LIMPIAR ZONA
+
+     Borra tanto analysis_area
+     como floor.outline.
+  ========================================================= */
 
   const clearZone =
     async () => {
       const next = {
         ...site.configuration,
 
+        analysis_area: [],
+
         floor: {
-          ...site.configuration.floor,
+          ...site
+            .configuration
+            .floor,
 
           outline: [],
         },
       }
 
-      updateConfiguration(next)
+      updateConfiguration(
+        next
+      )
 
-      setZoneSaved(false)
-      setPoints([])
+      setZoneSaved(
+        false
+      )
+
+      setPoints(
+        []
+      )
+
+      setAnalysisArea(
+        null
+      )
+
+      setMode(
+        'all'
+      )
 
       try {
-        await saveConfiguration(next)
+        await saveConfiguration(
+          next
+        )
       } catch {
-        setZoneSaved(false)
+        setZoneSaved(
+          false
+        )
       }
     }
 
+  /* =========================================================
+     CAMBIAR A TODA LA CÁMARA
+
+     Cambia solamente la selección del análisis actual.
+     NO borra automáticamente la zona guardada.
+  ========================================================= */
+
+  const selectAllCamera =
+    () => {
+      setMode(
+        'all'
+      )
+    }
+
+  /* =========================================================
+     SELECCIONAR ZONA
+
+     Si existe zona guardada la recupera.
+  ========================================================= */
+
+  const selectZone =
+    () => {
+      setMode(
+        'zone'
+      )
+
+      const storedArea =
+        site?.configuration
+          ?.analysis_area
+
+      if (
+        points.length === 0 &&
+        Array.isArray(
+          storedArea
+        ) &&
+        storedArea.length >= 4
+      ) {
+        setPoints(
+          storedArea
+        )
+
+        setZoneSaved(
+          true
+        )
+      }
+    }
+
+  /* =========================================================
+     CONTINUAR A GÓNDOLAS
+  ========================================================= */
+
   const continueToGondolas =
     async () => {
-      if (!areaReady) {
+      if (
+        !areaReady
+      ) {
         return
       }
 
@@ -609,65 +984,77 @@ export default function AnalysisAreaPage() {
 
       captureFrame()
 
-      setTab('gondolas')
+      setTab(
+        'gondolas'
+      )
 
       window.scrollTo({
         top: 0,
-        behavior: 'smooth',
+        behavior:
+          'smooth',
       })
     }
 
-  const start = async () => {
-    if (!canAnalyze) {
-      return
-    }
+  /* =========================================================
+     ANALIZAR
+  ========================================================= */
 
-    try {
-      await saveConfiguration(
-        site.configuration
+  const start =
+    async () => {
+      if (
+        !canAnalyze
+      ) {
+        return
+      }
+
+      try {
+        await saveConfiguration(
+          site.configuration
+        )
+      } catch {
+        // Usa la configuración disponible.
+      }
+
+      analyze(
+        mode === 'zone'
+          ? points
+          : null
       )
-    } catch {
-      // Usa la última configuración disponible.
     }
 
-    analyze(
-      mode === 'zone'
-        ? points
-        : null
-    )
-  }
+  /* =========================================================
+     PASO 3 - GÓNDOLAS
+  ========================================================= */
 
-  /*
-    =====================================================
-    PASO 3 - CONFIGURAR GÓNDOLAS
-    =====================================================
-  */
-
-  if (tab === 'gondolas') {
+  if (
+    tab ===
+    'gondolas'
+  ) {
     return (
       <main
         className="
           relative
           isolate
+          min-h-[calc(100vh-52px)]
           w-full
           overflow-x-hidden
-          bg-[linear-gradient(105deg,#02182f_0%,#07549c_18%,#1590df_35%,#8bcbf5_54%,#e9f6ff_76%,#f8fbff_100%)]
+          bg-[linear-gradient(105deg,#064587_0%,#0878c9_22%,#21a0e8_42%,#8fd0f7_62%,#dff2ff_80%,#f5fbff_100%)]
         "
       >
-        {/* DECORACIONES */}
+        {/* DECORACIÓN */}
 
         <div
           className="
             pointer-events-none
             absolute
-            -left-[390px]
-            top-[30px]
+            -left-[510px]
+            top-[20px]
             -z-10
-            h-[850px]
-            w-[850px]
+            h-[980px]
+            w-[980px]
             rounded-full
-            border-[86px]
-            border-[#0d63b3]/20
+            border-[100px]
+            border-[#0b64b2]/20
           "
         />
 
@@ -675,13 +1062,13 @@ export default function AnalysisAreaPage() {
           className="
             pointer-events-none
             absolute
-            -left-[130px]
-            top-[150px]
+            -left-[160px]
+            top-[170px]
             -z-10
-            h-[610px]
-            w-[610px]
+            h-[720px]
+            w-[720px]
             rounded-full
-            bg-[radial-gradient(circle,rgba(4,63,124,.46)_0%,rgba(4,41,83,.25)_48%,transparent_74%)]
+            bg-[radial-gradient(circle,rgba(5,62,121,.42)_0%,rgba(3,42,84,.23)_50%,transparent_74%)]
           "
         />
 
@@ -689,47 +1076,35 @@ export default function AnalysisAreaPage() {
           className="
             pointer-events-none
             absolute
-            -right-[320px]
-            bottom-[-180px]
-            -z-10
-            h-[700px]
-            w-[700px]
-            rounded-full
-            border-[64px]
-            border-[#75bfff]/12
-          "
-        />
-
-        {/* PUNTOS IZQUIERDOS */}
-
-        <div
-          className="
-            pointer-events-none
-            absolute
-            left-5
-            top-[80px]
+            left-4
+            top-[70px]
             hidden
             grid-cols-5
-            gap-[8px]
+            gap-[7px]
             xl:grid
           "
         >
           {Array.from({
             length: 30,
-          }).map((_, index) => (
-            <span
-              key={index}
-              className="
-                h-[3px]
-                w-[3px]
-                rounded-full
-                bg-[#5eb5ff]/45
-              "
-            />
-          ))}
+          }).map(
+            (
+              _,
+              index
+            ) => (
+              <span
+                key={
+                  index
+                }
+                className="
+                  h-[3px]
+                  w-[3px]
+                  rounded-full
+                  bg-[#6ec1ff]/45
+                "
+              />
+            )
+          )}
         </div>
-
-        {/* CONTENIDO */}
 
         <div
           className="
@@ -737,12 +1112,12 @@ export default function AnalysisAreaPage() {
             z-10
             mx-auto
             w-full
-            max-w-[1380px]
+            max-w-[1320px]
             px-4
             pb-8
             pt-3
-            sm:px-6
-            lg:px-7
+            sm:px-5
+            lg:px-6
           "
         >
           {/* STEPPER */}
@@ -752,9 +1127,7 @@ export default function AnalysisAreaPage() {
               mx-auto
               mb-4
               w-full
-              max-w-[840px]
-              xl:ml-[255px]
-              xl:mr-0
+              max-w-[760px]
             "
           >
             <AnalysisStepper
@@ -762,821 +1135,618 @@ export default function AnalysisAreaPage() {
             />
           </div>
 
-          {/* CONTENEDOR PRINCIPAL */}
+          {/* GRID */}
 
           <div
             className="
-              relative
               mx-auto
+              grid
               w-full
-              max-w-[1090px]
-              xl:ml-[255px]
-              xl:mr-0
+              max-w-[1180px]
+              gap-3
+              lg:grid-cols-[minmax(0,1fr)_270px]
+              lg:items-stretch
             "
           >
-            {/* ROBOT */}
+            {/* TARJETA CENTRAL */}
 
-            <aside
+            <section
               className="
-                pointer-events-none
-                absolute
-                -left-[255px]
-                top-[18px]
-                z-20
-                hidden
-                h-[720px]
-                w-[275px]
-                xl:block
+                min-w-0
+                overflow-hidden
+                rounded-[18px]
+                border
+                border-[#c9dcec]
+                bg-white
+                shadow-[0_18px_46px_-30px_rgba(4,43,87,.38)]
               "
             >
-              {/* TEXTO */}
+              {/* HEADER */}
 
               <div
                 className="
-                  absolute
-                  left-0
-                  top-[14px]
-                  z-30
-                  -rotate-[3deg]
+                  px-4
+                  pb-0
+                  pt-4
+                  sm:px-5
                 "
               >
-                <p
-                  className="
-                    text-[22px]
-                    font-black
-                    italic
-                    leading-[1]
-                    tracking-[-0.04em]
-                    text-white
-                  "
-                >
-                  Tu video,
-                  <br />
-
-                  <span
-                    className="
-                      text-[#48adff]
-                    "
-                  >
-                    nuestros insights
-                  </span>
-                </p>
-
-                <span
-                  className="
-                    mt-3
-                    block
-                    h-[4px]
-                    w-[132px]
-                    -rotate-[5deg]
-                    rounded-full
-                    bg-[#ff641f]
-                  "
-                />
-
-                <p
-                  className="
-                    mt-5
-                    max-w-[195px]
-                    text-[12px]
-                    font-semibold
-                    leading-5
-                    text-white/90
-                  "
-                >
-                  Configura tus góndolas
-                  y visualiza tu tienda
-                  de forma inteligente.
-                </p>
-              </div>
-
-              {/* LUZ */}
-
-              <div
-                className="
-                  absolute
-                  bottom-[55px]
-                  left-[-55px]
-                  h-[350px]
-                  w-[350px]
-                  rounded-full
-                  bg-[radial-gradient(circle,rgba(43,153,245,.4)_0%,rgba(11,86,164,.18)_52%,transparent_74%)]
-                "
-              />
-
-              {/* ROBOT */}
-
-              <img
-                src={analisisRobot}
-                alt="Robot de Scapder"
-                className="
-                  absolute
-                  bottom-[40px]
-                  right-[-8px]
-                  z-20
-                  w-[290px]
-                  max-w-none
-                  select-none
-                  object-contain
-                  drop-shadow-[0_22px_30px_rgba(0,26,63,.34)]
-                "
-              />
-
-              {/* TEXTO INFERIOR */}
-
-              <div
-                className="
-                  absolute
-                  bottom-[28px]
-                  left-[14px]
-                  z-30
-                  -rotate-[4deg]
-                "
-              >
-                <p
-                  className="
-                    text-[17px]
-                    font-black
-                    italic
-                    leading-[1]
-                    text-white
-                  "
-                >
-                  Analiza
-                  <br />
-                  Detecta
-                  <br />
-                  Mejora
-                </p>
-
-                <span
-                  className="
-                    mt-2
-                    block
-                    h-[3px]
-                    w-[80px]
-                    -rotate-[6deg]
-                    rounded-full
-                    bg-[#ff641f]
-                  "
-                />
-              </div>
-            </aside>
-
-            {/* GRID GÓNDOLAS */}
-
-            <div
-              className="
-                grid
-                w-full
-                gap-3
-                lg:grid-cols-[minmax(0,1fr)_310px]
-                lg:items-stretch
-              "
-            >
-              {/* FORMULARIO */}
-
-              <section
-                className="
-                  min-w-0
-                  overflow-hidden
-                  rounded-[22px]
-                  border
-                  border-[#c9dcec]
-                  bg-white
-                  shadow-[0_18px_48px_-30px_rgba(4,43,87,.4)]
-                "
-              >
-                {/* HEADER FORMULARIO */}
-
                 <div
                   className="
-                    p-5
-                    pb-0
+                    flex
+                    flex-col
+                    gap-3
+                    sm:flex-row
+                    sm:items-start
+                    sm:justify-between
                   "
                 >
                   <div
                     className="
-                      flex
-                      flex-col
-                      gap-4
-                      xl:flex-row
-                      xl:items-start
-                      xl:justify-between
+                      min-w-0
                     "
                   >
-                    <div>
-                      <span
-                        className="
-                          text-[10px]
-                          font-black
-                          uppercase
-                          tracking-[.08em]
-                          text-[#ff641f]
-                        "
-                      >
-                        Paso 3
-                      </span>
-
-                      <h1
-                        className="
-                          mt-1
-                          text-[26px]
-                          font-black
-                          leading-tight
-                          tracking-[-0.04em]
-                          text-[#102033]
-                        "
-                      >
-                        Ubica las góndolas sobre el frame
-                      </h1>
-
-                      <p
-                        className="
-                          mt-2
-                          max-w-[630px]
-                          text-[10px]
-                          font-semibold
-                          leading-[17px]
-                          text-[#667991]
-                        "
-                      >
-                        Añade, arrastra y ajusta cada
-                        góndola. Esta configuración se
-                        reutiliza en futuros videos de
-                        la sede.
-                      </p>
-                    </div>
-
-                    {/* ACCIONES */}
-
-                    <div
+                    <span
                       className="
-                        flex
-                        shrink-0
-                        flex-col
-                        gap-2
+                        text-[8px]
+                        font-black
+                        uppercase
+                        tracking-[.08em]
+                        text-[#ff641f]
                       "
                     >
-                      <button
-                        type="button"
-                        onClick={
-                          suggestLayoutAutomatically
-                        }
-                        disabled={
-                          layoutSuggesting
-                        }
-                        className="
-                          inline-flex
-                          min-h-[39px]
-                          items-center
-                          justify-center
-                          gap-2
-                          rounded-[8px]
-                          bg-[#102033]
-                          px-4
-                          text-[9px]
-                          font-black
-                          text-white
-                          shadow-[0_8px_18px_-10px_rgba(16,32,51,.7)]
-                          transition
-                          hover:-translate-y-0.5
-                          disabled:opacity-50
-                        "
-                      >
-                        <Sparkles
-                          size={14}
-                          className="
-                            text-[#ff641f]
-                          "
-                        />
+                      Paso 3
+                    </span>
 
-                        {layoutSuggesting
-                          ? 'Analizando...'
-                          : 'Sugerir góndolas con IA'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={captureFrame}
-                        className="
-                          inline-flex
-                          min-h-[39px]
-                          items-center
-                          justify-center
-                          gap-2
-                          rounded-[8px]
-                          border
-                          border-[#ff641f]
-                          bg-white
-                          px-4
-                          text-[9px]
-                          font-black
-                          text-[#ff641f]
-                          transition
-                          hover:bg-[#fff5ef]
-                        "
-                      >
-                        <Camera size={14} />
-
-                        {frameCapture
-                          ? 'Recapturar frame'
-                          : 'Capturar frame'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* MENSAJE IA */}
-
-                  {layoutMessage && (
-                    <p
-                      className={`
-                        mt-3
-                        rounded-[9px]
-                        border
-                        px-3
-                        py-2
-                        text-[9px]
-                        font-bold
-                        ${
-                          layoutMessage.includes(
-                            'Error'
-                          )
-                            ? 'border-[#ffd5c5] bg-[#fff1eb] text-red-600'
-                            : 'border-[#c8ecda] bg-[#effbf5] text-[#177345]'
-                        }
-                      `}
-                    >
-                      {layoutMessage}
-                    </p>
-                  )}
-
-                  {layoutResult && (
-                    <ConfidencePanel
-                      result={layoutResult}
-                    />
-                  )}
-
-                  {/* INFORMACIÓN */}
-
-                  <div
-                    className="
-                      mt-4
-                      flex
-                      items-start
-                      gap-3
-                      rounded-[10px]
-                      border
-                      border-[#cae4fa]
-                      bg-[#eef7ff]
-                      px-4
-                      py-3
-                    "
-                  >
-                    <Info
-                      size={17}
+                    <h1
                       className="
-                        mt-[1px]
-                        shrink-0
-                        text-[#1686e8]
+                        mt-1
+                        text-[22px]
+                        font-black
+                        leading-[1.05]
+                        tracking-[-0.04em]
+                        text-[#102033]
                       "
-                    />
+                    >
+                      Ubica las góndolas sobre el frame
+                    </h1>
 
                     <p
                       className="
-                        text-[9px]
+                        mt-1.5
+                        max-w-[620px]
+                        text-[8px]
                         font-semibold
-                        leading-4
-                        text-[#527090]
+                        leading-[14px]
+                        text-[#667991]
                       "
                     >
-                      Usa el botón “+ Añadir góndola”,
-                      colócala encima del mueble real y
-                      presiona “Guardar plano”. Luego
-                      podrás iniciar el análisis.
+                      Añade, arrastra y ajusta cada góndola.
+                      Esta configuración se reutiliza en futuros
+                      análisis de la sede.
                     </p>
                   </div>
-                </div>
 
-                {/* PLANOGRAMA */}
+                  {/* BOTONES IA */}
 
-                <div
-                  className="
-                    mx-5
-                    mb-5
-                    mt-4
-                    overflow-hidden
-                    rounded-[16px]
-                    border
-                    border-[#dce8f2]
-                    bg-white
-                    shadow-[0_12px_28px_-24px_rgba(12,69,117,.45)]
-                  "
-                >
-                  <PlanogramEditor
-                    configuration={
-                      site.configuration
-                    }
-                    onChange={
-                      updateConfiguration
-                    }
-                    onSave={
-                      saveConfiguration
-                    }
-                    frameCapture={
-                      frameCapture
-                    }
-                    zone={
-                      mode === 'zone'
-                        ? points
-                        : null
-                    }
-                  />
-                </div>
-              </section>
-
-              {/* PANEL DERECHO */}
-
-              <aside
-                className="
-                  flex
-                  min-h-[680px]
-                  flex-col
-                  rounded-[22px]
-                  border
-                  border-[#c9dcec]
-                  bg-white
-                  p-4
-                  shadow-[0_18px_48px_-30px_rgba(4,43,87,.32)]
-                "
-              >
-                {/* ICONO */}
-
-                <div
-                  className="
-                    mb-3
-                    text-[#ff641f]
-                  "
-                >
-                  <Play
-                    size={34}
-                    fill="#ff641f"
-                    strokeWidth={1.5}
-                  />
-                </div>
-
-                <span
-                  className="
-                    text-[9px]
-                    font-black
-                    uppercase
-                    tracking-[.08em]
-                    text-[#ff641f]
-                  "
-                >
-                  Paso 3
-                </span>
-
-                <h2
-                  className="
-                    mt-1
-                    text-[20px]
-                    font-black
-                    tracking-[-0.03em]
-                    text-[#102033]
-                  "
-                >
-                  Configurar góndolas
-                </h2>
-
-                <p
-                  className="
-                    mt-2
-                    text-[10px]
-                    font-semibold
-                    leading-5
-                    text-[#667991]
-                  "
-                >
-                  Cuando haya al menos una
-                  góndola guardada, puedes lanzar
-                  el análisis.
-                </p>
-
-                {/* VIDEO CARGADO */}
-
-                <StatusCard
-                  active
-                  className="mt-4"
-                  icon={FileVideo}
-                  title="Video cargado correctamente"
-                  description={file.name}
-                />
-
-                {/* ÁREA */}
-
-                <StatusCard
-                  active={areaReady}
-                  className="mt-2"
-                  icon={Crosshair}
-                  title={
-                    mode === 'all'
-                      ? 'Toda la cámara seleccionada'
-                      : `${points.length}/4 puntos del área`
-                  }
-                  description={
-                    mode === 'all'
-                      ? 'Se analizará el video completo.'
-                      : `${pointPercentage}% aproximado del frame`
-                  }
-                />
-
-                {/* ZONA */}
-
-                <StatusCard
-                  active={
-                    mode === 'all' ||
-                    zoneSaved
-                  }
-                  className="mt-2"
-                  icon={Save}
-                  title={
-                    mode === 'all'
-                      ? 'Sin recorte adicional'
-                      : zoneSaved
-                        ? 'Zona guardada en el plano'
-                        : 'Zona pendiente'
-                  }
-                  description={
-                    mode === 'all'
-                      ? 'Área completa disponible.'
-                      : zoneSaved
-                        ? 'Lista para configurar góndolas.'
-                        : 'Guarda la zona antes de continuar.'
-                  }
-                />
-
-                {/* GÓNDOLAS */}
-
-                <StatusCard
-                  active={hasGondolas}
-                  className="mt-2"
-                  icon={Store}
-                  title={
-                    hasGondolas
-                      ? `${gondolas.length} góndola${
-                          gondolas.length === 1
-                            ? ''
-                            : 's'
-                        } guardada${
-                          gondolas.length === 1
-                            ? ''
-                            : 's'
-                        }`
-                      : 'Góndolas pendientes'
-                  }
-                  description={
-                    hasGondolas
-                      ? 'Puedes añadir más si lo necesitas.'
-                      : 'Añade al menos una góndola.'
-                  }
-                />
-
-                {/* ADVERTENCIA */}
-
-                {!hasGondolas && (
                   <div
                     className="
-                      mt-3
-                      rounded-[10px]
-                      border
-                      border-[#ffdfd0]
-                      bg-[#fff4ee]
-                      px-4
-                      py-3
-                      text-[9px]
-                      font-bold
-                      leading-4
-                      text-[#b74322]
+                      flex
+                      w-full
+                      shrink-0
+                      flex-col
+                      gap-1.5
+                      sm:w-[180px]
                     "
                   >
-                    Para medir zonas calientes y
-                    pick-ups, guarda al menos una
-                    góndola.
+                    <button
+                      type="button"
+                      onClick={
+                        suggestLayoutAutomatically
+                      }
+                      disabled={
+                        layoutSuggesting
+                      }
+                      className="
+                        inline-flex
+                        min-h-[34px]
+                        w-full
+                        items-center
+                        justify-center
+                        gap-2
+                        rounded-[7px]
+                        bg-[#102033]
+                        px-3
+                        text-[8px]
+                        font-black
+                        text-white
+                        shadow-[0_8px_18px_-12px_rgba(16,32,51,.75)]
+                        transition
+                        hover:-translate-y-px
+                        disabled:cursor-not-allowed
+                        disabled:opacity-50
+                      "
+                    >
+                      <Sparkles
+                        size={12}
+                        className="
+                          text-[#ff641f]
+                        "
+                      />
+
+                      {layoutSuggesting
+                        ? 'Analizando...'
+                        : 'Sugerir góndolas con IA'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={
+                        captureFrame
+                      }
+                      className="
+                        inline-flex
+                        min-h-[34px]
+                        w-full
+                        items-center
+                        justify-center
+                        gap-2
+                        rounded-[7px]
+                        border
+                        border-[#ff641f]
+                        bg-white
+                        px-3
+                        text-[8px]
+                        font-black
+                        text-[#ff641f]
+                        transition
+                        hover:bg-[#fff5ef]
+                      "
+                    >
+                      <Camera
+                        size={12}
+                      />
+
+                      {frameCapture
+                        ? 'Recapturar frame'
+                        : 'Capturar frame'}
+                    </button>
                   </div>
-                )}
+                </div>
 
-                {/* ERROR */}
+                {/* MENSAJE IA */}
 
-                {job?.status ===
-                  'failed' && (
+                {layoutMessage && (
                   <p
-                    className="
-                      mt-3
-                      rounded-[9px]
-                      bg-[#fff1eb]
+                    className={`
+                      mt-2
+                      rounded-[7px]
+                      border
                       px-3
                       py-2
-                      text-[9px]
+                      text-[8px]
                       font-bold
-                      text-[#b43b1d]
-                    "
+
+                      ${
+                        layoutMessage.includes(
+                          'Error'
+                        )
+                          ? 'border-[#ffd5c5] bg-[#fff1eb] text-red-600'
+                          : 'border-[#c8ecda] bg-[#effbf5] text-[#177345]'
+                      }
+                    `}
                   >
-                    {job.message}
+                    {layoutMessage}
                   </p>
                 )}
 
-                {/* ANALIZAR */}
-
-                <button
-                  type="button"
-                  disabled={!canAnalyze}
-                  onClick={start}
-                  className="
-                    mt-4
-                    inline-flex
-                    min-h-[44px]
-                    w-full
-                    items-center
-                    justify-center
-                    gap-2
-                    rounded-[9px]
-                    bg-gradient-to-r
-                    from-[#ff5b12]
-                    to-[#ff741f]
-                    px-4
-                    text-[11px]
-                    font-black
-                    text-white
-                    shadow-[0_10px_22px_-12px_rgba(255,91,18,.8)]
-                    transition
-                    hover:-translate-y-0.5
-                    disabled:cursor-not-allowed
-                    disabled:opacity-40
-                  "
-                >
-                  {running
-                    ? 'Iniciando...'
-                    : 'Guardar y analizar'}
-
-                  {!running && (
-                    <ArrowRight
-                      size={15}
-                    />
-                  )}
-                </button>
-
-                {/* VOLVER */}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTab('area')
-
-                    window.scrollTo({
-                      top: 0,
-                      behavior: 'smooth',
-                    })
-                  }}
-                  className="
-                    mt-2
-                    inline-flex
-                    min-h-[39px]
-                    w-full
-                    items-center
-                    justify-center
-                    gap-2
-                    rounded-[9px]
-                    border
-                    border-[#d7e3ee]
-                    bg-white
-                    px-4
-                    text-[9px]
-                    font-black
-                    text-[#102033]
-                    transition
-                    hover:border-[#ff641f]
-                  "
-                >
-                  <ArrowLeft
-                    size={14}
+                {layoutResult && (
+                  <ConfidencePanel
+                    result={
+                      layoutResult
+                    }
                   />
+                )}
 
-                  Volver al área
-                </button>
-
-                {/* CAMBIAR VIDEO */}
-
-                <Link
-                  to={`/sedes/${siteId}/analisis/nuevo`}
-                  className="
-                    mt-2
-                    inline-flex
-                    min-h-[39px]
-                    w-full
-                    items-center
-                    justify-center
-                    gap-2
-                    rounded-[9px]
-                    border
-                    border-[#d7e3ee]
-                    bg-white
-                    px-4
-                    text-[9px]
-                    font-black
-                    text-[#102033]
-                    no-underline
-                    transition
-                    hover:border-[#ff641f]
-                  "
-                >
-                  <ArrowLeft
-                    size={14}
-                  />
-
-                  Cambiar video
-                </Link>
-
-                {/* CONSEJO */}
+                {/* INFORMACIÓN */}
 
                 <div
                   className="
-                    mt-auto
-                    pt-4
+                    mt-3
+                    flex
+                    items-center
+                    gap-2.5
+                    rounded-[8px]
+                    border
+                    border-[#cae4fa]
+                    bg-[#eef7ff]
+                    px-3
+                    py-2
                   "
                 >
-                  <div
+                  <Info
+                    size={13}
                     className="
-                      flex
-                      gap-3
-                      rounded-[12px]
-                      border
-                      border-[#d6e9fa]
-                      bg-[#eef7ff]
-                      p-3
+                      shrink-0
+                      text-[#1686e8]
+                    "
+                  />
+
+                  <p
+                    className="
+                      text-[7.5px]
+                      font-semibold
+                      leading-[13px]
+                      text-[#527090]
                     "
                   >
-                    <Lightbulb
-                      size={20}
-                      className="
-                        shrink-0
-                        text-[#1686e8]
-                      "
-                    />
-
-                    <div>
-                      <b
-                        className="
-                          block
-                          text-[9px]
-                          font-black
-                          text-[#1686e8]
-                        "
-                      >
-                        Consejo
-                      </b>
-
-                      <p
-                        className="
-                          mt-1
-                          text-[8px]
-                          font-semibold
-                          leading-4
-                          text-[#61758c]
-                        "
-                      >
-                        Ubica cada góndola sobre su
-                        posición real para mejorar la
-                        precisión del análisis.
-                      </p>
-                    </div>
-                  </div>
+                    Usa el botón “+ Añadir góndola”, colócala
+                    encima del mueble real y presiona
+                    “Guardar plano”. Luego podrás iniciar el
+                    análisis.
+                  </p>
                 </div>
-              </aside>
-            </div>
+              </div>
+
+              {/* PLANOGRAMA */}
+
+              <div
+                className="
+                  mx-4
+                  mb-4
+                  mt-3
+                  overflow-hidden
+                  rounded-[12px]
+                  border
+                  border-[#d8e5ef]
+                  bg-white
+                "
+              >
+                <PlanogramEditor
+                  configuration={
+                    site.configuration
+                  }
+                  onChange={
+                    updateConfiguration
+                  }
+                  onSave={
+                    saveConfiguration
+                  }
+                  frameCapture={
+                    frameCapture
+                  }
+                  zone={
+                    mode === 'zone'
+                      ? points
+                      : null
+                  }
+                />
+              </div>
+            </section>
+
+            {/* PANEL DERECHO */}
+
+            <aside
+              className="
+                flex
+                min-h-[610px]
+                flex-col
+                rounded-[18px]
+                border
+                border-[#c9dcec]
+                bg-white
+                p-4
+                shadow-[0_18px_46px_-30px_rgba(4,43,87,.32)]
+              "
+            >
+              <div
+                className="
+                  mb-2
+                  text-[#ff641f]
+                "
+              >
+                <Play
+                  size={27}
+                  fill="#ff641f"
+                  strokeWidth={1.4}
+                />
+              </div>
+
+              <span
+                className="
+                  text-[8px]
+                  font-black
+                  uppercase
+                  tracking-[.08em]
+                  text-[#ff641f]
+                "
+              >
+                Paso 3
+              </span>
+
+              <h2
+                className="
+                  mt-1
+                  text-[17px]
+                  font-black
+                  tracking-[-0.03em]
+                  text-[#102033]
+                "
+              >
+                Configurar góndolas
+              </h2>
+
+              <p
+                className="
+                  mt-2
+                  text-[8px]
+                  font-semibold
+                  leading-[15px]
+                  text-[#667991]
+                "
+              >
+                Cuando haya al menos una góndola guardada,
+                puedes lanzar el análisis.
+              </p>
+
+              <StatusCard
+                active
+                className="mt-3"
+                icon={
+                  FileVideo
+                }
+                title="Video cargado correctamente"
+                description={
+                  file.name
+                }
+              />
+
+              <StatusCard
+                active={
+                  areaReady
+                }
+                className="mt-1.5"
+                icon={
+                  Crosshair
+                }
+                title={
+                  mode === 'all'
+                    ? 'Toda la cámara seleccionada'
+                    : `${points.length}/4 puntos del área`
+                }
+                description={
+                  mode === 'all'
+                    ? 'Se analizará el video completo.'
+                    : `${pointPercentage}% aproximado del frame`
+                }
+              />
+
+              <StatusCard
+                active={
+                  mode === 'all' ||
+                  zoneSaved
+                }
+                className="mt-1.5"
+                icon={
+                  Save
+                }
+                title={
+                  mode === 'all'
+                    ? 'Sin recorte adicional'
+                    : zoneSaved
+                      ? 'Zona guardada en el plano'
+                      : 'Zona pendiente'
+                }
+                description={
+                  mode === 'all'
+                    ? 'Área completa disponible.'
+                    : zoneSaved
+                      ? 'Lista para configurar góndolas.'
+                      : 'Guarda la zona antes de continuar.'
+                }
+              />
+
+              <StatusCard
+                active={
+                  hasGondolas
+                }
+                className="mt-1.5"
+                icon={
+                  Store
+                }
+                title={
+                  hasGondolas
+                    ? `${gondolas.length} góndola${
+                        gondolas.length === 1
+                          ? ''
+                          : 's'
+                      } guardada${
+                        gondolas.length === 1
+                          ? ''
+                          : 's'
+                      }`
+                    : 'Góndolas pendientes'
+                }
+                description={
+                  hasGondolas
+                    ? 'Puedes añadir más si lo necesitas.'
+                    : 'Añade al menos una góndola.'
+                }
+              />
+
+              {!hasGondolas && (
+                <div
+                  className="
+                    mt-2
+                    rounded-[8px]
+                    border
+                    border-[#ffdfd0]
+                    bg-[#fff4ee]
+                    px-3
+                    py-2
+                    text-[7.5px]
+                    font-bold
+                    leading-[13px]
+                    text-[#b74322]
+                  "
+                >
+                  Para medir zonas calientes y pick-ups,
+                  guarda al menos una góndola.
+                </div>
+              )}
+
+              {job?.status ===
+                'failed' && (
+                <p
+                  className="
+                    mt-2
+                    rounded-[8px]
+                    bg-[#fff1eb]
+                    px-3
+                    py-2
+                    text-[8px]
+                    font-bold
+                    text-[#b43b1d]
+                  "
+                >
+                  {job.message}
+                </p>
+              )}
+
+              <button
+                type="button"
+                disabled={
+                  !canAnalyze
+                }
+                onClick={
+                  start
+                }
+                className="
+                  mt-3
+                  inline-flex
+                  min-h-[38px]
+                  w-full
+                  items-center
+                  justify-center
+                  gap-2
+                  rounded-[8px]
+                  bg-gradient-to-r
+                  from-[#ff5b12]
+                  to-[#ff741f]
+                  px-3
+                  text-[9px]
+                  font-black
+                  text-white
+                  shadow-[0_10px_20px_-14px_rgba(255,91,18,.85)]
+                  transition
+                  hover:-translate-y-px
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40
+                "
+              >
+                {running
+                  ? 'Iniciando...'
+                  : 'Guardar y analizar'}
+
+                {!running && (
+                  <ArrowRight
+                    size={13}
+                  />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTab(
+                    'area'
+                  )
+
+                  window.scrollTo({
+                    top: 0,
+                    behavior:
+                      'smooth',
+                  })
+                }}
+                className="
+                  mt-2
+                  inline-flex
+                  min-h-[34px]
+                  w-full
+                  items-center
+                  justify-center
+                  gap-2
+                  rounded-[7px]
+                  border
+                  border-[#d7e3ee]
+                  bg-white
+                  px-3
+                  text-[8px]
+                  font-black
+                  text-[#102033]
+                  transition
+                  hover:border-[#ff641f]
+                "
+              >
+                <ArrowLeft
+                  size={12}
+                />
+
+                Volver al área
+              </button>
+
+              <Link
+                to={`/sedes/${siteId}/analisis/nuevo`}
+                className="
+                  mt-2
+                  inline-flex
+                  min-h-[34px]
+                  w-full
+                  items-center
+                  justify-center
+                  gap-2
+                  rounded-[7px]
+                  border
+                  border-[#d7e3ee]
+                  bg-white
+                  px-3
+                  text-[8px]
+                  font-black
+                  text-[#102033]
+                  no-underline
+                  transition
+                  hover:border-[#ff641f]
+                "
+              >
+                <ArrowLeft
+                  size={12}
+                />
+
+                Cambiar video
+              </Link>
+            </aside>
           </div>
         </div>
       </main>
     )
   }
 
-  /*
-    =====================================================
-    PASO 2 - SELECCIONAR ÁREA
-    =====================================================
-  */
+  /* =========================================================
+     PASO 2
+  ========================================================= */
 
   return (
     <main
       className="
         relative
         isolate
+        min-h-[calc(100vh-52px)]
         w-full
         overflow-x-hidden
         bg-[linear-gradient(105deg,#02182f_0%,#07549c_18%,#148ada_35%,#8ac8f4_54%,#e7f4ff_76%,#f8fbff_100%)]
       "
     >
-      {/* DECORACIÓN */}
+      {/* DECORACIÓN IZQUIERDA */}
 
       <div
         className="
@@ -1607,6 +1777,8 @@ export default function AnalysisAreaPage() {
         "
       />
 
+      {/* DECORACIÓN DERECHA */}
+
       <div
         className="
           pointer-events-none
@@ -1621,8 +1793,6 @@ export default function AnalysisAreaPage() {
           border-[#78bfff]/10
         "
       />
-
-      {/* CONTENIDO */}
 
       <div
         className="
@@ -1654,8 +1824,6 @@ export default function AnalysisAreaPage() {
             currentStep={2}
           />
         </div>
-
-        {/* CONTENEDOR */}
 
         <div
           className="
@@ -1735,9 +1903,8 @@ export default function AnalysisAreaPage() {
                   text-white/90
                 "
               >
-                Selecciona el área ideal
-                y obtén análisis precisos
-                para tu negocio.
+                Selecciona el área ideal y obtén análisis
+                precisos para tu negocio.
               </p>
             </div>
 
@@ -1754,7 +1921,9 @@ export default function AnalysisAreaPage() {
             />
 
             <img
-              src={analisisRobot}
+              src={
+                analisisRobot
+              }
               alt="Robot de Scapder"
               className="
                 absolute
@@ -1818,7 +1987,7 @@ export default function AnalysisAreaPage() {
               lg:items-stretch
             "
           >
-            {/* FORMULARIO ÁREA */}
+            {/* PANEL VIDEO */}
 
             <section
               className="
@@ -1832,14 +2001,29 @@ export default function AnalysisAreaPage() {
               "
             >
               <AreaPanel
-                addPoint={addPoint}
-                mode={mode}
-                points={points}
-                preview={preview}
-                setMode={setMode}
-                videoRef={videoRef}
-                setVideoMetadata={
-                  setVideoMetadata
+                addPoint={
+                  addPoint
+                }
+                mode={
+                  mode
+                }
+                points={
+                  points
+                }
+                preview={
+                  preview
+                }
+                selectAllCamera={
+                  selectAllCamera
+                }
+                selectZone={
+                  selectZone
+                }
+                videoRef={
+                  videoRef
+                }
+                zoneSaved={
+                  zoneSaved
                 }
               />
             </section>
@@ -1867,7 +2051,6 @@ export default function AnalysisAreaPage() {
               >
                 <Play
                   size={34}
-                  strokeWidth={1.8}
                 />
               </div>
 
@@ -1904,33 +2087,50 @@ export default function AnalysisAreaPage() {
                   text-[#667991]
                 "
               >
-                Revisa la información de
-                la zona seleccionada.
+                Revisa la información de la zona seleccionada.
               </p>
+
+              {/* VIDEO */}
 
               <StatusCard
                 active
                 className="mt-4"
-                icon={FileVideo}
+                icon={
+                  FileVideo
+                }
                 title="Video cargado correctamente"
-                description={file.name}
+                description={
+                  file.name
+                }
               />
 
+              {/* ÁREA */}
+
               <StatusCard
-                active={areaReady}
+                active={
+                  areaReady
+                }
                 className="mt-2"
-                icon={Crosshair}
+                icon={
+                  Crosshair
+                }
                 title={
                   mode === 'all'
                     ? 'Toda la cámara seleccionada'
-                    : 'Área seleccionada'
+                    : zoneSaved
+                      ? 'Zona guardada seleccionada'
+                      : 'Área seleccionada'
                 }
                 description={
                   mode === 'all'
                     ? 'Se analizará el 100% del video.'
-                    : `${points.length} puntos del área`
+                    : zoneSaved
+                      ? `${points.length} puntos recuperados de la configuración.`
+                      : `${points.length} puntos del área`
                 }
               />
+
+              {/* GUARDADO */}
 
               <StatusCard
                 active={
@@ -1938,7 +2138,9 @@ export default function AnalysisAreaPage() {
                   zoneSaved
                 }
                 className="mt-2"
-                icon={Save}
+                icon={
+                  Save
+                }
                 title={
                   mode === 'all'
                     ? 'Sin recorte adicional'
@@ -1950,26 +2152,62 @@ export default function AnalysisAreaPage() {
                   mode === 'all'
                     ? 'Se analizará toda la cámara.'
                     : zoneSaved
-                      ? 'Zona lista para continuar.'
+                      ? 'Zona recuperada y lista para continuar.'
                       : 'Guarda la zona antes de continuar.'
                 }
               />
 
+              {/* GÓNDOLAS */}
+
               <StatusCard
-                active={false}
+                active={
+                  hasGondolas
+                }
                 className="mt-2"
-                icon={Store}
-                title="Configurar góndolas"
-                description="Este será el siguiente paso."
+                icon={
+                  Store
+                }
+                title={
+                  hasGondolas
+                    ? `${gondolas.length} góndola${
+                        gondolas.length === 1
+                          ? ''
+                          : 's'
+                      } guardada${
+                        gondolas.length === 1
+                          ? ''
+                          : 's'
+                      }`
+                    : 'Configurar góndolas'
+                }
+                description={
+                  hasGondolas
+                    ? 'Configuración existente de la sede.'
+                    : 'Este será el siguiente paso.'
+                }
               />
 
+              {/* =================================================
+                  LIMPIAR SELECCIÓN ACTUAL
+              ================================================= */}
+
               {mode === 'zone' &&
-                points.length > 0 && (
+                points.length >
+                  0 && (
                   <button
                     type="button"
                     onClick={() => {
-                      setPoints([])
-                      setZoneSaved(false)
+                      setPoints(
+                        []
+                      )
+
+                      setAnalysisArea(
+                        null
+                      )
+
+                      setZoneSaved(
+                        false
+                      )
                     }}
                     className="
                       mt-3
@@ -1987,21 +2225,31 @@ export default function AnalysisAreaPage() {
                       text-[9px]
                       font-black
                       text-[#102033]
+                      transition
                       hover:border-[#ff641f]
                     "
                   >
-                    <X size={13} />
+                    <X
+                      size={13}
+                    />
 
-                    Limpiar selección
+                    Dibujar una zona nueva
                   </button>
                 )}
 
+              {/* =================================================
+                  GUARDAR ZONA NUEVA
+              ================================================= */}
+
               {mode === 'zone' &&
-                points.length >= 4 &&
+                points.length >=
+                  4 &&
                 !zoneSaved && (
                   <button
                     type="button"
-                    onClick={saveZone}
+                    onClick={
+                      saveZone
+                    }
                     className="
                       mt-2
                       inline-flex
@@ -2018,46 +2266,71 @@ export default function AnalysisAreaPage() {
                       text-[9px]
                       font-black
                       text-[#ff641f]
+                      transition
+                      hover:bg-[#ffede3]
                     "
                   >
-                    <Save size={13} />
+                    <Save
+                      size={13}
+                    />
 
                     Guardar zona
                   </button>
                 )}
 
-              {site?.configuration
-                ?.floor?.outline
-                ?.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={clearZone}
-                    className="
-                      mt-2
-                      inline-flex
-                      min-h-[36px]
-                      w-full
-                      items-center
-                      justify-center
-                      gap-2
-                      rounded-[9px]
-                      border
-                      border-[#d8e4ee]
-                      bg-white
-                      px-4
-                      text-[9px]
-                      font-black
-                      text-[#102033]
-                      hover:border-[#ff641f]
-                    "
-                  >
-                    Quitar zona guardada
-                  </button>
-                )}
+              {/* =================================================
+                  BORRAR ZONA GUARDADA DEFINITIVAMENTE
+              ================================================= */}
+
+              {site
+                ?.configuration
+                ?.floor
+                ?.outline
+                ?.length >
+                0 && (
+                <button
+                  type="button"
+                  onClick={
+                    clearZone
+                  }
+                  className="
+                    mt-2
+                    inline-flex
+                    min-h-[36px]
+                    w-full
+                    items-center
+                    justify-center
+                    gap-2
+                    rounded-[9px]
+                    border
+                    border-[#d8e4ee]
+                    bg-white
+                    px-4
+                    text-[9px]
+                    font-black
+                    text-[#102033]
+                    transition
+                    hover:border-[#ff641f]
+                    hover:text-[#ff641f]
+                  "
+                >
+                  <X
+                    size={13}
+                  />
+
+                  Quitar zona guardada
+                </button>
+              )}
+
+              {/* =================================================
+                  CONTINUAR
+              ================================================= */}
 
               <button
                 type="button"
-                disabled={!areaReady}
+                disabled={
+                  !areaReady
+                }
                 onClick={
                   continueToGondolas
                 }
@@ -2110,6 +2383,7 @@ export default function AnalysisAreaPage() {
                   font-black
                   text-[#102033]
                   no-underline
+                  transition
                   hover:border-[#ff641f]
                 "
               >
@@ -2127,17 +2401,24 @@ export default function AnalysisAreaPage() {
   )
 }
 
+/* =========================================================
+   PANEL PASO 2
+========================================================= */
+
 function AreaPanel({
   addPoint,
   mode,
   points,
   preview,
-  setMode,
+  selectAllCamera,
+  selectZone,
   videoRef,
-  setVideoMetadata,
+  zoneSaved,
 }) {
   return (
     <>
+      {/* CABECERA */}
+
       <span
         className="
           text-[10px]
@@ -2173,12 +2454,14 @@ function AreaPanel({
           text-[#667991]
         "
       >
-        Selecciona toda la cámara o dibuja
-        un área específica. Usa mínimo 4
-        puntos para cerrar una zona confiable.
+        Selecciona toda la cámara o dibuja un área
+        específica. Usa mínimo 4 puntos para cerrar una
+        zona confiable.
       </p>
 
-      {/* OPCIONES */}
+      {/* =====================================================
+          OPCIONES
+      ===================================================== */}
 
       <div
         className="
@@ -2188,10 +2471,12 @@ function AreaPanel({
           sm:grid-cols-2
         "
       >
+        {/* TODA LA CÁMARA */}
+
         <button
           type="button"
-          onClick={() =>
-            setMode('all')
+          onClick={
+            selectAllCamera
           }
           className={`
             relative
@@ -2201,6 +2486,7 @@ function AreaPanel({
             p-4
             text-left
             transition
+
             ${
               mode === 'all'
                 ? 'border-[#ff641f] bg-[#fff7f2]'
@@ -2245,8 +2531,7 @@ function AreaPanel({
                   text-[#61758c]
                 "
               >
-                Analiza todo lo que se ve
-                en el video.
+                Analiza todo lo que se ve en el video.
               </span>
             </div>
           </div>
@@ -2260,6 +2545,7 @@ function AreaPanel({
               w-4
               rounded-full
               border-2
+
               ${
                 mode === 'all'
                   ? 'border-[#ff641f] bg-[#ff641f] shadow-[inset_0_0_0_3px_white]'
@@ -2269,10 +2555,12 @@ function AreaPanel({
           />
         </button>
 
+        {/* SELECCIONAR ZONA */}
+
         <button
           type="button"
-          onClick={() =>
-            setMode('zone')
+          onClick={
+            selectZone
           }
           className={`
             relative
@@ -2282,6 +2570,7 @@ function AreaPanel({
             p-4
             text-left
             transition
+
             ${
               mode === 'zone'
                 ? 'border-[#ff641f] bg-[#fff7f2]'
@@ -2314,7 +2603,9 @@ function AreaPanel({
                   text-[#102033]
                 "
               >
-                Seleccionar zona
+                {zoneSaved
+                  ? 'Zona guardada'
+                  : 'Seleccionar zona'}
               </b>
 
               <span
@@ -2326,7 +2617,9 @@ function AreaPanel({
                   text-[#61758c]
                 "
               >
-                Dibuja el área que deseas analizar.
+                {zoneSaved
+                  ? 'Usa el área guardada anteriormente.'
+                  : 'Dibuja el área que deseas analizar.'}
               </span>
             </div>
           </div>
@@ -2340,6 +2633,7 @@ function AreaPanel({
               w-4
               rounded-full
               border-2
+
               ${
                 mode === 'zone'
                   ? 'border-[#ff641f] bg-[#ff641f] shadow-[inset_0_0_0_3px_white]'
@@ -2350,7 +2644,9 @@ function AreaPanel({
         </button>
       </div>
 
-      {/* VIDEO */}
+      {/* =====================================================
+          VIDEO
+      ===================================================== */}
 
       <div
         className="
@@ -2362,8 +2658,12 @@ function AreaPanel({
         "
       >
         <video
-          ref={videoRef}
-          src={preview}
+          ref={
+            videoRef
+          }
+          src={
+            preview
+          }
           muted
           controls
           playsInline
@@ -2380,44 +2680,45 @@ function AreaPanel({
             ) {
               videoRef.current.currentTime =
                 0.1
-
-              setVideoMetadata({
-                width:
-                  videoRef.current
-                    .videoWidth,
-
-                height:
-                  videoRef.current
-                    .videoHeight,
-
-                duration:
-                  videoRef.current
-                    .duration,
-              })
             }
           }}
         />
 
+        {/* =================================================
+            ZONA SOBRE EL VIDEO
+        ================================================= */}
+
         {mode === 'zone' && (
           <>
+            {/* MENSAJE */}
+
             <div
-              className="
+              className={`
                 pointer-events-none
                 absolute
                 right-3
                 top-3
                 z-20
                 rounded-[7px]
-                bg-[#08111d]/85
                 px-3
                 py-2
                 text-[8px]
                 font-bold
                 text-white
-              "
+
+                ${
+                  zoneSaved
+                    ? 'bg-[#0a6a45]/90'
+                    : 'bg-[#08111d]/85'
+                }
+              `}
             >
-              Haz clic para marcar el área
+              {zoneSaved
+                ? 'Zona guardada anteriormente'
+                : 'Haz clic para marcar el área'}
             </div>
+
+            {/* SVG */}
 
             <svg
               className="
@@ -2430,40 +2731,67 @@ function AreaPanel({
               "
               viewBox="0 0 1 1"
               preserveAspectRatio="none"
-              onClick={addPoint}
+              onClick={
+                addPoint
+              }
             >
-              {points.length > 1 && (
+              {/* LÍNEAS */}
+
+              {points.length >
+                1 && (
                 <polyline
                   points={points
-                    .map((point) =>
-                      point.join(',')
+                    .map(
+                      (point) =>
+                        point.join(
+                          ','
+                        )
                     )
-                    .join(' ')}
+                    .join(
+                      ' '
+                    )}
                   fill="none"
                   stroke="#ff5b12"
                   strokeWidth="0.006"
                 />
               )}
 
-              {points.length >= 3 && (
+              {/* POLÍGONO */}
+
+              {points.length >=
+                3 && (
                 <polygon
                   points={points
-                    .map((point) =>
-                      point.join(',')
+                    .map(
+                      (point) =>
+                        point.join(
+                          ','
+                        )
                     )
-                    .join(' ')}
+                    .join(
+                      ' '
+                    )}
                   fill="rgba(255,91,18,.32)"
                   stroke="#ff5b12"
                   strokeWidth="0.006"
                 />
               )}
 
+              {/* PUNTOS */}
+
               {points.map(
-                (point, index) => (
+                (
+                  point,
+                  index
+                ) => (
                   <circle
                     key={`${point[0]}-${point[1]}-${index}`}
-                    cx={point[0]}
-                    cy={point[1]}
+                    cx={
+                      point[0]
+                    }
+                    cy={
+                      point[1]
+                    }
                     r="0.013"
                     fill="#ffffff"
                     stroke="#ff5b12"
@@ -2476,38 +2804,62 @@ function AreaPanel({
         )}
       </div>
 
-      {/* INFORMACIÓN */}
+      {/* =====================================================
+          INFORMACIÓN INFERIOR
+      ===================================================== */}
 
       <div
-        className="
+        className={`
           mt-3
           flex
           min-h-[36px]
           items-center
           gap-2
           rounded-[9px]
-          bg-[#eef7ff]
           px-3
           text-[8px]
           font-semibold
-          text-[#61758c]
-        "
+
+          ${
+            mode === 'zone' &&
+            zoneSaved
+              ? 'border border-[#c5ead8] bg-[#effbf5] text-[#177345]'
+              : 'bg-[#eef7ff] text-[#61758c]'
+          }
+        `}
       >
-        <Info
-          size={15}
-          className="
-            shrink-0
-            text-[#1686e8]
-          "
-        />
+        {mode === 'zone' &&
+        zoneSaved ? (
+          <CheckCircle2
+            size={15}
+            className="
+              shrink-0
+              text-[#15ae65]
+            "
+          />
+        ) : (
+          <Info
+            size={15}
+            className="
+              shrink-0
+              text-[#1686e8]
+            "
+          />
+        )}
 
         {mode === 'all'
           ? 'Se analizará todo el contenido visible en el video.'
-          : 'Procura incluir únicamente la zona que deseas analizar.'}
+          : zoneSaved
+            ? 'Se recuperó la zona guardada anteriormente para esta sede.'
+            : 'Procura incluir únicamente la zona que deseas analizar.'}
       </div>
     </>
   )
 }
+
+/* =========================================================
+   STATUS CARD
+========================================================= */
 
 function StatusCard({
   active,
@@ -2519,36 +2871,47 @@ function StatusCard({
   return (
     <div
       className={`
-        rounded-[11px]
+        rounded-[9px]
         border
-        p-3
+        px-2.5
+        py-2
+
         ${
           active
-            ? 'border-[#c8ecda] bg-[#effbf5]'
+            ? 'border-[#bfe8d3] bg-[#effbf5]'
             : 'border-[#dde6ef] bg-[#f7f9fb]'
         }
+
         ${className}
       `}
     >
       <div
         className="
           flex
-          items-start
-          gap-3
+          items-center
+          gap-2.5
         "
       >
         <StatusIcon
-          active={active}
-          icon={Icon}
+          active={
+            active
+          }
+          icon={
+            Icon
+          }
         />
 
-        <div className="min-w-0">
+        <div
+          className="
+            min-w-0
+          "
+        >
           <b
             className="
               block
-              text-[9px]
+              text-[8px]
               font-black
-              leading-4
+              leading-[13px]
               text-[#102033]
             "
           >
@@ -2558,12 +2921,12 @@ function StatusCard({
           {description && (
             <span
               className="
-                mt-1
+                mt-0.5
                 block
                 break-words
-                text-[8px]
+                text-[7px]
                 font-semibold
-                leading-4
+                leading-[12px]
                 text-[#61758c]
               "
             >
@@ -2576,6 +2939,10 @@ function StatusCard({
   )
 }
 
+/* =========================================================
+   STATUS ICON
+========================================================= */
+
 function StatusIcon({
   active,
   icon: Icon,
@@ -2584,11 +2951,12 @@ function StatusIcon({
     <span
       className={`
         grid
-        h-8
-        w-8
+        h-7
+        w-7
         shrink-0
         place-items-center
         rounded-full
+
         ${
           active
             ? 'bg-[#15ae65] text-white'
@@ -2598,18 +2966,24 @@ function StatusIcon({
     >
       {active ? (
         <CheckCircle2
-          size={16}
+          size={14}
         />
       ) : (
         <Icon
-          size={15}
+          size={13}
         />
       )}
     </span>
   )
 }
 
-function estimatePolygonArea(points) {
+/* =========================================================
+   CALCULAR ÁREA POLÍGONO
+========================================================= */
+
+function estimatePolygonArea(
+  points
+) {
   if (
     !points ||
     points.length < 3
@@ -2617,24 +2991,30 @@ function estimatePolygonArea(points) {
     return 0
   }
 
-  let area = 0
+  let area =
+    0
 
   for (
     let index = 0;
-    index < points.length;
+    index <
+    points.length;
     index += 1
   ) {
     const [
       x1,
       y1,
-    ] = points[index]
+    ] =
+      points[index]
 
     const [
       x2,
       y2,
     ] =
       points[
-        (index + 1) %
+        (
+          index +
+          1
+        ) %
           points.length
       ]
 
@@ -2646,26 +3026,4 @@ function estimatePolygonArea(points) {
   return Math.abs(
     area / 2
   )
-}
-
-function formatDuration(seconds) {
-  if (
-    !Number.isFinite(seconds)
-  ) {
-    return ''
-  }
-
-  const minutes =
-    Math.floor(
-      seconds / 60
-    )
-
-  const rest =
-    Math.round(
-      seconds % 60
-    )
-      .toString()
-      .padStart(2, '0')
-
-  return `${minutes}:${rest}`
 }
