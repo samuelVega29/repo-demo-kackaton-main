@@ -4,7 +4,7 @@ export default function ShelfMatrix({ gondola, mode, events = [] }) {
   if (!gondola) {
     return <div className="grid h-full place-items-center p-5 text-[#151323] text-center text-[12px] leading-[1.7] text-slate-500">Selecciona una góndola en el planograma para inspeccionar su actividad.</div>
   }
-  const matrix = gondola.matrices[mode]
+  const matrix = gondola.matrices?.[mode] ?? [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
   const labels = {
     traffic: `${gondola.traffic} visitantes`,
     dwell: `${gondola.dwell_seconds} s`,
