@@ -152,7 +152,7 @@ function ConfidencePanel({
             text-[#102033]
           "
         >
-          Claude detectó {gondolas.length} góndolas
+          IA detectó {gondolas.length} góndolas
         </b>
 
         <span
@@ -247,7 +247,7 @@ export default function AnalysisAreaPage() {
     useRef(null)
 
   /* =========================================================
-     ZONA GUARDADA DE LA SEDE
+     ZONA GUARDADA
   ========================================================= */
 
   const savedAnalysisArea =
@@ -299,9 +299,25 @@ export default function AnalysisAreaPage() {
     hasSavedAnalysisArea
   )
 
+  /* =========================================================
+     ESTADO IA
+  ========================================================= */
+
   const [
     layoutSuggesting,
     setLayoutSuggesting,
+  ] = useState(false)
+
+  /* =========================================================
+     ESTADO CAPTURA FRAME
+
+     IMPORTANTE:
+     Es independiente del estado de IA.
+  ========================================================= */
+
+  const [
+    frameCapturing,
+    setFrameCapturing,
   ] = useState(false)
 
   const [
@@ -365,103 +381,7 @@ export default function AnalysisAreaPage() {
       : 0
 
   /* =========================================================
-     SUGERENCIA AUTOMÁTICA DE GÓNDOLAS
-  ========================================================= */
-
-  const suggestLayoutAutomatically =
-    async () => {
-      if (!file) {
-        setLayoutMessage(
-          'Error: no se encontró un video cargado.'
-        )
-
-        return
-      }
-
-      setLayoutSuggesting(
-        true
-      )
-
-      setLayoutMessage(
-        ''
-      )
-
-      setLayoutResult(
-        null
-      )
-
-      try {
-        const body =
-          new FormData()
-
-        body.append(
-          'video',
-          file,
-          file.name ||
-            'video.mp4'
-        )
-
-        const result =
-          await api(
-            `/api/sites/${siteId}/layout-suggestions`,
-            {
-              method: 'POST',
-              body,
-            }
-          )
-
-        const coloredGondolas =
-          (
-            result.gondolas ||
-            []
-          ).map(
-            (gondola) => ({
-              ...gondola,
-
-              color:
-                CONFIDENCE_CONFIG[
-                  gondola.confianza
-                ]?.color ??
-                '#b26500',
-            })
-          )
-
-        const nextConfiguration = {
-          ...site.configuration,
-
-          gondolas:
-            coloredGondolas,
-        }
-
-        updateConfiguration(
-          nextConfiguration
-        )
-
-        setLayoutResult({
-          ...result,
-
-          gondolas:
-            coloredGondolas,
-        })
-
-        setLayoutMessage(
-          `Listo: Claude sugirió ${coloredGondolas.length} góndolas.`
-        )
-      } catch (
-        error
-      ) {
-        setLayoutMessage(
-          `Error: ${error.message}`
-        )
-      } finally {
-        setLayoutSuggesting(
-          false
-        )
-      }
-    }
-
-  /* =========================================================
-     SINCRONIZAR ÁREA ACTUAL CON CONTEXTO
+     SINCRONIZAR ÁREA
   ========================================================= */
 
   useEffect(() => {
@@ -478,10 +398,6 @@ export default function AnalysisAreaPage() {
 
   /* =========================================================
      RECUPERAR ZONA GUARDADA
-
-     IMPORTANTE:
-     Antes este useEffect borraba floor.outline.
-     Ahora recupera analysis_area y la dibuja.
   ========================================================= */
 
   useEffect(() => {
@@ -618,6 +534,7 @@ export default function AnalysisAreaPage() {
           current
         ) => [
           ...current,
+
           [
             Number(
               x.toFixed(
@@ -640,78 +557,461 @@ export default function AnalysisAreaPage() {
     }
 
   /* =========================================================
-     CAPTURAR FRAME
+     ESPERAR VIDEO
+  ========================================================= */
+
+  const waitForVideo =
+    async (
+      video
+    ) => {
+      if (
+        video.readyState >= 2 &&
+        video.videoWidth &&
+        video.videoHeight
+      ) {
+        return true
+      }
+
+      return new Promise(
+        (
+          resolve
+        ) => {
+          let finished =
+            false
+
+          const finish =
+            (
+              result
+            ) => {
+              if (
+                finished
+              ) {
+                return
+              }
+
+              finished =
+                true
+
+              clearTimeout(
+                timeout
+              )
+
+              video.removeEventListener(
+                'loadeddata',
+                handleReady
+              )
+
+              video.removeEventListener(
+                'canplay',
+                handleReady
+              )
+
+              video.removeEventListener(
+                'error',
+                handleError
+              )
+
+              resolve(
+                result
+              )
+            }
+
+          const handleReady =
+            () => {
+              finish(
+                Boolean(
+                  video.videoWidth &&
+                    video.videoHeight
+                )
+              )
+            }
+
+          const handleError =
+            () => {
+              finish(
+                false
+              )
+            }
+
+          const timeout =
+            setTimeout(
+              () => {
+                finish(
+                  false
+                )
+              },
+              5000
+            )
+
+          video.addEventListener(
+            'loadeddata',
+            handleReady
+          )
+
+          video.addEventListener(
+            'canplay',
+            handleReady
+          )
+
+          video.addEventListener(
+            'error',
+            handleError
+          )
+
+          if (
+            video.readyState ===
+            0
+          ) {
+            try {
+              video.load()
+            } catch {
+              finish(
+                false
+              )
+            }
+          }
+        }
+      )
+    }
+
+  /* =========================================================
+     CAPTURAR / RECAPTURAR FRAME
+
+     SOLO HACE ESTO:
+     - toma una captura del video
+     - actualiza frameCapture
+
+     NO ejecuta IA.
+     NO genera góndolas.
+     NO modifica las góndolas existentes.
   ========================================================= */
 
   const captureFrame =
-    () => {
-      const video =
-        videoRef.current
-
+    async ({
+      showMessage = true,
+    } = {}) => {
       if (
-        !video ||
-        !video.videoWidth
+        frameCapturing
+      ) {
+        return null
+      }
+
+      setFrameCapturing(
+        true
+      )
+
+      try {
+        const video =
+          videoRef.current
+
+        if (!video) {
+          if (
+            showMessage
+          ) {
+            setLayoutMessage(
+              'Error: no se pudo acceder al video.'
+            )
+          }
+
+          return null
+        }
+
+        const ready =
+          await waitForVideo(
+            video
+          )
+
+        if (!ready) {
+          if (
+            showMessage
+          ) {
+            setLayoutMessage(
+              'Error: el video todavía no está listo.'
+            )
+          }
+
+          return null
+        }
+
+        const width =
+          video.videoWidth
+
+        const height =
+          video.videoHeight
+
+        if (
+          !width ||
+          !height
+        ) {
+          if (
+            showMessage
+          ) {
+            setLayoutMessage(
+              'Error: no se pudo obtener la resolución del video.'
+            )
+          }
+
+          return null
+        }
+
+        const canvas =
+          document.createElement(
+            'canvas'
+          )
+
+        canvas.width =
+          width
+
+        canvas.height =
+          height
+
+        const context =
+          canvas.getContext(
+            '2d'
+          )
+
+        if (!context) {
+          if (
+            showMessage
+          ) {
+            setLayoutMessage(
+              'Error: no se pudo crear la captura.'
+            )
+          }
+
+          return null
+        }
+
+        context.drawImage(
+          video,
+          0,
+          0,
+          width,
+          height
+        )
+
+        const dataUrl =
+          canvas.toDataURL(
+            'image/jpeg',
+            0.85
+          )
+
+        const capture = {
+          dataUrl,
+          width,
+          height,
+        }
+
+        /*
+          IMPORTANTE:
+
+          onFrameCapture actualiza únicamente
+          reference_frame dentro de configuration.
+
+          Las góndolas existentes se conservan.
+        */
+
+        onFrameCapture(
+          dataUrl,
+          width,
+          height
+        )
+
+        if (
+          showMessage
+        ) {
+          setLayoutMessage(
+            'Frame recapturado correctamente.'
+          )
+        }
+
+        return capture
+      } catch (
+        error
+      ) {
+        if (
+          showMessage
+        ) {
+          setLayoutMessage(
+            `Error al capturar frame: ${error.message}`
+          )
+        }
+
+        return null
+      } finally {
+        setFrameCapturing(
+          false
+        )
+      }
+    }
+
+  /* =========================================================
+     SUGERIR GÓNDOLAS CON IA
+
+     SOLO se ejecuta al presionar el botón:
+     "Sugerir góndolas con IA"
+
+     NO captura el frame.
+  ========================================================= */
+
+  const suggestLayoutAutomatically =
+    async () => {
+      if (
+        layoutSuggesting
       ) {
         return false
       }
 
-      const width =
-        video.videoWidth
-
-      const height =
-        video.videoHeight
-
-      const canvas =
-        document.createElement(
-          'canvas'
+      if (!file) {
+        setLayoutMessage(
+          'Error: no se encontró un video cargado.'
         )
 
-      canvas.width =
-        width
-
-      canvas.height =
-        height
-
-      const context =
-        canvas.getContext(
-          '2d'
-        )
-
-      if (!context) {
         return false
       }
 
-      context.drawImage(
-        video,
-        0,
-        0,
-        width,
-        height
+      setLayoutSuggesting(
+        true
       )
 
-      onFrameCapture(
-        canvas.toDataURL(
-          'image/jpeg',
-          0.85
-        ),
-        width,
-        height
+      setLayoutResult(
+        null
       )
 
-      return true
+      setLayoutMessage(
+        'Analizando el video y detectando góndolas...'
+      )
+
+      try {
+        const body =
+          new FormData()
+
+        body.append(
+          'video',
+          file,
+          file.name ||
+            'video.mp4'
+        )
+
+        const result =
+          await api(
+            `/api/sites/${siteId}/layout-suggestions`,
+            {
+              method:
+                'POST',
+
+              body,
+            }
+          )
+
+        const rawGondolas =
+          Array.isArray(
+            result?.gondolas
+          )
+            ? result.gondolas
+            : []
+
+        const coloredGondolas =
+          rawGondolas.map(
+            (
+              gondola,
+              index
+            ) => ({
+              ...gondola,
+
+              name:
+                gondola.name ||
+                `Góndola ${index + 1}`,
+
+              color:
+                CONFIDENCE_CONFIG[
+                  gondola.confianza
+                ]?.color ??
+                '#b26500',
+            })
+          )
+
+        if (
+          coloredGondolas.length ===
+          0
+        ) {
+          setLayoutMessage(
+            'No se detectaron góndolas automáticamente. Puedes agregarlas manualmente con “+ Añadir góndola”.'
+          )
+
+          return false
+        }
+
+        /*
+          IMPORTANTE:
+
+          Este botón conserva:
+          - reference_frame
+          - camera
+          - floor
+          - analysis_area
+
+          Solamente reemplaza gondolas.
+        */
+
+        const nextConfiguration = {
+          ...site.configuration,
+
+          gondolas:
+            coloredGondolas,
+        }
+
+        updateConfiguration(
+          nextConfiguration
+        )
+
+        try {
+          await saveConfiguration(
+            nextConfiguration
+          )
+        } catch (
+          saveError
+        ) {
+          console.warn(
+            'No se pudieron guardar automáticamente las góndolas:',
+            saveError
+          )
+        }
+
+        setLayoutResult({
+          ...result,
+
+          gondolas:
+            coloredGondolas,
+        })
+
+        setLayoutMessage(
+          `Listo: se detectaron ${coloredGondolas.length} góndola${
+            coloredGondolas.length ===
+            1
+              ? ''
+              : 's'
+          } automáticamente.`
+        )
+
+        return true
+      } catch (
+        error
+      ) {
+        setLayoutMessage(
+          `Error: ${error.message}`
+        )
+
+        return false
+      } finally {
+        setLayoutSuggesting(
+          false
+        )
+      }
     }
 
   /* =========================================================
      GUARDAR ZONA
-
-     Guarda dos representaciones:
-
-     analysis_area:
-     puntos normalizados 0..1 para volver
-     a dibujar la zona sobre el video.
-
-     floor.outline:
-     puntos proyectados en el plano.
   ========================================================= */
 
   const saveZone =
@@ -725,7 +1025,8 @@ export default function AnalysisAreaPage() {
 
       const forward =
         forwardHomography(
-          site.configuration.camera
+          site.configuration
+            .camera
         )
 
       const meters =
@@ -770,14 +1071,6 @@ export default function AnalysisAreaPage() {
             ]
           )
 
-      /*
-        En modo calibrado esperamos poder
-        proyectar la zona al plano.
-
-        Si no existen puntos válidos,
-        no guardamos una zona incompleta.
-      */
-
       if (
         meters.length <
         3
@@ -807,11 +1100,6 @@ export default function AnalysisAreaPage() {
 
       const next = {
         ...site.configuration,
-
-        /* =============================================
-           NUEVO:
-           guarda exactamente la zona sobre el video
-        ============================================= */
 
         analysis_area:
           normalizedPoints,
@@ -859,9 +1147,6 @@ export default function AnalysisAreaPage() {
 
   /* =========================================================
      LIMPIAR ZONA
-
-     Borra tanto analysis_area
-     como floor.outline.
   ========================================================= */
 
   const clearZone =
@@ -912,10 +1197,7 @@ export default function AnalysisAreaPage() {
     }
 
   /* =========================================================
-     CAMBIAR A TODA LA CÁMARA
-
-     Cambia solamente la selección del análisis actual.
-     NO borra automáticamente la zona guardada.
+     TODA LA CÁMARA
   ========================================================= */
 
   const selectAllCamera =
@@ -927,8 +1209,6 @@ export default function AnalysisAreaPage() {
 
   /* =========================================================
      SELECCIONAR ZONA
-
-     Si existe zona guardada la recupera.
   ========================================================= */
 
   const selectZone =
@@ -942,11 +1222,13 @@ export default function AnalysisAreaPage() {
           ?.analysis_area
 
       if (
-        points.length === 0 &&
+        points.length ===
+          0 &&
         Array.isArray(
           storedArea
         ) &&
-        storedArea.length >= 4
+        storedArea.length >=
+          4
       ) {
         setPoints(
           storedArea
@@ -960,6 +1242,9 @@ export default function AnalysisAreaPage() {
 
   /* =========================================================
      CONTINUAR A GÓNDOLAS
+
+     Captura el frame inicial,
+     pero NO ejecuta IA.
   ========================================================= */
 
   const continueToGondolas =
@@ -982,7 +1267,15 @@ export default function AnalysisAreaPage() {
         }
       }
 
-      captureFrame()
+      const capture =
+        await captureFrame({
+          showMessage:
+            false,
+        })
+
+      if (!capture) {
+        return
+      }
 
       setTab(
         'gondolas'
@@ -1012,7 +1305,7 @@ export default function AnalysisAreaPage() {
           site.configuration
         )
       } catch {
-        // Usa la configuración disponible.
+        // Usa la configuración actual.
       }
 
       analyze(
@@ -1023,7 +1316,7 @@ export default function AnalysisAreaPage() {
     }
 
   /* =========================================================
-     PASO 3 - GÓNDOLAS
+     PASO 3
   ========================================================= */
 
   if (
@@ -1041,6 +1334,57 @@ export default function AnalysisAreaPage() {
           bg-[linear-gradient(105deg,#064587_0%,#0878c9_22%,#21a0e8_42%,#8fd0f7_62%,#dff2ff_80%,#f5fbff_100%)]
         "
       >
+        {/* =================================================
+            VIDEO OCULTO PARA RECAPTURAR
+
+            Necesario porque el video del Paso 2
+            se desmonta al entrar al Paso 3.
+
+            Este video NO se muestra.
+        ================================================= */}
+
+        <video
+          ref={
+            videoRef
+          }
+          src={
+            preview
+          }
+          muted
+          playsInline
+          preload="auto"
+          aria-hidden="true"
+          className="
+            pointer-events-none
+            fixed
+            -left-[10000px]
+            -top-[10000px]
+            h-px
+            w-px
+            opacity-0
+          "
+          onLoadedMetadata={(
+            event
+          ) => {
+            const video =
+              event.currentTarget
+
+            if (
+              Number.isFinite(
+                video.duration
+              ) &&
+              video.duration >
+                0
+            ) {
+              video.currentTime =
+                Math.min(
+                  0.1,
+                  video.duration
+                )
+            }
+          }}
+        />
+
         {/* DECORACIÓN */}
 
         <div
@@ -1227,7 +1571,9 @@ export default function AnalysisAreaPage() {
                     </p>
                   </div>
 
-                  {/* BOTONES IA */}
+                  {/* =================================================
+                      BOTONES INDEPENDIENTES
+                  ================================================= */}
 
                   <div
                     className="
@@ -1239,13 +1585,20 @@ export default function AnalysisAreaPage() {
                       sm:w-[180px]
                     "
                   >
+                    {/* =========================================
+                        BOTÓN IA
+
+                        SOLO genera góndolas.
+                    ========================================= */}
+
                     <button
                       type="button"
                       onClick={
                         suggestLayoutAutomatically
                       }
                       disabled={
-                        layoutSuggesting
+                        layoutSuggesting ||
+                        frameCapturing
                       }
                       className="
                         inline-flex
@@ -1275,14 +1628,27 @@ export default function AnalysisAreaPage() {
                       />
 
                       {layoutSuggesting
-                        ? 'Analizando...'
+                        ? 'Detectando góndolas...'
                         : 'Sugerir góndolas con IA'}
                     </button>
 
+                    {/* =========================================
+                        BOTÓN RECAPTURAR
+
+                        SOLO cambia el frame.
+                    ========================================= */}
+
                     <button
                       type="button"
-                      onClick={
-                        captureFrame
+                      onClick={() =>
+                        captureFrame({
+                          showMessage:
+                            true,
+                        })
+                      }
+                      disabled={
+                        frameCapturing ||
+                        layoutSuggesting
                       }
                       className="
                         inline-flex
@@ -1301,20 +1667,24 @@ export default function AnalysisAreaPage() {
                         text-[#ff641f]
                         transition
                         hover:bg-[#fff5ef]
+                        disabled:cursor-not-allowed
+                        disabled:opacity-50
                       "
                     >
                       <Camera
                         size={12}
                       />
 
-                      {frameCapture
-                        ? 'Recapturar frame'
-                        : 'Capturar frame'}
+                      {frameCapturing
+                        ? 'Recapturando...'
+                        : frameCapture
+                          ? 'Recapturar frame'
+                          : 'Capturar frame'}
                     </button>
                   </div>
                 </div>
 
-                {/* MENSAJE IA */}
+                {/* MENSAJE */}
 
                 {layoutMessage && (
                   <p
@@ -1330,6 +1700,9 @@ export default function AnalysisAreaPage() {
                       ${
                         layoutMessage.includes(
                           'Error'
+                        ) ||
+                        layoutMessage.includes(
+                          'No se detectaron'
                         )
                           ? 'border-[#ffd5c5] bg-[#fff1eb] text-red-600'
                           : 'border-[#c8ecda] bg-[#effbf5] text-[#177345]'
@@ -1380,10 +1753,10 @@ export default function AnalysisAreaPage() {
                       text-[#527090]
                     "
                   >
-                    Usa el botón “+ Añadir góndola”, colócala
-                    encima del mueble real y presiona
-                    “Guardar plano”. Luego podrás iniciar el
-                    análisis.
+                    Usa “Sugerir góndolas con IA” para generarlas
+                    automáticamente. “Recapturar frame” únicamente
+                    cambia la imagen de referencia y conserva las
+                    góndolas existentes.
                   </p>
                 </div>
               </div>
@@ -1448,7 +1821,9 @@ export default function AnalysisAreaPage() {
                 <Play
                   size={27}
                   fill="#ff641f"
-                  strokeWidth={1.4}
+                  strokeWidth={
+                    1.4
+                  }
                 />
               </div>
 
@@ -1557,11 +1932,13 @@ export default function AnalysisAreaPage() {
                 title={
                   hasGondolas
                     ? `${gondolas.length} góndola${
-                        gondolas.length === 1
+                        gondolas.length ===
+                        1
                           ? ''
                           : 's'
                       } guardada${
-                        gondolas.length === 1
+                        gondolas.length ===
+                        1
                           ? ''
                           : 's'
                       }`
@@ -1570,7 +1947,7 @@ export default function AnalysisAreaPage() {
                 description={
                   hasGondolas
                     ? 'Puedes añadir más si lo necesitas.'
-                    : 'Añade al menos una góndola.'
+                    : 'Usa la IA o añade una góndola manualmente.'
                 }
               />
 
@@ -1590,8 +1967,8 @@ export default function AnalysisAreaPage() {
                     text-[#b74322]
                   "
                 >
-                  Para medir zonas calientes y pick-ups,
-                  guarda al menos una góndola.
+                  Todavía no hay góndolas. Usa “Sugerir
+                  góndolas con IA” o “+ Añadir góndola”.
                 </div>
               )}
 
@@ -1776,8 +2153,6 @@ export default function AnalysisAreaPage() {
           bg-[radial-gradient(circle,rgba(4,63,124,.46)_0%,rgba(4,41,83,.23)_48%,transparent_74%)]
         "
       />
-
-      {/* DECORACIÓN DERECHA */}
 
       <div
         className="
@@ -1987,7 +2362,7 @@ export default function AnalysisAreaPage() {
               lg:items-stretch
             "
           >
-            {/* PANEL VIDEO */}
+            {/* VIDEO */}
 
             <section
               className="
@@ -2090,8 +2465,6 @@ export default function AnalysisAreaPage() {
                 Revisa la información de la zona seleccionada.
               </p>
 
-              {/* VIDEO */}
-
               <StatusCard
                 active
                 className="mt-4"
@@ -2103,8 +2476,6 @@ export default function AnalysisAreaPage() {
                   file.name
                 }
               />
-
-              {/* ÁREA */}
 
               <StatusCard
                 active={
@@ -2129,8 +2500,6 @@ export default function AnalysisAreaPage() {
                       : `${points.length} puntos del área`
                 }
               />
-
-              {/* GUARDADO */}
 
               <StatusCard
                 active={
@@ -2157,8 +2526,6 @@ export default function AnalysisAreaPage() {
                 }
               />
 
-              {/* GÓNDOLAS */}
-
               <StatusCard
                 active={
                   hasGondolas
@@ -2170,11 +2537,13 @@ export default function AnalysisAreaPage() {
                 title={
                   hasGondolas
                     ? `${gondolas.length} góndola${
-                        gondolas.length === 1
+                        gondolas.length ===
+                        1
                           ? ''
                           : 's'
                       } guardada${
-                        gondolas.length === 1
+                        gondolas.length ===
+                        1
                           ? ''
                           : 's'
                       }`
@@ -2187,11 +2556,10 @@ export default function AnalysisAreaPage() {
                 }
               />
 
-              {/* =================================================
-                  LIMPIAR SELECCIÓN ACTUAL
-              ================================================= */}
+              {/* DIBUJAR NUEVA ZONA */}
 
-              {mode === 'zone' &&
+              {mode ===
+                'zone' &&
                 points.length >
                   0 && (
                   <button
@@ -2237,11 +2605,10 @@ export default function AnalysisAreaPage() {
                   </button>
                 )}
 
-              {/* =================================================
-                  GUARDAR ZONA NUEVA
-              ================================================= */}
+              {/* GUARDAR ZONA */}
 
-              {mode === 'zone' &&
+              {mode ===
+                'zone' &&
                 points.length >=
                   4 &&
                 !zoneSaved && (
@@ -2278,9 +2645,7 @@ export default function AnalysisAreaPage() {
                   </button>
                 )}
 
-              {/* =================================================
-                  BORRAR ZONA GUARDADA DEFINITIVAMENTE
-              ================================================= */}
+              {/* QUITAR ZONA */}
 
               {site
                 ?.configuration
@@ -2322,9 +2687,7 @@ export default function AnalysisAreaPage() {
                 </button>
               )}
 
-              {/* =================================================
-                  CONTINUAR
-              ================================================= */}
+              {/* CONTINUAR */}
 
               <button
                 type="button"
@@ -2417,8 +2780,6 @@ function AreaPanel({
 }) {
   return (
     <>
-      {/* CABECERA */}
-
       <span
         className="
           text-[10px]
@@ -2459,9 +2820,7 @@ function AreaPanel({
         zona confiable.
       </p>
 
-      {/* =====================================================
-          OPCIONES
-      ===================================================== */}
+      {/* OPCIONES */}
 
       <div
         className="
@@ -2471,8 +2830,6 @@ function AreaPanel({
           sm:grid-cols-2
         "
       >
-        {/* TODA LA CÁMARA */}
-
         <button
           type="button"
           onClick={
@@ -2554,8 +2911,6 @@ function AreaPanel({
             `}
           />
         </button>
-
-        {/* SELECCIONAR ZONA */}
 
         <button
           type="button"
@@ -2644,9 +2999,7 @@ function AreaPanel({
         </button>
       </div>
 
-      {/* =====================================================
-          VIDEO
-      ===================================================== */}
+      {/* VIDEO */}
 
       <div
         className="
@@ -2667,6 +3020,7 @@ function AreaPanel({
           muted
           controls
           playsInline
+          preload="auto"
           className="
             block
             aspect-video
@@ -2674,24 +3028,32 @@ function AreaPanel({
             bg-black
             object-contain
           "
-          onLoadedMetadata={() => {
+          onLoadedMetadata={(
+            event
+          ) => {
+            const video =
+              event.currentTarget
+
             if (
-              videoRef.current
+              Number.isFinite(
+                video.duration
+              ) &&
+              video.duration >
+                0
             ) {
-              videoRef.current.currentTime =
-                0.1
+              video.currentTime =
+                Math.min(
+                  0.1,
+                  video.duration
+                )
             }
           }}
         />
 
-        {/* =================================================
-            ZONA SOBRE EL VIDEO
-        ================================================= */}
+        {/* ZONA */}
 
         {mode === 'zone' && (
           <>
-            {/* MENSAJE */}
-
             <div
               className={`
                 pointer-events-none
@@ -2718,8 +3080,6 @@ function AreaPanel({
                 : 'Haz clic para marcar el área'}
             </div>
 
-            {/* SVG */}
-
             <svg
               className="
                 absolute
@@ -2735,14 +3095,14 @@ function AreaPanel({
                 addPoint
               }
             >
-              {/* LÍNEAS */}
-
               {points.length >
                 1 && (
                 <polyline
                   points={points
                     .map(
-                      (point) =>
+                      (
+                        point
+                      ) =>
                         point.join(
                           ','
                         )
@@ -2756,14 +3116,14 @@ function AreaPanel({
                 />
               )}
 
-              {/* POLÍGONO */}
-
               {points.length >=
                 3 && (
                 <polygon
                   points={points
                     .map(
-                      (point) =>
+                      (
+                        point
+                      ) =>
                         point.join(
                           ','
                         )
@@ -2776,8 +3136,6 @@ function AreaPanel({
                   strokeWidth="0.006"
                 />
               )}
-
-              {/* PUNTOS */}
 
               {points.map(
                 (
@@ -2804,9 +3162,7 @@ function AreaPanel({
         )}
       </div>
 
-      {/* =====================================================
-          INFORMACIÓN INFERIOR
-      ===================================================== */}
+      {/* INFORMACIÓN */}
 
       <div
         className={`
