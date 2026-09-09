@@ -48,14 +48,16 @@ def test_fast_falls_back_to_grid_without_gondolas() -> None:
     assert all(zone["source"] == "auto_grid" for zone in zones)
 
 
-def test_fast_scales_margins_per_axis() -> None:
+def test_fast_zones_match_gondola_footprint() -> None:
     zones = _fast_zones([gondola()], {"approach_m": 1.5}, 2.0, 4.0, 100, 100)
     xs = [point[0] for point in zones[0]["polygon"]]
     zs = [point[1] for point in zones[0]["polygon"]]
-    assert round(min(xs), 3) == -1.0
-    assert round(max(xs), 3) == 7.0
-    assert round(min(zs), 3) == -3.0
-    assert round(max(zs), 3) == 10.0
+    # The zone equals the gondola footprint (x=2,z=3,w=2,d=1) with no approach
+    # margin: the exposed/rendered zone matches the planogram shelf.
+    assert round(min(xs), 3) == 2.0
+    assert round(max(xs), 3) == 4.0
+    assert round(min(zs), 3) == 3.0
+    assert round(max(zs), 3) == 4.0
 
 
 def test_fast_process_scales_interaction_thresholds_to_pixels() -> None:

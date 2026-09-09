@@ -241,12 +241,16 @@ def _auto_gondola_zones(gondolas: list[dict], margin_x: float = 1.5, margin_z: f
 
 
 def _fast_zones(gondolas: list[dict], thresholds: dict, sx: float, sz: float, width: int, height: int) -> list[dict]:
-    """Auto zones for fast mode: one inflated rectangle per gondola when the site
-    has gondolas, otherwise the classic 3x3 grid.
+    """Auto zones for fast mode: one footprint-sized rectangle per gondola when
+    the site has gondolas, otherwise the classic 3x3 grid.
+
+    Zones must match the gondola exactly as drawn in the planogram (no approach
+    margin), otherwise the exposed/rendered zones look much bigger than the real
+    shelf and the zone-derived metrics (visits/dwell/interactions) get attributed
+    over the whole approach area instead of the gondola itself.
     """
     if gondolas:
-        approach_m = float(thresholds.get("approach_m", 1.5) or 1.5)
-        return _auto_gondola_zones(gondolas, margin_x=approach_m * sx, margin_z=approach_m * sz)
+        return _auto_gondola_zones(gondolas, margin_x=0.0, margin_z=0.0)
     return _auto_fast_zones(width, height)
 
 
@@ -279,6 +283,10 @@ def _fast_process_configuration(configuration: dict, width: int, height: int) ->
         "pickup_reach_m": float(
             raw_thresholds.get("pickup_reach_m", raw_thresholds.get("hand_reach_m", 0.5))
             or 0.5
+        ) * scale,
+        "pickup_min_amplitude_m": float(
+            raw_thresholds.get("pickup_min_amplitude_m", 0.10)
+            or 0.10
         ) * scale,
         "max_speed_m_s": float(raw_thresholds.get("max_speed_m_s", 1.2) or 1.2) * scale,
     }
@@ -504,11 +512,11 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
         # silently zeroing every zone-derived metric (hot zones, recommendations...).
         # Mirror fast mode: auto-create one zone per gondola when there are gondolas,
         # falling back to a floor grid when the site has neither zones nor gondolas.
+        # Same footprint rule as fast mode: no approach margin, the zone equals the
+        # shelf as drawn in the planogram.
         if advanced and not (process_config.get("zones") or []):
-            thresholds = configuration.get("thresholds") or {}
-            approach_m = float(thresholds.get("approach_m", 1.5) or 1.5)
             floor = configuration.get("floor") or {}
-            auto_zones = _auto_gondola_zones(configuration.get("gondolas", []), margin_x=approach_m)
+            auto_zones = _auto_gondola_zones(configuration.get("gondolas", []), margin_x=0.0, margin_z=0.0)
             if not auto_zones:
                 auto_zones = _auto_fast_zones(
                     float(floor.get("width", 12.0) or 12.0),
@@ -766,6 +774,11 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
             gondola["height"] = config.get("height", 1.45)
             gondola["tier_heights"] = config.get("tier_heights", [0.25, 0.73, 1.20])
 
+        # Keep the raw (internal-space) results to build pickup_events_log later:
+        # in fast mode the exposed copy re-normalizes coords to 0..1, which would
+        # double-normalize the events on the frontend (it divides by frame dims,
+        # just like it does for interaction_events_log).
+        raw_gondolas = list(gondolas)
         gondolas = [
             _exposed_gondola(gondola, mode, width, height)
             for gondola in gondolas
@@ -804,9 +817,9 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
         interaction_events.sort(key=lambda event: event["t"])
         interaction_events_log = interaction_events[:400]
 
-        pickup_count = sum(item["pickups"] for item in gondolas)
+        pickup_count = sum(item["pickups"] for item in raw_gondolas)
         pickup_events = []
-        for gondola in gondolas:
+        for gondola in raw_gondolas:
             for event in gondola.get("pickup_events", []):
                 pickup_events.append({
                     **event,

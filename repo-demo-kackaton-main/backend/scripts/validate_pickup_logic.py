@@ -46,14 +46,16 @@ CONFIG = {
 
 # Pie quieto a 0.3m de la gondola -> engaged tras ~2s de frames a velocidad 0.
 FOOT = [1.5, 1.3]  # dentro del AABB prolongado +0.3 en x
-# Mano DENTRO del alcance: centro de la gondola (distancia 0 a la góndola).
-HAND_IN = [2.9, 1.67]
+# Mano DENTRO del alcance: roza el radio (0.45m al borde) y se desliza al centro.
+HAND_BOUNDARY = [2.9, 2.45]
+HAND_IN = [2.9, 1.67]  # centro de la gondola (distancia 0) -> pico del alcance
 # Mano FUERA del alcance: 1.5m al borde de la gondola.
 HAND_OUT = [2.9, 3.2]
 
 INTERACT_SECONDS = 4.0
 DT = 0.1
 FPS = int(1 / DT)
+SWEEP_TICKS = 2  # frames que tarda la mano en deslizarse del borde al pico
 
 
 def make_detection(track_id: int, hand: list[float]) -> dict:
@@ -63,6 +65,12 @@ def make_detection(track_id: int, hand: list[float]) -> dict:
         "body_center_y": 0.5,
         "hand_pose_verified": True,
     }
+
+
+def reach_in(frame: int) -> list[float]:
+    if frame < SWEEP_TICKS:
+        return [2.9, HAND_BOUNDARY[1] - 0.39 * frame]
+    return HAND_IN
 
 
 def main() -> None:
@@ -76,7 +84,8 @@ def main() -> None:
     for i in range(ticks):
         period = int(1.2 / DT)  # 0.9 dentro + 0.3 fuera
         in_phase = int(0.9 / DT)
-        hand = HAND_IN if (i % period) < in_phase else HAND_OUT
+        phase = i % period
+        hand = reach_in(phase) if phase < in_phase else HAND_OUT
         timestamp = i * DT
         detection = make_detection(track_id=71, hand=hand)
         engine.observe(detection, timestamp, DT, frame_height=720, hand_point=hand)
