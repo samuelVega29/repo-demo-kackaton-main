@@ -13,8 +13,17 @@ import {
   Trash2,
 } from 'lucide-react'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Navigate, useParams } from 'react-router-dom'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+
+import {
+  Navigate,
+  useParams,
+} from 'react-router-dom'
 
 import robotSedes from '../assets/images/robot-sedes.png'
 import robotSedes1 from '../assets/images/robot-sedes1.png'
@@ -46,55 +55,109 @@ const initialForm = {
    FORMATEAR ERRORES DEL BACKEND
 ========================================================= */
 
-function getErrorMessage(error, fallback) {
-  if (!error) return fallback
+function getErrorMessage(
+  error,
+  fallback
+) {
+  if (!error) {
+    return fallback
+  }
 
-  if (typeof error === 'string') {
+  if (
+    typeof error ===
+    'string'
+  ) {
     return error
   }
 
-  if (Array.isArray(error)) {
+  if (
+    Array.isArray(
+      error
+    )
+  ) {
     return error
-      .map((item) => {
-        if (typeof item === 'string') return item
+      .map(
+        (item) => {
+          if (
+            typeof item ===
+            'string'
+          ) {
+            return item
+          }
 
-        if (item?.msg) {
-          const field = Array.isArray(item.loc)
-            ? item.loc[item.loc.length - 1]
-            : ''
+          if (
+            item?.msg
+          ) {
+            const field =
+              Array.isArray(
+                item.loc
+              )
+                ? item.loc[
+                    item.loc.length -
+                      1
+                  ]
+                : ''
 
-          return field ? `${field}: ${item.msg}` : item.msg
+            return field
+              ? `${field}: ${item.msg}`
+              : item.msg
+          }
+
+          if (
+            item?.message
+          ) {
+            return item.message
+          }
+
+          return ''
         }
-
-        if (item?.message) {
-          return item.message
-        }
-
-        return ''
-      })
+      )
       .filter(Boolean)
       .join(' · ')
   }
 
-  if (Array.isArray(error?.detail)) {
-    return getErrorMessage(error.detail, fallback)
+  if (
+    Array.isArray(
+      error?.detail
+    )
+  ) {
+    return getErrorMessage(
+      error.detail,
+      fallback
+    )
   }
 
-  if (typeof error?.detail === 'string') {
+  if (
+    typeof error?.detail ===
+    'string'
+  ) {
     return error.detail
   }
 
-  if (typeof error?.message === 'string') {
+  if (
+    typeof error?.message ===
+    'string'
+  ) {
     if (
-      error.message !== '[object Object]' &&
-      !error.message.includes('[object Object],[object Object]')
+      error.message !==
+        '[object Object]' &&
+      !error.message.includes(
+        '[object Object],[object Object]'
+      )
     ) {
       return error.message
     }
   }
 
-  if (error?.response?.data?.detail) {
-    return getErrorMessage(error.response.data.detail, fallback)
+  if (
+    error?.response?.data
+      ?.detail
+  ) {
+    return getErrorMessage(
+      error.response.data
+        .detail,
+      fallback
+    )
   }
 
   return fallback
@@ -104,8 +167,13 @@ function getErrorMessage(error, fallback) {
    ESTADO DE LA SEDE
 ========================================================= */
 
-function getSiteStatus(site) {
-  if (site?.status === 'inactive') {
+function getSiteStatus(
+  site
+) {
+  if (
+    site?.status ===
+    'inactive'
+  ) {
     return {
       label: 'Inactiva',
       dot: 'bg-[#ff294d]',
@@ -113,11 +181,14 @@ function getSiteStatus(site) {
   }
 
   if (
-    site?.status === 'setup' ||
-    site?.status === 'configuring'
+    site?.status ===
+      'setup' ||
+    site?.status ===
+      'configuring'
   ) {
     return {
-      label: 'En configuración',
+      label:
+        'En configuración',
       dot: 'bg-[#ffc928]',
     }
   }
@@ -142,45 +213,112 @@ export default function SitePickerPage() {
     deleteSite,
     goHome,
     setRetailer,
+
+    /* =====================================================
+       CAMBIO:
+       Limpia únicamente la sesión temporal del análisis.
+
+       Esta función debe existir en AppProvider.jsx.
+    ===================================================== */
+    resetAnalysisSession,
   } = useApp()
 
-  const { retailerId } = useParams()
+  const {
+    retailerId,
+  } = useParams()
 
-  const [showCreate, setShowCreate] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [deletingId, setDeletingId] = useState(null)
-  const [siteToDelete, setSiteToDelete] = useState(null)
+  const [
+    showCreate,
+    setShowCreate,
+  ] = useState(false)
 
-  const [error, setError] = useState('')
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(0)
+  const [
+    creating,
+    setCreating,
+  ] = useState(false)
 
-  const [form, setForm] = useState(initialForm)
+  const [
+    deletingId,
+    setDeletingId,
+  ] = useState(null)
 
-  const mobileCarouselRef = useRef(null)
+  const [
+    siteToDelete,
+    setSiteToDelete,
+  ] = useState(null)
 
-  const sitesPerPage = 4
+  const [
+    error,
+    setError,
+  ] = useState('')
 
-  const currentSites = useMemo(
-    () => (Array.isArray(sites) ? sites : []),
-    [sites]
+  const [
+    search,
+    setSearch,
+  ] = useState('')
+
+  const [
+    page,
+    setPage,
+  ] = useState(0)
+
+  const [
+    form,
+    setForm,
+  ] = useState(
+    initialForm
   )
+
+  const mobileCarouselRef =
+    useRef(null)
+
+  const sitesPerPage =
+    4
+
+  const currentSites =
+    useMemo(
+      () =>
+        Array.isArray(
+          sites
+        )
+          ? sites
+          : [],
+      [sites]
+    )
 
   /* =========================================================
      CARGAR EMPRESA
   ========================================================= */
 
   useEffect(() => {
-    if (!retailer && retailerId && retailers?.length) {
-      const found = retailers.find(
-        (item) => String(item.id) === String(retailerId)
-      )
+    if (
+      !retailer &&
+      retailerId &&
+      retailers?.length
+    ) {
+      const found =
+        retailers.find(
+          (item) =>
+            String(
+              item.id
+            ) ===
+            String(
+              retailerId
+            )
+        )
 
       if (found) {
-        setRetailer(found)
+        setRetailer(
+          found
+        )
       }
     }
-  }, [retailer, retailerId, retailers, setRetailer])
+  }, [
+    retailer,
+    retailerId,
+    retailers,
+    setRetailer,
+  ])
 
   /* =========================================================
      REINICIAR PAGINACIÓN
@@ -189,258 +327,496 @@ export default function SitePickerPage() {
   useEffect(() => {
     setPage(0)
 
-    mobileCarouselRef.current?.scrollTo({
-      left: 0,
-      behavior: 'smooth',
-    })
+    mobileCarouselRef
+      .current
+      ?.scrollTo({
+        left: 0,
+        behavior:
+          'smooth',
+      })
   }, [search])
 
   /* =========================================================
      FILTRAR SEDES
   ========================================================= */
 
-  const filteredSites = useMemo(() => {
-    const term = search.trim().toLowerCase()
+  const filteredSites =
+    useMemo(() => {
+      const term =
+        search
+          .trim()
+          .toLowerCase()
 
-    if (!term) {
-      return currentSites
-    }
+      if (!term) {
+        return currentSites
+      }
 
-    return currentSites.filter((site) => {
-      const searchable = `
-        ${site?.name || ''}
-        ${site?.city || ''}
-      `.toLowerCase()
+      return currentSites.filter(
+        (site) => {
+          const searchable = `
+            ${site?.name || ''}
+            ${site?.city || ''}
+          `.toLowerCase()
 
-      return searchable.includes(term)
-    })
-  }, [currentSites, search])
+          return searchable.includes(
+            term
+          )
+        }
+      )
+    }, [
+      currentSites,
+      search,
+    ])
 
   /* =========================================================
      PAGINACIÓN
   ========================================================= */
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredSites.length / sitesPerPage)
-  )
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        filteredSites.length /
+          sitesPerPage
+      )
+    )
 
   useEffect(() => {
-    if (page > totalPages - 1) {
-      setPage(Math.max(totalPages - 1, 0))
+    if (
+      page >
+      totalPages - 1
+    ) {
+      setPage(
+        Math.max(
+          totalPages - 1,
+          0
+        )
+      )
     }
-  }, [page, totalPages])
+  }, [
+    page,
+    totalPages,
+  ])
 
-  const visibleSites = filteredSites.slice(
-    page * sitesPerPage,
-    page * sitesPerPage + sitesPerPage
-  )
-
-  const previousPage = () => {
-    setPage((current) =>
-      current === 0 ? totalPages - 1 : current - 1
+  const visibleSites =
+    filteredSites.slice(
+      page *
+        sitesPerPage,
+      page *
+        sitesPerPage +
+        sitesPerPage
     )
-  }
 
-  const nextPage = () => {
-    setPage((current) =>
-      current === totalPages - 1 ? 0 : current + 1
-    )
-  }
+  const previousPage =
+    () => {
+      setPage(
+        (current) =>
+          current === 0
+            ? totalPages -
+              1
+            : current - 1
+      )
+    }
+
+  const nextPage =
+    () => {
+      setPage(
+        (current) =>
+          current ===
+          totalPages - 1
+            ? 0
+            : current + 1
+      )
+    }
 
   /* =========================================================
      CARRUSEL MÓVIL
   ========================================================= */
 
-  const scrollMobileLeft = () => {
-    mobileCarouselRef.current?.scrollBy({
-      left: -200,
-      behavior: 'smooth',
-    })
-  }
+  const scrollMobileLeft =
+    () => {
+      mobileCarouselRef
+        .current
+        ?.scrollBy({
+          left: -200,
+          behavior:
+            'smooth',
+        })
+    }
 
-  const scrollMobileRight = () => {
-    mobileCarouselRef.current?.scrollBy({
-      left: 200,
-      behavior: 'smooth',
-    })
-  }
+  const scrollMobileRight =
+    () => {
+      mobileCarouselRef
+        .current
+        ?.scrollBy({
+          left: 200,
+          behavior:
+            'smooth',
+        })
+    }
 
   /* =========================================================
      MÉTRICAS
   ========================================================= */
 
-  const totalCameras = useMemo(() => {
-    return currentSites.reduce((total, site) => {
-      const camera = site?.configuration?.camera
+  const totalCameras =
+    useMemo(() => {
+      return currentSites.reduce(
+        (
+          total,
+          site
+        ) => {
+          const camera =
+            site
+              ?.configuration
+              ?.camera
 
-      return total + (camera ? 1 : 0)
-    }, 0)
-  }, [currentSites])
-
-  const totalAnalyses = useMemo(() => {
-    return currentSites.reduce((total, site) => {
-      return (
-        total +
-        Number(
-          site?.analysis_count ??
-            site?.analyses_count ??
-            site?.analysisCount ??
-            0
-        )
+          return (
+            total +
+            (camera
+              ? 1
+              : 0)
+          )
+        },
+        0
       )
-    }, 0)
-  }, [currentSites])
+    }, [currentSites])
+
+  const totalAnalyses =
+    useMemo(() => {
+      return currentSites.reduce(
+        (
+          total,
+          site
+        ) => {
+          return (
+            total +
+            Number(
+              site
+                ?.analysis_count ??
+                site
+                  ?.analyses_count ??
+                site
+                  ?.analysisCount ??
+                0
+            )
+          )
+        },
+        0
+      )
+    }, [currentSites])
 
   /* =========================================================
      ABRIR / CERRAR CREAR SEDE
   ========================================================= */
 
-  const toggleCreate = () => {
-    setError('')
+  const toggleCreate =
+    () => {
+      setError('')
 
-    setShowCreate((current) => {
-      if (current) {
-        setForm(initialForm)
-      }
+      setShowCreate(
+        (current) => {
+          if (current) {
+            setForm(
+              initialForm
+            )
+          }
 
-      return !current
-    })
-  }
+          return !current
+        }
+      )
+    }
 
-  const closeCreate = () => {
-    setShowCreate(false)
-    setError('')
-    setForm(initialForm)
-  }
+  const closeCreate =
+    () => {
+      setShowCreate(
+        false
+      )
+
+      setError('')
+
+      setForm(
+        initialForm
+      )
+    }
 
   /* =========================================================
      CAMBIAR CAMPOS
   ========================================================= */
 
-  const changeForm = (field, value) => {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }))
-  }
+  const changeForm =
+    (
+      field,
+      value
+    ) => {
+      setForm(
+        (current) => ({
+          ...current,
+          [field]:
+            value,
+        })
+      )
+    }
+
+  /* =========================================================
+     LIMPIAR SESIÓN TEMPORAL
+
+     Esta función NO elimina:
+     - cámara
+     - calibración
+     - góndolas
+     - floor.outline
+     - analysis_area guardado en la sede
+
+     Solo elimina el análisis anterior.
+  ========================================================= */
+
+  const clearPreviousAnalysis =
+    () => {
+      if (
+        typeof resetAnalysisSession ===
+        'function'
+      ) {
+        resetAnalysisSession()
+      }
+    }
 
   /* =========================================================
      CREAR SEDE
   ========================================================= */
 
-  const submit = async (event) => {
-    event.preventDefault()
+  const submit =
+    async (
+      event
+    ) => {
+      event.preventDefault()
 
-    if (creating) return
+      if (creating) {
+        return
+      }
 
-    const name = form.name.trim()
-    const city = form.city.trim()
-    const cameraName = form.camera_name.trim()
+      const name =
+        form.name.trim()
 
-    if (name.length < 2) {
-      setError('Escribe un nombre válido para la sede.')
-      return
-    }
+      const city =
+        form.city.trim()
 
-    if (city.length < 2) {
-      setError('Escribe una ciudad válida.')
-      return
-    }
+      const cameraName =
+        form.camera_name.trim()
 
-    if (cameraName.length < 2) {
-      setError('Escribe un nombre válido para la cámara.')
-      return
-    }
-
-    const payload = {
-      name,
-      city,
-      camera_name: cameraName,
-      floor_width: Number(form.floor_width) || 12,
-      floor_depth: Number(form.floor_depth) || 8,
-    }
-
-    try {
-      setCreating(true)
-      setError('')
-
-      console.log(
-        'Payload enviado para crear sede:',
-        payload
-      )
-
-      await createSite(payload)
-
-      setForm({
-        ...initialForm,
-      })
-
-      setShowCreate(false)
-    } catch (requestError) {
-      console.error(
-        'Error creando sede:',
-        requestError
-      )
-
-      setError(
-        getErrorMessage(
-          requestError,
-          'No fue posible crear la sede. Intenta nuevamente.'
+      if (
+        name.length < 2
+      ) {
+        setError(
+          'Escribe un nombre válido para la sede.'
         )
-      )
-    } finally {
-      setCreating(false)
+
+        return
+      }
+
+      if (
+        city.length < 2
+      ) {
+        setError(
+          'Escribe una ciudad válida.'
+        )
+
+        return
+      }
+
+      if (
+        cameraName.length <
+        2
+      ) {
+        setError(
+          'Escribe un nombre válido para la cámara.'
+        )
+
+        return
+      }
+
+      const payload = {
+        name,
+        city,
+
+        camera_name:
+          cameraName,
+
+        floor_width:
+          Number(
+            form.floor_width
+          ) || 12,
+
+        floor_depth:
+          Number(
+            form.floor_depth
+          ) || 8,
+      }
+
+      try {
+        setCreating(
+          true
+        )
+
+        setError('')
+
+        /* =================================================
+           CAMBIO IMPORTANTE
+
+           Antes de crear una sede nueva eliminamos:
+           video anterior, preview, metadata, job, etc.
+        ================================================= */
+
+        clearPreviousAnalysis()
+
+        console.log(
+          'Payload enviado para crear sede:',
+          payload
+        )
+
+        await createSite(
+          payload
+        )
+
+        setForm({
+          ...initialForm,
+        })
+
+        setShowCreate(
+          false
+        )
+      } catch (
+        requestError
+      ) {
+        console.error(
+          'Error creando sede:',
+          requestError
+        )
+
+        setError(
+          getErrorMessage(
+            requestError,
+            'No fue posible crear la sede. Intenta nuevamente.'
+          )
+        )
+      } finally {
+        setCreating(
+          false
+        )
+      }
     }
-  }
+
+  /* =========================================================
+     ABRIR UNA SEDE
+
+     IMPORTANTE:
+     También limpiamos el análisis anterior cuando
+     cambiamos de una sede a otra.
+  ========================================================= */
+
+  const openSelectedSite =
+    (
+      selectedSite
+    ) => {
+      if (
+        !selectedSite
+      ) {
+        return
+      }
+
+      clearPreviousAnalysis()
+
+      selectSite(
+        selectedSite
+      )
+    }
 
   /* =========================================================
      ELIMINAR SEDE
   ========================================================= */
 
-  const removeSite = (event, site) => {
-    event.preventDefault()
-    event.stopPropagation()
+  const removeSite =
+    (
+      event,
+      site
+    ) => {
+      event.preventDefault()
+      event.stopPropagation()
 
-    if (!site?.id) {
-      setError(
-        'No se encontró el identificador de la sede.'
-      )
-      return
-    }
-
-    if (deletingId !== null) return
-    setSiteToDelete(site)
-  }
-
-  const confirmRemoveSite = async () => {
-    if (!siteToDelete) return
-
-    try {
-      setError('')
-      setDeletingId(siteToDelete.id)
-
-      await deleteSite(siteToDelete)
-      setSiteToDelete(null)
-    } catch (requestError) {
-      console.error(
-        'Error eliminando sede:',
-        requestError
-      )
-
-      setError(
-        getErrorMessage(
-          requestError,
-          'No fue posible eliminar la sede.'
+      if (!site?.id) {
+        setError(
+          'No se encontró el identificador de la sede.'
         )
+
+        return
+      }
+
+      if (
+        deletingId !==
+        null
+      ) {
+        return
+      }
+
+      setSiteToDelete(
+        site
       )
-    } finally {
-      setDeletingId(null)
     }
-  }
+
+  const confirmRemoveSite =
+    async () => {
+      if (
+        !siteToDelete
+      ) {
+        return
+      }
+
+      try {
+        setError('')
+
+        setDeletingId(
+          siteToDelete.id
+        )
+
+        await deleteSite(
+          siteToDelete
+        )
+
+        setSiteToDelete(
+          null
+        )
+      } catch (
+        requestError
+      ) {
+        console.error(
+          'Error eliminando sede:',
+          requestError
+        )
+
+        setError(
+          getErrorMessage(
+            requestError,
+            'No fue posible eliminar la sede.'
+          )
+        )
+      } finally {
+        setDeletingId(
+          null
+        )
+      }
+    }
+
+  /* =========================================================
+     PROTEGER RUTA
+  ========================================================= */
 
   if (!retailer) {
-    return <Navigate to="/empresas" replace />
+    return (
+      <Navigate
+        to="/empresas"
+        replace
+      />
+    )
   }
 
   return (
@@ -469,8 +845,8 @@ export default function SitePickerPage() {
           pointer-events-none
           absolute
           inset-x-0
-          top-1/2
           bottom-0
+          top-1/2
           bg-[radial-gradient(circle_at_14%_12%,rgba(37,170,255,.10),transparent_24%),linear-gradient(180deg,#f7fbff_0%,#ffffff_100%)]
         "
       />
@@ -687,7 +1063,9 @@ export default function SitePickerPage() {
 
         <button
           type="button"
-          onClick={goHome}
+          onClick={
+            goHome
+          }
           className="
             mb-1
             inline-flex
@@ -706,7 +1084,10 @@ export default function SitePickerPage() {
             sm:text-[12px]
           "
         >
-          <ArrowLeft size={12} />
+          <ArrowLeft
+            size={12}
+          />
+
           Empresas
         </button>
 
@@ -764,15 +1145,61 @@ export default function SitePickerPage() {
               "
             />
 
-            <div className="flex items-end gap-3 sm:gap-4">
-              <span className="block text-[54px] font-black leading-[.78] text-[#ff8b3a] sm:text-[74px] lg:text-[86px]">
+            <div
+              className="
+                flex
+                items-end
+                gap-3
+                sm:gap-4
+              "
+            >
+              <span
+                className="
+                  block
+                  text-[54px]
+                  font-black
+                  leading-[.78]
+                  text-[#ff8b3a]
+
+                  sm:text-[74px]
+                  lg:text-[86px]
+                "
+              >
                 02
               </span>
-              <div className="min-w-0 pb-1">
-                <p className="mb-1 text-[9px] font-black uppercase tracking-[.24em] text-[#9fb2c4] sm:text-[11px]">
+
+              <div
+                className="
+                  min-w-0
+                  pb-1
+                "
+              >
+                <p
+                  className="
+                    mb-1
+                    text-[9px]
+                    font-black
+                    uppercase
+                    tracking-[.24em]
+                    text-[#9fb2c4]
+
+                    sm:text-[11px]
+                  "
+                >
                   Paso 2
                 </p>
-                <h1 className="text-[36px] font-black leading-[.86] text-white sm:text-[52px] lg:text-[62px]">
+
+                <h1
+                  className="
+                    text-[36px]
+                    font-black
+                    leading-[.86]
+                    text-white
+
+                    sm:text-[52px]
+                    lg:text-[62px]
+                  "
+                >
                   Sedes
                 </h1>
               </div>
@@ -801,7 +1228,9 @@ export default function SitePickerPage() {
                 lg:leading-[19px]
               "
             >
-              Selecciona la sede que vas a analizar, revisa su historial y reutiliza la configuracion guardada para nuevos videos.
+              Selecciona la sede que vas a analizar, revisa
+              su historial y reutiliza la configuración
+              guardada para nuevos videos.
             </p>
           </div>
 
@@ -842,25 +1271,33 @@ export default function SitePickerPage() {
             <div className="pointer-events-none absolute left-1/2 top-[27px] h-[82px] w-[140px] -translate-x-1/2 rotate-[17deg] rounded-[50%] border border-[#ff681e]/35 sm:h-[125px] sm:w-[205px] lg:top-[22px] lg:h-[155px] lg:w-[250px]" />
 
             <img
-              src={iconoAnalisis}
+              src={
+                iconoAnalisis
+              }
               alt=""
               className="pointer-events-none absolute left-[-2px] top-[12px] z-20 h-[27px] w-[27px] object-contain sm:left-[8px] sm:top-[12px] sm:h-[42px] sm:w-[42px] lg:left-[5px] lg:top-[-12px] lg:h-[56px] lg:w-[56px]"
             />
 
             <img
-              src={iconoUbicacion}
+              src={
+                iconoUbicacion
+              }
               alt=""
               className="pointer-events-none absolute right-[-3px] top-[31px] z-20 h-[28px] w-[28px] object-contain sm:right-[5px] sm:top-[48px] sm:h-[43px] sm:w-[43px] lg:right-0 lg:top-[38px] lg:h-[58px] lg:w-[58px]"
             />
 
             <img
-              src={iconoDocumento}
+              src={
+                iconoDocumento
+              }
               alt=""
               className="pointer-events-none absolute bottom-[17px] right-[6px] z-20 h-[26px] w-[26px] object-contain sm:bottom-[16px] sm:right-[15px] sm:h-[38px] sm:w-[38px] lg:bottom-auto lg:right-[12px] lg:top-[105px] lg:h-[56px] lg:w-[56px]"
             />
 
             <img
-              src={robotSedes}
+              src={
+                robotSedes
+              }
               alt="Asistente Scapder"
               className="pointer-events-none absolute bottom-[11px] left-1/2 z-10 h-[125px] w-[125px] -translate-x-1/2 object-contain object-bottom min-[390px]:h-[135px] min-[390px]:w-[135px] sm:h-[175px] sm:w-[175px] lg:bottom-auto lg:top-[-23px] lg:h-[205px] lg:w-[205px]"
             />
@@ -898,24 +1335,37 @@ export default function SitePickerPage() {
             "
           >
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(38,169,255,.18),transparent_30%),linear-gradient(135deg,rgba(255,255,255,.98),rgba(239,248,255,.96))]" />
+
             <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-white" />
 
             <div className="relative grid grid-cols-3 gap-1.5 sm:gap-2.5">
               <TopMetric
-                image={iconoUbicacion1}
-                value={currentSites.length}
+                image={
+                  iconoUbicacion1
+                }
+                value={
+                  currentSites.length
+                }
                 label="Sedes registradas"
               />
 
               <TopMetric
-                image={iconoCamara}
-                value={totalCameras}
+                image={
+                  iconoCamara
+                }
+                value={
+                  totalCameras
+                }
                 label="Cámaras en total"
               />
 
               <TopMetric
-                image={iconoAnalisis1}
-                value={totalAnalyses}
+                image={
+                  iconoAnalisis1
+                }
+                value={
+                  totalAnalyses
+                }
                 label="Análisis realizados"
               />
             </div>
@@ -948,9 +1398,16 @@ export default function SitePickerPage() {
             />
 
             <input
-              value={search}
-              onChange={(event) =>
-                setSearch(event.target.value)
+              value={
+                search
+              }
+              onChange={(
+                event
+              ) =>
+                setSearch(
+                  event.target
+                    .value
+                )
               }
               placeholder="Buscar sede..."
               className="min-w-0 flex-1 border-0 bg-transparent text-[9px] text-white outline-none placeholder:text-[#748aa0] min-[390px]:text-[10px] sm:text-[12px] lg:text-[13px]"
@@ -961,22 +1418,32 @@ export default function SitePickerPage() {
             type="button"
             className="inline-flex h-[38px] items-center justify-center gap-3 rounded-[12px] border border-[#1e4b6f] bg-[#061725]/95 text-[11px] font-black text-white transition hover:border-[#ff681e] sm:h-[48px] sm:text-[12px] lg:h-[52px]"
           >
-            <SlidersHorizontal size={14} />
+            <SlidersHorizontal
+              size={14}
+            />
+
             Filtrar
-            <ChevronDown size={13} />
+
+            <ChevronDown
+              size={13}
+            />
           </button>
 
           <div className="hidden lg:block" />
 
           <button
             type="button"
-            onClick={toggleCreate}
+            onClick={
+              toggleCreate
+            }
             className="inline-flex h-[42px] items-center justify-center gap-2 rounded-[14px] bg-[linear-gradient(90deg,#ff5510,#ff7022)] text-[11px] font-black text-white shadow-[0_10px_24px_-15px_rgba(255,91,18,.85)] transition hover:brightness-110 sm:h-[52px] sm:text-[12px] lg:w-[205px] lg:rounded-[22px]"
           >
             <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-[#ff5b12] sm:h-7 sm:w-7">
               <Plus
                 size={14}
-                strokeWidth={3}
+                strokeWidth={
+                  3
+                }
               />
             </span>
 
@@ -988,42 +1455,63 @@ export default function SitePickerPage() {
 
         {/* ERROR GENERAL */}
 
-        {error && !showCreate && (
-          <div className="relative z-30 mt-3 rounded-[12px] border border-[#ff594d]/30 bg-[#ff594d]/10 px-4 py-3 text-[12px] font-bold text-[#ff998f]">
-            {error}
-          </div>
-        )}
+        {error &&
+          !showCreate && (
+            <div className="relative z-30 mt-3 rounded-[12px] border border-[#ff594d]/30 bg-[#ff594d]/10 px-4 py-3 text-[12px] font-bold text-[#ff998f]">
+              {error}
+            </div>
+          )}
 
         {/* FORMULARIO MÓVIL */}
 
         {showCreate && (
           <form
-            onSubmit={submit}
+            onSubmit={
+              submit
+            }
             className="relative z-30 mt-3 grid gap-3 rounded-[18px] border border-[#17486e] bg-[#061725]/95 p-3 md:grid-cols-2 md:p-5 lg:hidden"
           >
             <FormField
               label="Nombre"
               placeholder="Ej. Sede Centro"
-              value={form.name}
-              onChange={(value) =>
-                changeForm('name', value)
+              value={
+                form.name
+              }
+              onChange={(
+                value
+              ) =>
+                changeForm(
+                  'name',
+                  value
+                )
               }
             />
 
             <FormField
               label="Ciudad"
               placeholder="Ej. Bogotá"
-              value={form.city}
-              onChange={(value) =>
-                changeForm('city', value)
+              value={
+                form.city
+              }
+              onChange={(
+                value
+              ) =>
+                changeForm(
+                  'city',
+                  value
+                )
               }
             />
 
             <FormField
               label="Cámara"
               placeholder="Ej. Cámara principal"
-              value={form.camera_name}
-              onChange={(value) =>
+              value={
+                form.camera_name
+              }
+              onChange={(
+                value
+              ) =>
                 changeForm(
                   'camera_name',
                   value
@@ -1032,7 +1520,9 @@ export default function SitePickerPage() {
             />
 
             <button
-              disabled={creating}
+              disabled={
+                creating
+              }
               type="submit"
               className="min-h-[46px] rounded-[14px] bg-[#ff681e] font-black text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -1058,28 +1548,41 @@ export default function SitePickerPage() {
 
               <div className="md:hidden">
                 <div
-                  ref={mobileCarouselRef}
+                  ref={
+                    mobileCarouselRef
+                  }
                   className="-mx-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-3 py-3 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
                   {filteredSites.map(
-                    (site, originalIndex) => {
+                    (
+                      site,
+                      originalIndex
+                    ) => {
                       const camera =
-                        site?.configuration?.camera ??
+                        site
+                          ?.configuration
+                          ?.camera ??
                         {}
 
                       return (
                         <SiteCard
-                          key={site.id}
-                          site={site}
+                          key={
+                            site.id
+                          }
+                          site={
+                            site
+                          }
                           originalIndex={
                             originalIndex
                           }
-                          camera={camera}
+                          camera={
+                            camera
+                          }
                           status={getSiteStatus(
                             site
                           )}
                           selectSite={
-                            selectSite
+                            openSelectedSite
                           }
                           removeSite={
                             removeSite
@@ -1088,7 +1591,9 @@ export default function SitePickerPage() {
                             String(
                               deletingId
                             ) ===
-                            String(site.id)
+                            String(
+                              site.id
+                            )
                           }
                           mobile
                         />
@@ -1109,7 +1614,9 @@ export default function SitePickerPage() {
                       className="grid h-8 w-8 place-items-center rounded-full border border-[#214d6f] bg-[#061725]"
                     >
                       <ChevronLeft
-                        size={17}
+                        size={
+                          17
+                        }
                       />
                     </button>
 
@@ -1124,7 +1631,9 @@ export default function SitePickerPage() {
                       className="grid h-8 w-8 place-items-center rounded-full border border-[#214d6f] bg-[#061725]"
                     >
                       <ChevronRight
-                        size={17}
+                        size={
+                          17
+                        }
                       />
                     </button>
                   </div>
@@ -1138,41 +1647,55 @@ export default function SitePickerPage() {
                   sitesPerPage && (
                   <button
                     type="button"
-                    onClick={previousPage}
+                    onClick={
+                      previousPage
+                    }
                     aria-label="Página anterior"
                     className="absolute -left-7 top-[45%] z-30 hidden h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-[#204f74] bg-[#061725] transition hover:bg-[#ff681e] lg:grid"
                   >
                     <ChevronLeft
-                      size={23}
+                      size={
+                        23
+                      }
                     />
                   </button>
                 )}
 
                 <div className="grid gap-5 py-3 md:grid-cols-2 lg:grid-cols-4 lg:gap-6">
                   {visibleSites.map(
-                    (site) => {
+                    (
+                      site
+                    ) => {
                       const originalIndex =
                         filteredSites.indexOf(
                           site
                         )
 
                       const camera =
-                        site?.configuration
-                          ?.camera ?? {}
+                        site
+                          ?.configuration
+                          ?.camera ??
+                        {}
 
                       return (
                         <SiteCard
-                          key={site.id}
-                          site={site}
+                          key={
+                            site.id
+                          }
+                          site={
+                            site
+                          }
                           originalIndex={
                             originalIndex
                           }
-                          camera={camera}
+                          camera={
+                            camera
+                          }
                           status={getSiteStatus(
                             site
                           )}
                           selectSite={
-                            selectSite
+                            openSelectedSite
                           }
                           removeSite={
                             removeSite
@@ -1181,7 +1704,9 @@ export default function SitePickerPage() {
                             String(
                               deletingId
                             ) ===
-                            String(site.id)
+                            String(
+                              site.id
+                            )
                           }
                         />
                       )
@@ -1193,12 +1718,16 @@ export default function SitePickerPage() {
                   sitesPerPage && (
                   <button
                     type="button"
-                    onClick={nextPage}
+                    onClick={
+                      nextPage
+                    }
                     aria-label="Página siguiente"
                     className="absolute -right-7 top-[45%] z-30 hidden h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-[#204f74] bg-[#061725] transition hover:bg-[#ff681e] lg:grid"
                   >
                     <ChevronRight
-                      size={23}
+                      size={
+                        23
+                      }
                     />
                   </button>
                 )}
@@ -1212,7 +1741,8 @@ export default function SitePickerPage() {
               />
 
               <h2 className="mt-4 text-xl font-black">
-                No encontramos sedes
+                No encontramos
+                sedes
               </h2>
 
               <p className="mt-2 text-sm text-[#96aabd]">
@@ -1226,32 +1756,46 @@ export default function SitePickerPage() {
 
         {/* PAGINACIÓN */}
 
-        {totalPages > 1 && (
+        {totalPages >
+          1 && (
           <div className="relative z-20 mt-5 hidden justify-center gap-3 md:flex">
             {Array.from({
-              length: totalPages,
-            }).map((_, index) => (
-              <button
-                key={index}
-                type="button"
-                onClick={() =>
-                  setPage(index)
-                }
-                aria-label={`Página ${
-                  index + 1
-                }`}
-                className={`
-                  h-2
-                  rounded-full
-                  transition-all
-                  ${
-                    page === index
-                      ? 'w-7 bg-[#ff681e]'
-                      : 'w-2 bg-[#3c5b77]'
+              length:
+                totalPages,
+            }).map(
+              (
+                _,
+                index
+              ) => (
+                <button
+                  key={
+                    index
                   }
-                `}
-              />
-            ))}
+                  type="button"
+                  onClick={() =>
+                    setPage(
+                      index
+                    )
+                  }
+                  aria-label={`Página ${
+                    index +
+                    1
+                  }`}
+                  className={`
+                    h-2
+                    rounded-full
+                    transition-all
+
+                    ${
+                      page ===
+                      index
+                        ? 'w-7 bg-[#ff681e]'
+                        : 'w-2 bg-[#3c5b77]'
+                    }
+                  `}
+                />
+              )
+            )}
           </div>
         )}
 
@@ -1265,7 +1809,9 @@ export default function SitePickerPage() {
           <button
             type="button"
             aria-label="Cerrar modal"
-            onClick={closeCreate}
+            onClick={
+              closeCreate
+            }
             className="absolute inset-0 z-0 cursor-default"
           />
 
@@ -1275,11 +1821,13 @@ export default function SitePickerPage() {
             <div className="relative min-h-[500px] overflow-hidden border-r border-[#123b5d] bg-[radial-gradient(circle_at_50%_60%,rgba(0,102,255,.17),transparent_52%)]">
               <div className="absolute left-1/2 top-[35px] z-30 w-[255px] -translate-x-1/2 -rotate-[3deg] rounded-[18px] border border-[#168fff] bg-[#06192b]/95 px-5 py-3 text-center shadow-[0_12px_35px_-18px_rgba(0,112,255,.8)]">
                 <p className="text-[15px] font-black leading-tight text-white">
-                  ¡Crea una nueva sede
+                  ¡Crea una nueva
+                  sede
                 </p>
 
                 <p className="mt-1 text-[15px] font-black leading-tight text-[#ff681e]">
-                  y sigue creciendo!
+                  y sigue
+                  creciendo!
                 </p>
               </div>
 
@@ -1290,25 +1838,33 @@ export default function SitePickerPage() {
               <div className="pointer-events-none absolute bottom-[45px] left-1/2 h-[260px] w-[260px] -translate-x-1/2 rotate-[17deg] rounded-full border border-[#ff681e]/30" />
 
               <img
-                src={iconoAnalisis}
+                src={
+                  iconoAnalisis
+                }
                 alt=""
                 className="pointer-events-none absolute left-[28px] top-[190px] z-30 h-[58px] w-[58px] object-contain"
               />
 
               <img
-                src={iconoUbicacion}
+                src={
+                  iconoUbicacion
+                }
                 alt=""
                 className="pointer-events-none absolute right-[25px] top-[175px] z-30 h-[62px] w-[62px] object-contain"
               />
 
               <img
-                src={iconoDocumento}
+                src={
+                  iconoDocumento
+                }
                 alt=""
                 className="pointer-events-none absolute bottom-[48px] right-[30px] z-30 h-[58px] w-[58px] object-contain"
               />
 
               <img
-                src={robotSedes1}
+                src={
+                  robotSedes1
+                }
                 alt="Asistente para crear sede"
                 className="pointer-events-none absolute bottom-[-12px] left-1/2 z-20 h-[340px] w-[340px] -translate-x-1/2 object-contain object-bottom"
               />
@@ -1317,13 +1873,17 @@ export default function SitePickerPage() {
             {/* FORMULARIO */}
 
             <form
-              onSubmit={submit}
+              onSubmit={
+                submit
+              }
               className="relative z-20 flex min-h-[500px] flex-col justify-center px-10 py-8"
             >
               <button
                 type="button"
                 aria-label="Cerrar"
-                onClick={closeCreate}
+                onClick={
+                  closeCreate
+                }
                 className="absolute right-5 top-5 grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-[21px] text-white transition hover:border-[#ff681e] hover:text-[#ff681e]"
               >
                 ×
@@ -1339,27 +1899,36 @@ export default function SitePickerPage() {
                 Crea un nuevo
 
                 <span className="block text-[#ff681e]">
-                  espacio Scapder.
+                  espacio
+                  Scapder.
                 </span>
               </h2>
 
               <p className="mt-3 max-w-[450px] text-[12px] leading-5 text-[#9fb2c4]">
-                Registra la información
-                básica de la sede para
-                comenzar a configurarla.
+                Registra la
+                información básica
+                de la sede para
+                comenzar a
+                configurarla.
               </p>
 
               <div className="mt-6 grid gap-4">
                 <CompactDesktopFormField
                   label="Nombre"
                   placeholder="Ej. Sede Centro"
-                  value={form.name}
+                  value={
+                    form.name
+                  }
                   icon={
                     <Building2
-                      size={18}
+                      size={
+                        18
+                      }
                     />
                   }
-                  onChange={(value) =>
+                  onChange={(
+                    value
+                  ) =>
                     changeForm(
                       'name',
                       value
@@ -1370,13 +1939,19 @@ export default function SitePickerPage() {
                 <CompactDesktopFormField
                   label="Ciudad"
                   placeholder="Ej. Bogotá"
-                  value={form.city}
+                  value={
+                    form.city
+                  }
                   icon={
                     <MapPin
-                      size={18}
+                      size={
+                        18
+                      }
                     />
                   }
-                  onChange={(value) =>
+                  onChange={(
+                    value
+                  ) =>
                     changeForm(
                       'city',
                       value
@@ -1392,10 +1967,14 @@ export default function SitePickerPage() {
                   }
                   icon={
                     <Camera
-                      size={18}
+                      size={
+                        18
+                      }
                     />
                   }
-                  onChange={(value) =>
+                  onChange={(
+                    value
+                  ) =>
                     changeForm(
                       'camera_name',
                       value
@@ -1413,14 +1992,18 @@ export default function SitePickerPage() {
               <div className="mt-6 grid grid-cols-[1fr_1.15fr] gap-3">
                 <button
                   type="button"
-                  onClick={closeCreate}
+                  onClick={
+                    closeCreate
+                  }
                   className="h-[48px] rounded-[14px] border border-[#1d557e] bg-[#05182a] text-[13px] font-black text-white transition hover:border-[#168fff]"
                 >
                   Cancelar
                 </button>
 
                 <button
-                  disabled={creating}
+                  disabled={
+                    creating
+                  }
                   type="submit"
                   className="inline-flex h-[48px] items-center justify-center gap-2 rounded-[14px] bg-[linear-gradient(90deg,#ff5510,#ff7423)] text-[13px] font-black text-white shadow-[0_15px_30px_-14px_rgba(255,91,18,.8)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -1430,7 +2013,9 @@ export default function SitePickerPage() {
 
                   {!creating && (
                     <ArrowRight
-                      size={16}
+                      size={
+                        16
+                      }
                     />
                   )}
                 </button>
@@ -1441,13 +2026,28 @@ export default function SitePickerPage() {
       )}
 
       <ConfirmDialog
-        open={Boolean(siteToDelete)}
+        open={Boolean(
+          siteToDelete
+        )}
         title="Eliminar sede"
-        message={`Se eliminara "${siteToDelete?.name || 'esta sede'}" junto con su configuracion y analisis asociados.`}
+        message={`Se eliminara "${
+          siteToDelete
+            ?.name ||
+          'esta sede'
+        }" junto con su configuracion y analisis asociados.`}
         confirmLabel="Eliminar sede"
-        loading={deletingId === siteToDelete?.id}
-        onCancel={() => setSiteToDelete(null)}
-        onConfirm={confirmRemoveSite}
+        loading={
+          deletingId ===
+          siteToDelete?.id
+        }
+        onCancel={() =>
+          setSiteToDelete(
+            null
+          )
+        }
+        onConfirm={
+          confirmRemoveSite
+        }
       />
     </section>
   )
@@ -1468,24 +2068,38 @@ function SiteCard({
   mobile = false,
 }) {
   const hasImage =
-    typeof site?.image_url === 'string' &&
-    site.image_url.trim().length > 0
+    typeof site?.image_url ===
+      'string' &&
+    site.image_url
+      .trim()
+      .length > 0
 
-  const openSite = () => {
-    if (!deleting) {
-      selectSite(site)
+  const openSite =
+    () => {
+      if (
+        !deleting
+      ) {
+        selectSite(
+          site
+        )
+      }
     }
-  }
 
-  const handleImageKeyDown = (event) => {
-    if (
-      event.key === 'Enter' ||
-      event.key === ' '
-    ) {
-      event.preventDefault()
-      openSite()
+  const handleImageKeyDown =
+    (
+      event
+    ) => {
+      if (
+        event.key ===
+          'Enter' ||
+        event.key ===
+          ' '
+      ) {
+        event.preventDefault()
+
+        openSite()
+      }
     }
-  }
 
   return (
     <article
@@ -1511,14 +2125,21 @@ function SiteCard({
         md:hover:shadow-[0_0_12px_rgba(37,170,255,.95),0_0_28px_rgba(0,119,255,.55)]
       `}
     >
-      {/* FOTO - AHORA ES CLICKEABLE */}
+      {/* FOTO */}
 
       <div
         role="button"
         tabIndex={0}
-        aria-label={`Abrir ${site.name || 'sede'}`}
-        onClick={openSite}
-        onKeyDown={handleImageKeyDown}
+        aria-label={`Abrir ${
+          site.name ||
+          'sede'
+        }`}
+        onClick={
+          openSite
+        }
+        onKeyDown={
+          handleImageKeyDown
+        }
         className={`
           relative
           cursor-pointer
@@ -1539,8 +2160,13 @@ function SiteCard({
       >
         {hasImage ? (
           <img
-            src={site.image_url}
-            alt={site.name || 'Sede'}
+            src={
+              site.image_url
+            }
+            alt={
+              site.name ||
+              'Sede'
+            }
             className="
               h-full
               w-full
@@ -1558,19 +2184,30 @@ function SiteCard({
               <div className="grid h-full grid-cols-4 gap-[5%] px-[8%] py-[9%]">
                 {Array.from({
                   length: 8,
-                }).map((_, index) => (
-                  <span
-                    key={index}
-                    className="bg-[#5b8099]"
-                  />
-                ))}
+                }).map(
+                  (
+                    _,
+                    index
+                  ) => (
+                    <span
+                      key={
+                        index
+                      }
+                      className="bg-[#5b8099]"
+                    />
+                  )
+                )}
               </div>
             </div>
 
             <div className="absolute bottom-[17%] left-1/2 h-[23%] w-[18%] -translate-x-1/2 bg-[#375e79]" />
 
             <Building2
-              size={mobile ? 23 : 34}
+              size={
+                mobile
+                  ? 23
+                  : 34
+              }
               className="absolute bottom-3 right-3 text-white/70"
             />
           </div>
@@ -1599,8 +2236,12 @@ function SiteCard({
           `}
         >
           {String(
-            originalIndex + 1
-          ).padStart(2, '0')}
+            originalIndex +
+              1
+          ).padStart(
+            2,
+            '0'
+          )}
         </span>
 
         {/* ESTADO */}
@@ -1644,12 +2285,20 @@ function SiteCard({
 
         <button
           type="button"
-          disabled={deleting}
-          onClick={(event) =>
-            removeSite(event, site)
+          disabled={
+            deleting
+          }
+          onClick={(
+            event
+          ) =>
+            removeSite(
+              event,
+              site
+            )
           }
           aria-label={`Eliminar ${
-            site.name || 'sede'
+            site.name ||
+            'sede'
           }`}
           className={`
             absolute
@@ -1677,7 +2326,11 @@ function SiteCard({
             <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#ff5b12] border-t-transparent" />
           ) : (
             <Trash2
-              size={mobile ? 11 : 15}
+              size={
+                mobile
+                  ? 11
+                  : 15
+              }
             />
           )}
         </button>
@@ -1746,12 +2399,19 @@ function SiteCard({
           `}
         >
           <MapPin
-            size={mobile ? 9 : 15}
+            size={
+              mobile
+                ? 9
+                : 15
+            }
             className="shrink-0 text-[#ff681e]"
-            strokeWidth={2.8}
+            strokeWidth={
+              2.8
+            }
           />
 
-          {site.city || 'Sin ciudad'}
+          {site.city ||
+            'Sin ciudad'}
         </p>
 
         <p
@@ -1769,22 +2429,31 @@ function SiteCard({
           `}
         >
           <Camera
-            size={mobile ? 9 : 15}
+            size={
+              mobile
+                ? 9
+                : 15
+            }
             className="shrink-0 text-[#ff681e]"
-            strokeWidth={2.8}
+            strokeWidth={
+              2.8
+            }
           />
 
-          {camera?.name ? 1 : 0}{' '}
+          {camera?.name
+            ? 1
+            : 0}{' '}
+
           {camera?.name
             ? 'cámara'
             : 'cámaras'}
         </p>
 
-        {/* VER SEDE SIN FLECHA */}
-
         <button
           type="button"
-          onClick={openSite}
+          onClick={
+            openSite
+          }
           className={`
             mt-4
             border-0
@@ -1819,12 +2488,12 @@ function TopMetric({
   label,
 }) {
   return (
-    <div
-      className="flex min-h-[58px] min-w-0 items-center justify-center gap-2 rounded-[16px] border border-[#d8ebfa] bg-white px-2 shadow-[inset_0_1px_0_rgba(255,255,255,.95),0_14px_26px_-22px_rgba(0,73,145,.55)] sm:min-h-[78px] sm:gap-3 sm:rounded-[20px] sm:px-3 lg:min-h-[82px] lg:gap-4 lg:px-4"
-    >
+    <div className="flex min-h-[58px] min-w-0 items-center justify-center gap-2 rounded-[16px] border border-[#d8ebfa] bg-white px-2 shadow-[inset_0_1px_0_rgba(255,255,255,.95),0_14px_26px_-22px_rgba(0,73,145,.55)] sm:min-h-[78px] sm:gap-3 sm:rounded-[20px] sm:px-3 lg:min-h-[82px] lg:gap-4 lg:px-4">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#eff8ff,#ffffff)] shadow-[0_10px_24px_-18px_rgba(0,112,255,.85)] min-[390px]:h-10 min-[390px]:w-10 sm:h-[52px] sm:w-[52px] lg:h-[62px] lg:w-[62px]">
         <img
-          src={image}
+          src={
+            image
+          }
           alt=""
           className="h-[82%] w-[82%] object-contain drop-shadow-[0_7px_10px_rgba(0,68,130,.18)]"
         />
@@ -1859,11 +2528,22 @@ function FormField({
 
       <input
         required
-        minLength={2}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) =>
-          onChange(event.target.value)
+        minLength={
+          2
+        }
+        value={
+          value
+        }
+        placeholder={
+          placeholder
+        }
+        onChange={(
+          event
+        ) =>
+          onChange(
+            event.target
+              .value
+          )
         }
         className="min-h-[44px] rounded-[13px] border border-[#1d4b70] bg-[#03111e] px-4 text-sm text-white outline-none transition placeholder:text-[#60798e] focus:border-[#ff681e] focus:ring-4 focus:ring-[#ff681e]/10"
       />
@@ -1895,12 +2575,21 @@ function CompactDesktopFormField({
 
         <input
           required
-          minLength={2}
-          value={value}
-          placeholder={placeholder}
-          onChange={(event) =>
+          minLength={
+            2
+          }
+          value={
+            value
+          }
+          placeholder={
+            placeholder
+          }
+          onChange={(
+            event
+          ) =>
             onChange(
-              event.target.value
+              event.target
+                .value
             )
           }
           className="min-w-0 flex-1 border-0 bg-transparent text-[13px] font-semibold text-white outline-none placeholder:text-[#667f95]"
