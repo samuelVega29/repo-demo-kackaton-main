@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { gondolaCorners, projectFloor, forwardHomography, inverseHomography } from '../../utils/homography'
+import { gondolaCorners, projectFloor, projectFloorAtHeight, GONDOLA_TOP_HEIGHT_M, forwardHomography, inverseHomography } from '../../utils/homography'
 import { drawFloorOutline, pointInPolygon, nearestPointInPolygon } from '../../utils/floorOutline'
 import { hexToRgba } from '../../utils/format'
 
@@ -195,31 +195,103 @@ export default function LiveAlignment({ frameCapture, configuration, interactive
       }
       ;(configuration.gondolas || []).forEach((gondola) => {
         const color = gondola.color || '#61dec0'
+        const shelfHeight = gondola.height || GONDOLA_TOP_HEIGHT_M
         const corners = gondolaCorners(gondola)
-        const pixels = corners.map(([x, z]) => toPx(x, z)).filter(Boolean)
-        if (pixels.length < 4) return
+        const base = corners.map(([x, z]) => toPx(x, z))
+        const top = corners.map(([x, z]) => {
+          const raised = projectFloorAtHeight(inverse, width, height, x, z, shelfHeight)
+          return raised ? [raised[0] * width, raised[1] * height] : null
+        })
+        if (base.length < 4 || base.some((point) => !point)) return
+        const standing = top.every(Boolean)
+        const selectedStyle = interactive && selectedId === gondola.id
+        // Vértices del footprint más cercanos a cámara (mayor y en pantalla): son el filo
+        // que queda de frente, sobre el que se apoya la cara frontal del "cubo".
+        const order = [0, 1, 2, 3].sort((i, j) => base[j][1] - base[i][1])
         ctx.beginPath()
-        ctx.moveTo(...pixels[0])
-        pixels.slice(1).forEach((point) => ctx.lineTo(...point))
+        ctx.moveTo(...base[0])
+        base.slice(1).forEach((point) => ctx.lineTo(...point))
         ctx.closePath()
-        ctx.fillStyle = hexToRgba(color, .18)
+        ctx.fillStyle = hexToRgba(color, .12)
         ctx.fill()
-        ctx.save()
-        ctx.strokeStyle = (interactive && selectedId === gondola.id) ? '#ff876a' : color
-        ctx.lineWidth = (interactive && selectedId === gondola.id) ? 6 : 3
-        if (interactive && selectedId === gondola.id) {
+        if (standing) {
+          ctx.beginPath()
+          ctx.moveTo(...top[0])
+          top.slice(1).forEach((point) => ctx.lineTo(...point))
+          ctx.closePath()
+          ctx.fillStyle = hexToRgba(color, .22)
+          ctx.fill()
+          const [f0, f1] = order
+          ctx.beginPath()
+          ctx.moveTo(...base[f0])
+          ctx.lineTo(...base[f1])
+          ctx.lineTo(...top[f1])
+          ctx.lineTo(...top[f0])
+          ctx.closePath()
+          ctx.fillStyle = hexToRgba(color, .16)
+          ctx.fill()
+          ctx.strokeStyle = hexToRgba(color, .55)
+          ctx.lineWidth = 1.5
+          ctx.stroke()
+          ctx.save()
+          ctx.strokeStyle = selectedStyle ? '#ff876a' : color
+          ctx.lineWidth = 2
+          base.forEach((point, index) => {
+            ctx.beginPath(); ctx.moveTo(...point); ctx.lineTo(...top[index]); ctx.stroke()
+          })
+          ctx.restore()
+        }
+        if (selectedStyle) {
+          ctx.save()
+          ctx.beginPath()
+          ctx.moveTo(...base[0])
+          base.slice(1).forEach((point) => ctx.lineTo(...point))
+          ctx.closePath()
+          ctx.strokeStyle = '#ff876a'
+          ctx.lineWidth = 6
           ctx.shadowColor = 'rgba(255, 135, 106, .85)'
           ctx.shadowBlur = 14
+          ctx.stroke()
+          ctx.restore()
+          if (standing) {
+            ctx.save()
+            ctx.beginPath()
+            ctx.moveTo(...top[0])
+            top.slice(1).forEach((point) => ctx.lineTo(...point))
+            ctx.closePath()
+            ctx.strokeStyle = '#ff876a'
+            ctx.lineWidth = 2.5
+            ctx.stroke()
+            ctx.restore()
+          }
+        } else {
+          ctx.strokeStyle = color
+          ctx.lineWidth = standing ? 2 : 3
+          ctx.beginPath()
+          ctx.moveTo(...base[0])
+          base.slice(1).forEach((point) => ctx.lineTo(...point))
+          ctx.closePath()
+          ctx.stroke()
+          if (standing) {
+            ctx.strokeStyle = hexToRgba(color, .7)
+            ctx.lineWidth = 1.5
+            ctx.beginPath()
+            ctx.moveTo(...top[0])
+            top.slice(1).forEach((point) => ctx.lineTo(...point))
+            ctx.closePath()
+            ctx.stroke()
+          }
         }
-        ctx.stroke()
-        ctx.restore()
         if (gondola.name) {
+          const anchor = standing ? top[order[0]] : base[0]
+          const labelX = anchor[0]
+          const labelY = Math.min(Math.max(anchor[1] - 20, 4), height - 24)
           ctx.fillStyle = 'rgba(6, 14, 12, .82)'
           const labelWidth = ctx.measureText(gondola.name).width + 18
-          ctx.fillRect(pixels[0][0], pixels[0][1] - 20, labelWidth, 20)
+          ctx.fillRect(labelX, labelY, labelWidth, 20)
           ctx.fillStyle = '#e8f2ed'
           ctx.font = '12px ui-monospace, monospace'
-          ctx.fillText(gondola.name, pixels[0][0] + 9, pixels[0][1] - 5)
+          ctx.fillText(gondola.name, labelX + 9, labelY + 15)
         }
       })
       const zoneOutline = (configuration.floor || {}).outline

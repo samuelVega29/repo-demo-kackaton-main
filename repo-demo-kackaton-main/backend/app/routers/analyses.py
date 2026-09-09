@@ -756,18 +756,18 @@ def analysis_video(
             detail="Análisis no encontrado",
         )
 
-    path = Path(
+    original = Path(
         analysis.video_path
     )
 
-    if not path.exists():
+    if not original.exists():
         raise HTTPException(
             status_code=404,
             detail="Video no encontrado",
         )
 
     return FileResponse(
-        path,
+        original,
         media_type="video/mp4",
     )
 

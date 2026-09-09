@@ -215,16 +215,10 @@ def update_configuration(
     database: Session = Depends(get_db),
 ) -> dict:
     site = get_site_or_403(user, site_id, database)
-    site.configuration = body.configuration
+    configuration = body.configuration
+    site.configuration = configuration
     database.commit()
     return site_payload(site)
-
-
-class SuggestGondolasBody(BaseModel):
-    configuration: dict
-    image: str
-    image_width: int = Field(ge=16, le=8192)
-    image_height: int = Field(ge=16, le=8192)
 
 
 @router.post("/sites/{site_id}/suggest-gondolas")
