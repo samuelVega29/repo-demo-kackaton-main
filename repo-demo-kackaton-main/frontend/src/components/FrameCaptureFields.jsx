@@ -1,8 +1,10 @@
 import { Camera, Check } from 'lucide-react'
 import { useRef } from 'react'
+import { Link, useParams } from 'react-router-dom'
 
 export default function FrameCaptureFields({ preview, frameCapture, onCapture }) {
   const videoRef = useRef(null)
+  const { siteId } = useParams()
 
   const capture = () => {
     const video = videoRef.current
@@ -17,7 +19,14 @@ export default function FrameCaptureFields({ preview, frameCapture, onCapture })
   }
 
   if (!preview) {
-    return <div className="rounded-md border border-dashed border-[#e5e7ee] bg-[#f8f8f7] px-5 py-12 text-center text-sm font-semibold text-[#7d8392]">Sube el video primero para capturar un frame.</div>
+    return (
+      <div className="rounded-md border border-dashed border-[#e5e7ee] bg-[#f8f8f7] px-5 py-12 text-center text-sm font-semibold text-[#7d8392]">
+        <p>Para reconfigurar la camara necesitas subir un video de referencia primero.</p>
+        <Link className="mt-4 inline-flex min-h-[40px] items-center justify-center rounded-md bg-[#ff5b12] px-4 text-[13px] font-black text-white no-underline transition hover:-translate-y-px hover:bg-[#e94d08]" to={`/sites/${siteId}/video?reconfigurar=camara`}>
+          Subir video de referencia
+        </Link>
+      </div>
+    )
   }
 
   return (

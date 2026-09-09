@@ -84,7 +84,7 @@ export function AppProvider({ children }) {
     setJob(null)
     setSelectedId(null)
     setAnalysisArea(null)
-    navigate(`/sedes/${item.id}/analisis/entrada`)
+    navigate(`/sedes/${item.id}`)
   }, [navigate])
 
   const createSite = useCallback(async (values) => {
@@ -103,16 +103,34 @@ export function AppProvider({ children }) {
   const chooseFile = (candidate) => {
     if (!candidate) return
     if (!candidate.name.toLowerCase().endsWith('.mp4')) { setJob({ status: 'failed', stage: 'upload', progress: 0, message: 'Selecciona un archivo MP4' }); return }
-    if (preview) URL.revokeObjectURL(preview)
     setFile(candidate)
     setPreview(URL.createObjectURL(candidate))
     setJob(null)
+    setFrameCapture(null)
     setAnalysisArea(null)
+  }
+
+  const clearFile = () => {
+    setFile(null)
+    setPreview('')
+    setJob(null)
+    setAnalysisArea(null)
+    if (inputRef.current) inputRef.current.value = ''
   }
 
   const updateConfiguration = (configuration) => setSite((current) => ({ ...current, configuration }))
 
-  const onFrameCapture = (dataUrl, width, height) => setFrameCapture({ dataUrl, width, height })
+  const onFrameCapture = (dataUrl, width, height) => {
+    const capture = { dataUrl, width, height }
+    setFrameCapture(capture)
+    setSite((current) => current ? ({
+      ...current,
+      configuration: {
+        ...current.configuration,
+        reference_frame: capture,
+      },
+    }) : current)
+  }
 
   const saveConfiguration = useCallback(async (configuration) => {
     const payload = configuration ?? siteRef.current.configuration
@@ -146,6 +164,9 @@ export function AppProvider({ children }) {
   const loadSite = useCallback(async (siteId) => {
     const data = await getSite(siteId)
     setSite(data)
+    if (data.configuration?.reference_frame?.dataUrl) {
+      setFrameCapture(data.configuration.reference_frame)
+    }
     setSites((current) => current.map((item) => item.id === data.id ? data : item))
     if (retailers.length) {
       const owner = retailers.find((item) => item.id === data.retailer_id)
@@ -181,6 +202,7 @@ export function AppProvider({ children }) {
     createSite,
     deleteSite,
     chooseFile,
+    clearFile,
     updateConfiguration,
     saveConfiguration,
     onFrameCapture,

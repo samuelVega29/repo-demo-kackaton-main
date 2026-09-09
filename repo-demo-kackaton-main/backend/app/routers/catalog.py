@@ -1,19 +1,21 @@
 import base64
 import binascii
 import shutil
+import tempfile
 from pathlib import Path
+import cv2
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..ai.layout_builder import suggest_full_layout
 from ..cv.shelf_detector import suggest_gondolas
 from ..cv.spatial import with_homographies
 from ..database import get_db
 from ..models import Retailer, Site, User
 from ..security import current_user, require_admin
-
 
 router = APIRouter(prefix="/api", tags=["catalog"])
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
@@ -56,6 +58,7 @@ def empty_site_configuration(width: float, depth: float, camera_name: str) -> di
             "pickup_reach_m": 0.5,
             "pickup_min_seconds": 0.6,
             "pickup_cooldown_s": None,
+            "pickup_min_amplitude_m": 0.10,
         },
     }
 
@@ -242,3 +245,59 @@ def suggest_gondolas_endpoint(
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"No fue posible detectar góndolas: {str(exc)[:200]}") from exc
     return {"candidates": candidates, "count": len(candidates)}
+
+def extract_sample_frames(video_path: Path, output_dir: Path, count: int = 3) -> list[Path]:
+    """Extrae frames espaciados para Claude Vision."""
+    capture = cv2.VideoCapture(str(video_path))
+    total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames <= 0:
+        capture.release()
+        raise RuntimeError("No se pudo leer el video")
+
+    denom = max(1, count - 1)
+    targets = sorted({round(i * max(0, total_frames - 1) / denom) for i in range(count)})
+    target_set = set(targets)
+
+    saved: list[Path] = []
+    frame_index = 0
+    while True:
+        ok, frame = capture.read()
+        if not ok:
+            break
+        if frame_index in target_set:
+            path = output_dir / f"layout_frame_{len(saved) + 1}.jpg"
+            cv2.imwrite(str(path), frame)
+            saved.append(path)
+        frame_index += 1
+        if len(saved) >= count:
+            break
+    capture.release()
+    if not saved:
+        raise RuntimeError("No se pudieron extraer frames")
+    return saved
+
+
+@router.post("/sites/{site_id}/layout-suggestions")
+def create_layout_suggestions(
+    site_id: int,
+    video: UploadFile = File(...),
+    user: User = Depends(current_user),
+    database: Session = Depends(get_db),
+) -> dict:
+    site = database.get(Site, site_id)
+    if not site or (user.role != "admin" and user.retailer_id != site.retailer_id):
+        raise HTTPException(status_code=404, detail="Sede no encontrada")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        video_path = tmp_dir / "video.mp4"
+        with video_path.open("wb") as target:
+            shutil.copyfileobj(video.file, target)
+
+        try:
+            frame_paths = extract_sample_frames(video_path, tmp_dir, count=3)
+            result = suggest_full_layout(frame_paths, site.configuration)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return result

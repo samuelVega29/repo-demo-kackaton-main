@@ -35,7 +35,7 @@ Zones without activity (visits == 0 AND dwell_seconds == 0) are always cold.
 
 Active zones are compared against each other, never against empties:
 
-- 1 active zone          -> normal (never hot automatically).
+- 1 active zone          -> hot (there is a clear activity focus).
 - 2 active zones         -> the greater is cold/hot-ranked ONLY when the gap
                             exceeds TWO_ACTIVE_SIGNIFICANT_GAP; when they are
                             practically equal both are normal.
@@ -108,7 +108,7 @@ def compute_zone_metrics(
             "interactions": interactions,
             "heat_index": 0.0,
             "classification": "cold",
-            "source": "auto_grid" if mode == "fast" else "configured",
+            "source": zone.get("source") or ("auto_grid" if mode == "fast" else "configured"),
         })
     heat_indices = _heat_indices(rows)
     classifications = _classify(heat_indices)
@@ -148,7 +148,7 @@ def _classify(heat_indices: list[float]) -> list[str]:
     if not active:
         return labels
     if len(active) == 1:
-        labels[active[0]] = "normal"
+        labels[active[0]] = "hot"
         return labels
     active_values = [heat_indices[index] for index in active]
     if max(active_values) == min(active_values):

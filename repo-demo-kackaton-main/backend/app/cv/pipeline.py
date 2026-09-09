@@ -204,6 +204,56 @@ def _auto_fast_zones(width: int, height: int, rows: int = FAST_ZONE_ROWS, cols: 
     return zones
 
 
+def _auto_gondola_zones(gondolas: list[dict], margin_x: float = 1.5, margin_z: float | None = None) -> list[dict]:
+    """Builds one zone per gondola, centered on its footprint and inflated by a margin.
+
+    The gondola ``x``/``z`` are the top-left corner of its footprint. Rotated gondolas use
+    the same rotation convention as ``SpatialEngine.local_offset`` (degrees, clockwise), so
+    the zone matches exactly what the interaction logic considers "near the gondola". The
+    margin can differ per axis (fast mode rescales pixels with different sx/sz factors).
+    """
+    zone_margin_z = margin_z if margin_z is not None else margin_x
+    zones = []
+    for gondola in gondolas:
+        gx = float(gondola["x"])
+        gz = float(gondola["z"])
+        width = float(gondola.get("width", 1.0) or 1.0)
+        depth = float(gondola.get("depth", 1.0) or 1.0)
+        rotation = float(gondola.get("rotation") or 0.0)
+        cx = gx + width / 2.0
+        cz = gz + depth / 2.0
+        half_w = width / 2.0 + margin_x
+        half_d = depth / 2.0 + zone_margin_z
+        theta = math.radians(rotation)
+        cos_t, sin_t = math.cos(theta), math.sin(theta)
+        corners = []
+        for u, v in ((-half_w, -half_d), (half_w, -half_d), (half_w, half_d), (-half_w, half_d)):
+            dx = u * cos_t - v * sin_t
+            dz = u * sin_t + v * cos_t
+            corners.append([round(cx + dx, 3), round(cz + dz, 3)])
+        zones.append({
+            "id": f"zone-{gondola['id']}",
+            "name": gondola.get("name") or f"Zona de {gondola['id']}",
+            "polygon": corners,
+            "source": "auto_gondola",
+        })
+    return zones
+
+
+def _fast_zones(gondolas: list[dict], thresholds: dict, sx: float, sz: float, width: int, height: int) -> list[dict]:
+    """Auto zones for fast mode: one footprint-sized rectangle per gondola when
+    the site has gondolas, otherwise the classic 3x3 grid.
+
+    Zones must match the gondola exactly as drawn in the planogram (no approach
+    margin), otherwise the exposed/rendered zones look much bigger than the real
+    shelf and the zone-derived metrics (visits/dwell/interactions) get attributed
+    over the whole approach area instead of the gondola itself.
+    """
+    if gondolas:
+        return _auto_gondola_zones(gondolas, margin_x=0.0, margin_z=0.0)
+    return _auto_fast_zones(width, height)
+
+
 def _fast_process_configuration(configuration: dict, width: int, height: int) -> dict:
     """Pixel-space working config for fast mode (identity projection, no false calibration).
 
@@ -216,15 +266,30 @@ def _fast_process_configuration(configuration: dict, width: int, height: int) ->
     producing zeroes because ``gondolas`` was emptied.
     """
     camera_name = (configuration.get("camera") or {}).get("name", "Cámara")
-    thresholds = dict(configuration.get("thresholds") or {
+    raw_thresholds = dict(configuration.get("thresholds") or {
         "approach_m": 1.5, "engaged_m": 0.8, "engaged_seconds": 2.0,
-        "interaction_seconds": 4.0, "minimum_track_seconds": 2.0,
+        "interaction_seconds": 4.0, "max_speed_m_s": 1.2, "minimum_track_seconds": 2.0,
         "pickup_reach_m": 0.5, "pickup_min_seconds": 0.6, "pickup_cooldown_s": None,
     })
     floor_m = configuration.get("floor") or {}
     floor_w = float(floor_m.get("width", 1.0) or 1.0)
     floor_d = float(floor_m.get("depth", 1.0) or 1.0)
     sx, sz = width / floor_w, height / floor_d
+    scale = (sx + sz) / 2.0
+    thresholds = {
+        **raw_thresholds,
+        "approach_m": float(raw_thresholds.get("approach_m", 1.5) or 1.5) * scale,
+        "engaged_m": float(raw_thresholds.get("engaged_m", 0.8) or 0.8) * scale,
+        "pickup_reach_m": float(
+            raw_thresholds.get("pickup_reach_m", raw_thresholds.get("hand_reach_m", 0.5))
+            or 0.5
+        ) * scale,
+        "pickup_min_amplitude_m": float(
+            raw_thresholds.get("pickup_min_amplitude_m", 0.10)
+            or 0.10
+        ) * scale,
+        "max_speed_m_s": float(raw_thresholds.get("max_speed_m_s", 1.2) or 1.2) * scale,
+    }
     gondolas = []
     for item in configuration.get("gondolas", []):
         x, z, gwidth, gdepth = item["x"], item["z"], item.get("width", 1.0), item.get("depth", 1.0)
@@ -250,7 +315,7 @@ def _fast_process_configuration(configuration: dict, width: int, height: int) ->
             "calibration_status": "fast",
             "model_3d": None,
         },
-        "zones": _auto_fast_zones(width, height),
+        "zones": _fast_zones(gondolas, raw_thresholds, sx, sz, width, height),
         "gondolas": gondolas,
         "thresholds": thresholds,
         "auto_zones": True,
@@ -311,6 +376,28 @@ def _exposed_point(point: list[float], mode: str, width: int, height: int) -> li
     return [float(point[0]), float(point[1])]
 
 
+def _exposed_gondola(gondola: dict, mode: str, width: int, height: int) -> dict:
+    if mode != "fast":
+        return gondola
+    return {
+        **gondola,
+        "x": round(float(gondola["x"]) / width, 6),
+        "z": round(float(gondola["z"]) / height, 6),
+        "width": round(float(gondola["width"]) / width, 6),
+        "depth": round(float(gondola["depth"]) / height, 6),
+        "height": 0.22,
+        "tier_heights": [0.06, 0.13, 0.2],
+        "pickup_events": [
+            {
+                **event,
+                "x": round(float(event["x"]) / width, 6),
+                "z": round(float(event["z"]) / height, 6),
+            }
+            for event in gondola.get("pickup_events", [])
+        ],
+    }
+
+
 def update_analysis(analysis_id: str, **values) -> None:
     with SessionLocal() as database:
         analysis = database.get(Analysis, analysis_id)
@@ -353,7 +440,20 @@ def project_hand(spatial: SpatialEngine, detection: dict) -> tuple[list[float] |
         if projected:
             candidates.append((SpatialEngine.distance_to_gondola(projected, active), projected))
     candidates.sort(key=lambda item: item[0])
-    return (candidates[0][1] if candidates else None), False
+    if candidates:
+        best_distance, best_point = candidates[0]
+        if best_distance <= float(spatial.configuration.get("thresholds", {}).get("approach_m", 1.5) or 1.5):
+            return best_point, False
+
+    # Without reliable pose, hand pixels are projected as if they were on the floor, which
+    # can push the estimated reach away from the shelf. If the body is already engaged
+    # very close to the gondola, use the nearest shelf point as a low-confidence proxy.
+    body_distance = SpatialEngine.distance_to_gondola(car, active)
+    proxy_reach = max(0.25, float(spatial.configuration.get("thresholds", {}).get("engaged_m", 0.8) or 0.8) * 0.55)
+    if body_distance <= proxy_reach:
+        return SpatialEngine.nearest_point_on_gondola(car, active), False
+
+    return None, False
 
 
 def build_findings(gondolas: list[dict], zones: list[dict], interactions: int, pickups: int = 0) -> list[dict]:
@@ -408,6 +508,22 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
         advanced = mode == "advanced"
         process_config = configuration if advanced else _fast_process_configuration(configuration, width, height)
         output_config = configuration if advanced else _fast_output_configuration(process_config, width, height)
+        # Advanced mode without any configured zone would produce an empty zones list,
+        # silently zeroing every zone-derived metric (hot zones, recommendations...).
+        # Mirror fast mode: auto-create one zone per gondola when there are gondolas,
+        # falling back to a floor grid when the site has neither zones nor gondolas.
+        # Same footprint rule as fast mode: no approach margin, the zone equals the
+        # shelf as drawn in the planogram.
+        if advanced and not (process_config.get("zones") or []):
+            floor = configuration.get("floor") or {}
+            auto_zones = _auto_gondola_zones(configuration.get("gondolas", []), margin_x=0.0, margin_z=0.0)
+            if not auto_zones:
+                auto_zones = _auto_fast_zones(
+                    float(floor.get("width", 12.0) or 12.0),
+                    float(floor.get("depth", 8.0) or 8.0),
+                )
+            process_config = {**configuration, "zones": auto_zones, "auto_zones": True}
+            output_config = process_config
         roi_pixels = _roi_to_pixel_polygon(roi, width, height) if roi else None
 
         update_analysis(analysis_id, stage="model", progress=5, message="Preparando detección y seguimiento (YOLO + ByteTrack)")
@@ -463,6 +579,14 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
         pickup_points: list[dict] = []
         interaction_events: list[dict] = []
         pickup_events: list[dict] = []
+        behavior_trace = {
+            "zone_hits": 0,
+            "near_gondola_frames": 0,
+            "engaged_frames": 0,
+            "interaction_frames": 0,
+            "hand_candidate_frames": 0,
+            "pickup_frames": 0,
+        }
         last_interaction: dict[int, bool] = defaultdict(bool)
         gondola_names = {item["id"]: item.get("name", item["id"]) for item in process_config.get("gondolas", [])}
         frame_samples: list[dict] = []
@@ -537,9 +661,18 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
                     track_frames[detection["track_id"]] += 1
                     zone = spatial.zone_at(detection["floor_point"])
                     if zone:
+                        behavior_trace["zone_hits"] += 1
                         zone_entry = zone_stats.setdefault(zone["id"], {"track_ids": set(), "dwell_seconds": 0.0, "interactions": 0})
                         zone_entry["dwell_seconds"] += dt
                         zone_entry["track_ids"].add(detection["track_id"])
+                    if behavior["gondola_id"]:
+                        behavior_trace["near_gondola_frames"] += 1
+                    if behavior["state"] in ("ENGAGED", "INTERACTION"):
+                        behavior_trace["engaged_frames"] += 1
+                    if behavior["interaction"]:
+                        behavior_trace["interaction_frames"] += 1
+                    if hand_point is not None:
+                        behavior_trace["hand_candidate_frames"] += 1
                     if frame_index % payload_every == 0:
                         timestamped = {**{"x": detection["floor_point"][0], "z": detection["floor_point"][1]}}
                         trajectories[detection["track_id"]].append(detection["floor_point"])
@@ -573,6 +706,7 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
                     else:
                         last_interaction[detection["track_id"]] = False
                     if behavior["pickup"] and hand_point is not None:
+                        behavior_trace["pickup_frames"] += 1
                         pickup_points.append({"x": hand_point[0], "z": hand_point[1], "weight": 1, "t": round(timestamp, 2)})
                         slice_buckets["pickup"][min(slice_count - 1, int(frame_index / slice_size))].append({"x": hand_point[0], "z": hand_point[1], "weight": 1})
                         pickup_events.append({
@@ -640,6 +774,16 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
             gondola["height"] = config.get("height", 1.45)
             gondola["tier_heights"] = config.get("tier_heights", [0.25, 0.73, 1.20])
 
+        # Keep the raw (internal-space) results to build pickup_events_log later:
+        # in fast mode the exposed copy re-normalizes coords to 0..1, which would
+        # double-normalize the events on the frontend (it divides by frame dims,
+        # just like it does for interaction_events_log).
+        raw_gondolas = list(gondolas)
+        gondolas = [
+            _exposed_gondola(gondola, mode, width, height)
+            for gondola in gondolas
+        ]
+
         duration_seconds = total_frames / fps
         zones = compute_zone_metrics(
             zone_stats,
@@ -673,7 +817,15 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
         interaction_events.sort(key=lambda event: event["t"])
         interaction_events_log = interaction_events[:400]
 
-        pickup_count = sum(item["pickups"] for item in gondolas)
+        pickup_count = sum(item["pickups"] for item in raw_gondolas)
+        pickup_events = []
+        for gondola in raw_gondolas:
+            for event in gondola.get("pickup_events", []):
+                pickup_events.append({
+                    **event,
+                    "gondola_id": gondola["id"],
+                    "gondola_name": gondola.get("name", gondola["id"]),
+                })
         pickup_histogram = None
         if pickup_events:
             bucket_s = max(10, round(duration_seconds / 12))
@@ -738,6 +890,7 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
                 "flow_per_minute": round(len(valid_track_ids) / duration_minutes, 1),
                 "peak_presence": peak_presence,
                 "time_slices": slice_count,
+                "behavior_trace": behavior_trace,
             },
             "trajectories": trajectory_payload,
             "frame_detections": frame_samples,
