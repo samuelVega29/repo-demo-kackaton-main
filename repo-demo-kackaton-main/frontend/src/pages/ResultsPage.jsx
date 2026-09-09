@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
+import { Users, Clock3, Film, MousePointer2, Gauge, Activity, CheckCircle2, Map, Video, ArrowDown } from 'lucide-react'
 import { Navigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppProvider'
 import { artifactUrl } from '../services/analyses'
 import StoreScene from '../components/StoreScene'
 import ShelfMatrix from '../components/ShelfMatrix'
 import AnalysisVideo from '../components/AnalysisVideo'
+import AnalysisInsights from '../components/AnalysisInsights'
+import analysisArt from '../assets/images/robot-resultados-pose.png'
+import orbitArt from '../assets/images/flujo_puntos.png'
 
-const modes = [['traffic', 'Trafico'], ['dwell', 'Permanencia'], ['interaction', 'Interaccion'], ['pickup', 'Pick-up']]
+const modes = [['traffic', 'Tráfico'], ['dwell', 'Permanencia'], ['interaction', 'Interacción'], ['pickup', 'Pick-up']]
 
 export default function ResultsPage() {
   const { job, site, mode, setMode, selectedId, setSelectedId, loadAnalysis } = useApp()
@@ -22,7 +26,7 @@ export default function ResultsPage() {
     loadAnalysis(analysisId).catch(() => {}).finally(() => setLoading(false))
   }, [analysisId, job?.result, loadAnalysis])
 
-  if (loading) return <section className="grid min-h-[calc(100vh-72px)] place-items-center font-[ui-monospace,monospace] text-sm font-bold tracking-[.18em] text-[#7d8392]">CARGANDO RESULTADOS</section>
+  if (loading) return <section className="grid min-h-[calc(100vh-72px)] place-items-center text-sm font-bold tracking-[.18em] text-slate-500">CARGANDO RESULTADOS</section>
   if (!job?.result) return <Navigate to={site ? `/sedes/${site.id}` : '/empresas'} replace />
 
   const analysis = job
@@ -33,155 +37,66 @@ export default function ResultsPage() {
   const pickupAvailable = Boolean(result.heatmaps?.pickup)
   const metrics = result.metrics || {}
   const video = result.video || {}
-  const zones = result.zones || []
-  const hotZones = zones.filter((zone) => zone.classification === 'hot')
-  const coldZones = zones.filter((zone) => zone.classification === 'cold')
-  const recommendations = result.recommendations || []
 
   return (
-    <section className="mx-auto w-[min(1480px,calc(100%-36px))] pb-[100px] pt-[72px] max-[760px]:w-[calc(100%-28px)] max-[760px]:pb-[75px] max-[760px]:pt-[55px]">
-      <div className="mb-10 flex items-end justify-between gap-[30px] max-[760px]:flex-col max-[760px]:items-start">
-        <div>
-          <span className="font-[ui-monospace,monospace] text-[10px] font-semibold tracking-[.17em] text-[#ff6b3d]">ANALISIS COMPLETADO · {(result.model?.tracker || 'TRACKING').toUpperCase()}</span>
-          <h1 className="my-[17px] mb-6 text-[clamp(55px,7vw,96px)] font-medium leading-[.92] tracking-[-.065em] text-[#151323] max-[760px]:text-[50px] max-[390px]:text-[43px]">
-            Retail <em className="not-italic text-[#ff6b3d]">Intelligence.</em>
-          </h1>
+    <div className="min-h-screen bg-[#f7f8fa] text-[#151323]">
+      <header className="relative overflow-hidden bg-gradient-to-br from-[#14283f] via-[#141c29] to-[#101722] px-5 py-8 sm:px-8">
+        <img src={orbitArt} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-15" />
+        <div className="relative mx-auto max-w-[1416px] grid items-center gap-4 lg:grid-cols-[1fr_1fr]">
+          <div className="py-6 sm:py-10"><span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[.18em] text-[#b7c4d5]"><CheckCircle2 size={15} aria-hidden="true" />Análisis completado</span>
+            <h1 className="mt-5 max-w-xl text-[clamp(34px,4vw,58px)] font-extrabold leading-[1.1] tracking-tight text-white">Descubre lo que pasa <span className="text-[#ff7a1a]">en tu tienda.</span></h1>
+            <p className="mt-5 max-w-lg text-sm font-medium leading-relaxed text-[#c4cddb]">Explora el movimiento de tus clientes y convierte los datos de tu espacio en mejores decisiones.</p>
+            <a href="#hallazgos" className="mt-6 inline-flex items-center gap-3 rounded-xl bg-[#ff7a1a] px-6 py-3.5 text-sm font-bold text-white transition-colors hover:bg-[#ed6909]">Explorar resultados<ArrowDown size={17} aria-hidden="true" /></a>
+          </div>
+          <img src={analysisArt} alt="" className="mx-auto hidden h-[380px] w-auto max-w-full object-contain lg:block" style={{ maskImage: 'linear-gradient(to right, transparent, black 10%, black 90%, transparent), linear-gradient(to bottom, transparent, black 7%, black 93%, transparent)', maskComposite: 'intersect', WebkitMaskImage: 'linear-gradient(to right, transparent, black 10%, black 90%, transparent), linear-gradient(to bottom, transparent, black 7%, black 93%, transparent)', WebkitMaskComposite: 'source-in' }} />
         </div>
-        <div className="grid min-w-[430px] grid-cols-2 rounded-lg border border-[#e5e7ee] bg-white shadow-[0_20px_55px_-40px_rgba(20,27,36,.35)] max-[760px]:min-w-0 max-[760px]:w-full [&_span:nth-child(2n)]:border-r-0 [&_span:nth-last-child(-n+2)]:border-b-0">
-          <span className="border-b border-r border-[#e5e7ee] p-4 text-[8px] text-[#7d8392]"><b className="mb-1 block font-[ui-monospace,monospace] text-[17px] font-semibold text-[#151323]">{metrics.tracked_presences ?? metrics.people_detected ?? 0}</b>Presencias rastreadas</span>
-          <span className="border-b border-r border-[#e5e7ee] p-4 text-[8px] text-[#7d8392]"><b className="mb-1 block font-[ui-monospace,monospace] text-[17px] font-semibold text-[#151323]">{video.duration_seconds ?? 0}s</b>Duracion</span>
-          <span className="border-b border-r border-[#e5e7ee] p-4 text-[8px] text-[#7d8392]"><b className="mb-1 block font-[ui-monospace,monospace] text-[17px] font-semibold text-[#151323]">{video.processed_frames ?? video.total_frames ?? 0}</b>Frames</span>
-          <span className="border-b border-r border-[#e5e7ee] p-4 text-[8px] text-[#7d8392]"><b className="mb-1 block font-[ui-monospace,monospace] text-[17px] font-semibold text-[#151323]">{metrics.interaction_events ?? 0}</b>Interacciones</span>
-          <span className="border-b border-r border-[#e5e7ee] p-4 text-[8px] text-[#7d8392]"><b className="mb-1 block font-[ui-monospace,monospace] text-[17px] font-semibold text-[#151323]">{metrics.average_speed_m_s ?? metrics.average_speed_normalized ?? 0}</b>Velocidad media</span>
-          <span className="border-b border-r border-[#e5e7ee] p-4 text-[8px] text-[#7d8392]"><b className="mb-1 block font-[ui-monospace,monospace] text-[17px] font-semibold text-[#151323]">{metrics.flow_per_minute ?? 0}/min</b>Flujo</span>
+      </header>
+    <section className="mx-auto w-[min(1480px,calc(100%-36px))] pb-[100px] pt-8 max-[760px]:w-[calc(100%-28px)] max-[760px]:pb-[75px] max-[760px]:pt-6">
+        <div className="relative grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          {[
+            [Users, 'Presencias rastreadas', metrics.tracked_presences ?? metrics.people_detected ?? 0, ''],
+            [Clock3, 'Duración del video', video.duration_seconds ?? 0, ' s'],
+            [Film, 'Fotogramas procesados', video.processed_frames ?? video.total_frames ?? 0, ''],
+            [MousePointer2, 'Interacciones', metrics.interaction_events ?? 0, ''],
+            [Gauge, metrics.average_speed_m_s != null ? 'Velocidad media (m/s)' : 'Velocidad normalizada', metrics.average_speed_m_s ?? metrics.average_speed_normalized ?? 0, ''],
+            [Activity, 'Flujo por minuto', metrics.flow_per_minute ?? 0, ''],
+          ].map(([Icon, label, value, unit]) => <article key={label} className="rounded-2xl border border-[#e5e7ee] bg-white p-4"><span className="mb-3 grid h-9 w-9 place-items-center rounded-xl bg-[#ff7a1a]/10 text-[#cf4921]"><Icon size={18} aria-hidden="true" /></span><p className="text-2xl font-bold tabular-nums tracking-tight text-[#151323]">{Number(value).toLocaleString('es-CO', { maximumFractionDigits: 2 })}<span className="text-sm text-slate-500">{unit}</span></p><h2 className="mt-1 text-xs leading-relaxed text-slate-500">{label}</h2></article>)}
         </div>
-      </div>
+        <nav aria-label="Secciones del análisis" className="relative mb-8 mt-6 flex flex-wrap gap-2 border-t border-[#ff7a1a]/20 pt-5">
+          {[[Video, '#video-analisis', 'Explorar video'], [Map, '#mapa-analisis', 'Mapa de la tienda'], [Activity, '#hallazgos', 'Resultados y evidencia']].map(([Icon, href, label]) => <a key={href} href={href} className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs text-slate-600 hover:bg-[#ff7a1a]/10 hover:text-[#cf4921]"><Icon size={14} aria-hidden="true" />{label}</a>)}
+        </nav>
+
 
       <AnalysisVideo analysis={analysis} />
 
-      <div className="mt-[90px]">
+      <div id="mapa-analisis" className="mt-8 scroll-mt-24 rounded-3xl border border-[#e5e7ee] bg-[#f7f8fa] p-4 sm:p-6">
         <div className="mb-6">
-          <span className="font-[ui-monospace,monospace] text-[10px] font-semibold tracking-[.17em] text-[#1f6feb]">GEMELO ESPACIAL</span>
-          <h2 className="mt-[9px] text-[clamp(32px,4vw,52px)] tracking-[-.045em] text-[#151323]">Mapa operativo de la sede</h2>
+          <span className="text-[10px] font-medium tracking-[.17em] text-[#cf4921]">GEMELO ESPACIAL</span>
+          <h2 className="mt-[9px] text-2xl font-bold tracking-[-.045em] text-[#151323]">Mapa de la tienda</h2><p className="mt-2 text-sm text-slate-500">Selecciona una góndola para consultar su actividad y cambia la capa para comparar las métricas.</p>
         </div>
-        <div className="relative z-[2] mb-[-1px] flex w-fit rounded-t-lg border border-[#e5e7ee] bg-white p-1 max-[760px]:sticky max-[760px]:top-[66px] max-[760px]:w-full" role="tablist">
+        <div className="relative z-[2] mb-4 flex w-fit rounded-xl border border-[#e5e7ee] bg-white p-1 max-[760px]:sticky max-[760px]:top-[66px] max-[760px]:w-full" role="tablist">
           {modes.map(([value, label]) => (
-            <button role="tab" aria-selected={mode === value} className={`min-w-[130px] rounded-md border-0 bg-transparent p-3 px-[18px] text-[11px] text-[#7d8392] max-[760px]:min-w-0 max-[760px]:flex-1 max-[760px]:px-[5px] max-[760px]:p-[11px] max-[390px]:text-[9px] ${mode === value ? 'bg-[#ff6b3d] font-extrabold text-white' : ''}`} onClick={() => setMode(value)} key={value}>
-              {label}{value === 'interaction' && !interactionAvailable && <small className="mt-[3px] block text-[6px]">evidencia insuficiente</small>}
-              {value === 'pickup' && !pickupAvailable && <small className="mt-[3px] block text-[6px]">sin eventos</small>}
+            <button role="tab" aria-selected={mode === value} className={`min-w-[130px] rounded-md border-0 p-3 px-[18px] text-[11px] text-slate-500 max-[760px]:min-w-0 max-[760px]:flex-1 max-[760px]:px-[5px] max-[760px]:p-[11px] max-[390px]:text-[9px] ${mode === value ? 'bg-[#ff7a1a] font-medium text-white' : 'bg-transparent text-slate-500'}`} onClick={() => setMode(value)} key={value}>
+              {label}{value === 'interaction' && !interactionAvailable && <small className="mt-[3px] block text-[9px]">evidencia insuficiente</small>}
+              {value === 'pickup' && !pickupAvailable && <small className="mt-[3px] block text-[9px]">sin eventos</small>}
             </button>
           ))}
         </div>
-        <div className="grid min-h-[690px] grid-cols-[minmax(0,1fr)_360px] rounded-b-lg border border-[#e5e7ee] bg-[#08100e] max-[980px]:min-h-[620px] max-[980px]:grid-cols-[minmax(0,1fr)_320px] max-[760px]:block max-[760px]:min-h-[520px]">
+        <div className="grid min-h-[690px] grid-cols-[minmax(0,1fr)_360px] rounded-2xl border border-[#e5e7ee] bg-[#08100e] max-[980px]:min-h-[620px] max-[980px]:grid-cols-[minmax(0,1fr)_320px] max-[760px]:block max-[760px]:min-h-[520px]">
           <div className="relative min-w-0 border-r border-[rgba(206,236,221,.14)] max-[760px]:h-[520px] max-[760px]:border-r-0 max-[390px]:h-[460px]">
             <StoreScene result={result} mode={mode} selectedId={selectedId} onSelect={setSelectedId} heatmapUrl={heatmapUrl} slices={result.heatmaps?.slices} analysisId={analysis.id} />
           </div>
-          <aside className={`min-w-0 bg-[#0b1613] max-[760px]:fixed max-[760px]:bottom-0 max-[760px]:left-0 max-[760px]:right-0 max-[760px]:z-50 max-[760px]:max-h-[78vh] max-[760px]:overflow-y-auto max-[760px]:rounded-t-[18px] max-[760px]:border-t max-[760px]:border-t-[#53786a] max-[760px]:shadow-[0_-25px_80px_rgba(0,0,0,.55)] max-[760px]:transition-transform max-[760px]:duration-300 max-[760px]:ease-in-out ${selected ? 'max-[760px]:translate-y-0' : 'max-[760px]:translate-y-[110%]'}`}>
-            <button className="sticky top-[10px] z-[2] m-0 ml-auto mb-0 hidden h-8 w-8 place-items-center rounded-full border border-[rgba(206,236,221,.14)] bg-[#172720] text-[#dbe8e2] max-[760px]:mt-[10px] max-[760px]:mr-3 max-[760px]:grid" onClick={() => setSelectedId(null)}>×</button>
+          <aside className={`min-w-0 bg-white text-[#151323] max-[760px]:fixed max-[760px]:bottom-0 max-[760px]:left-0 max-[760px]:right-0 max-[760px]:z-50 max-[760px]:max-h-[78vh] max-[760px]:overflow-y-auto max-[760px]:rounded-t-[18px] max-[760px]:border-t max-[760px]:border-t-[#e5e7ee] max-[760px]:shadow-[0_-25px_80px_rgba(0,0,0,.55)] max-[760px]:transition-transform max-[760px]:duration-300 max-[760px]:ease-in-out ${selected ? 'max-[760px]:translate-y-0' : 'max-[760px]:translate-y-[110%]'}`}>
+            <button className="sticky top-[10px] z-[2] m-0 ml-auto mb-0 hidden h-8 w-8 place-items-center rounded-full border border-[rgba(206,236,221,.14)] bg-slate-100 text-slate-600 max-[760px]:mt-[10px] max-[760px]:mr-3 max-[760px]:grid" onClick={() => setSelectedId(null)}>×</button>
             {selected
               ? <ShelfMatrix gondola={selected} mode={mode} events={result.interaction_events_log || []} />
-              : <div className="grid h-full place-items-center px-[27px] p-[33px] text-center text-[12px] leading-[1.7] text-[#70857c] max-[760px]:hidden">Selecciona una gondola en el planograma para inspeccionar su actividad.</div>}
+              : <div className="grid h-full place-items-center px-[27px] p-[33px] text-center text-[12px] leading-[1.7] text-slate-500 max-[760px]:hidden">Selecciona una góndola en el planograma para inspeccionar su actividad.</div>}
           </aside>
         </div>
       </div>
 
-      <div className="mt-[90px] grid grid-cols-[minmax(0,1.4fr)_minmax(340px,.6fr)] gap-[45px] max-[1120px]:grid-cols-1 max-[760px]:mt-[75px] max-[760px]:gap-[45px]">
-        <section>
-          <div className="mb-7"><span className="font-[ui-monospace,monospace] text-[10px] font-semibold tracking-[.17em] text-[#1f6feb]">EVIDENCIA VISUAL</span><h2 className="mt-[9px] text-[clamp(33px,4vw,52px)] tracking-[-.045em] text-[#151323]">Frames y detecciones</h2></div>
-          <div className="grid grid-cols-3 gap-[7px] max-[980px]:grid-cols-3 max-[760px]:grid-cols-2 max-[390px]:grid-cols-1">{(result.annotated_frames || []).map((filename, index) => <figure key={filename} className="relative m-0 aspect-video overflow-hidden rounded-lg bg-[#0e1916]"><img className="h-full w-full object-cover" src={artifactUrl(analysis.id, filename)} alt={`Frame procesado ${index + 1}`} /><figcaption className="absolute bottom-[7px] left-[7px] bg-[rgba(5,10,8,.83)] px-[7px] p-[5px] font-[ui-monospace,monospace] text-[7px] font-medium text-[#aac0b7]">FRAME {index + 1}</figcaption></figure>)}</div>
-        </section>
-        <section id="hallazgos">
-          <div className="mb-7"><span className="font-[ui-monospace,monospace] text-[10px] font-semibold tracking-[.17em] text-[#ff6b3d]">HALLAZGOS CALCULADOS</span><h2 className="mt-[9px] text-[clamp(33px,4vw,52px)] tracking-[-.045em] text-[#151323]">Que indican los datos</h2></div>
-
-          {(hotZones.length > 0 || coldZones.length > 0) && (
-            <div className="mb-8">
-              <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-[#151323]">Zonas de calor y frio <span className="text-[#7d8392]">· según clasificacion del analisis</span></h3>
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-[7px]">
-                {hotZones.map((zone, index) => (
-                  <ZoneCard key={`hot-${zone.zone_id || index}`} zone={zone} kind="hot" />
-                ))}
-                {coldZones.map((zone, index) => (
-                  <ZoneCard key={`cold-${zone.zone_id || index}`} zone={zone} kind="cold" />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {recommendations.length > 0 && (
-            <div className="mb-8">
-              <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-[#151323]">Recomendaciones</h3>
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-[7px]">
-                {recommendations.map((recommendation, index) => (
-                  <RecommendationCard key={`${recommendation.rule}-${index}`} recommendation={recommendation} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {(result.findings || []).map((finding, index) => <article key={`${finding.title}-${index}`} className="grid grid-cols-[34px_1fr] gap-[14px] border-t border-[#e5e7ee] py-[19px]"><span className="font-[ui-monospace,monospace] text-[9px] font-semibold text-[#ff6b3d]">{String(index + 1).padStart(2, '0')}</span><div><h3 className="m-0 mb-[7px] text-[14px] text-[#151323]">{finding.title}</h3><p className="m-0 text-[10px] leading-[1.6] text-[#7d8392]">{finding.detail}</p></div></article>)}
-        </section>
-      </div>
+      <AnalysisInsights key={analysis.id} analysis={analysis} />
     </section>
-  )
-}
-
-function ZoneCard({ zone, kind }) {
-  const value = Number(zone.heat_index || 0)
-  const accent = kind === 'hot' ? '#ff6b3d' : '#1f6feb'
-  const label = kind === 'hot' ? 'Caliente' : 'Fria'
-  return (
-    <article className={`rounded-lg border bg-white p-[15px] ${kind === 'hot' ? 'border-[#ffd9c4] bg-[#fff9f5]' : 'border-[#cdddf7] bg-[#f6f9ff]'}`}>
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <h4 className="m-0 text-[12px] font-black leading-tight text-[#151323]">{zone.name}</h4>
-        <span className={`shrink-0 rounded-full px-2 py-[3px] text-[8px] font-black uppercase tracking-wide ${kind === 'hot' ? 'bg-[#ff6b3d] text-white' : 'bg-[#1f6feb] text-white'}`}>{label}</span>
-      </div>
-      <div className="mb-3">
-        <div className="mb-1 flex items-center justify-between gap-2 text-[9px] font-bold text-[#7d8392]"><span>Heat index</span><span className="font-[ui-monospace,monospace] text-[#151323]">{(value * 100).toFixed(1)}%</span></div>
-        <div className="h-[6px] overflow-hidden rounded-full bg-[#ececf0]"><div className="h-full rounded-full" style={{ width: `${Math.max(2, value * 100)}%`, background: accent }} /></div>
-      </div>
-      <dl className="m-0 grid grid-cols-2 gap-x-[14px] gap-y-[9px]">
-        <MetricCell label="Visitas" value={String(zone.visits ?? 0)} />
-        <MetricCell label="Densidad" value={`${zone.density ?? 0}/min`} />
-        <MetricCell label="Permanencia total" value={`${zone.dwell_seconds ?? 0}s`} />
-        <MetricCell label="Permanencia media" value={`${zone.avg_dwell_seconds ?? 0}s`} />
-        <MetricCell label="Interacciones" value={String(zone.interactions ?? 0)} />
-        <MetricCell label="Fuente" value={zone.source === 'configured' ? 'Configurada' : 'Grilla auto'} />
-      </dl>
-    </article>
-  )
-}
-
-function MetricCell({ label, value }) {
-  return <div><dt className="text-[8px] font-bold text-[#7d8392]">{label}</dt><dd className="m-0 font-[ui-monospace,monospace] text-[11px] font-semibold text-[#151323]">{value}</dd></div>
-}
-
-function RecommendationCard({ recommendation }) {
-  const severityStyles = {
-    high: { label: 'Alta', className: 'bg-[#ff3b30] text-white' },
-    medium: { label: 'Media', className: 'bg-[#ff6b3d] text-white' },
-    low: { label: 'Baja', className: 'bg-[#1f6feb] text-white' },
-  }
-  const severity = severityStyles[recommendation.severity] || severityStyles.medium
-  const trace = recommendation.trace || {}
-  return (
-    <article className="rounded-lg border border-[#ffe6d8] bg-white p-[15px]">
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <h4 className="m-0 max-w-[75%] text-[12px] font-black leading-tight text-[#151323]">{recommendation.title}</h4>
-        <span className={`shrink-0 rounded-full px-2 py-[3px] text-[8px] font-black uppercase tracking-wide ${severity.className}`}>{severity.label}</span>
-      </div>
-      <p className="m-0 mb-3 text-[10px] leading-[1.6] text-[#7d8392]">{recommendation.detail}</p>
-      {(typeof trace.heat_index === 'number' || typeof trace.visits === 'number' || typeof trace.classification === 'string') && (
-        <dl className="m-0 grid grid-cols-2 gap-x-[14px] gap-y-[9px] border-t border-[#eef0f3] pt-3">
-          {trace.zone_name && <MetricCell label="Zona" value={trace.zone_name} />}
-          {typeof trace.heat_index === 'number' && <MetricCell label="Heat index" value={(Number(trace.heat_index) * 100).toFixed(1) + '%'} />}
-          {typeof trace.visits === 'number' && <MetricCell label="Visitas" value={String(trace.visits)} />}
-          {typeof trace.avg_dwell_seconds === 'number' && <MetricCell label="Permanencia media" value={`${trace.avg_dwell_seconds}s`} />}
-          {typeof trace.interactions === 'number' && <MetricCell label="Interacciones" value={String(trace.interactions)} />}
-          {typeof trace.density === 'number' && <MetricCell label="Densidad" value={`${trace.density}/min`} />}
-          {typeof trace.hot_zones === 'number' && <MetricCell label="Zonas calientes" value={String(trace.hot_zones)} />}
-          {typeof trace.active_zones === 'number' && <MetricCell label="Zonas activas" value={String(trace.active_zones)} />}
-        </dl>
-      )}
-    </article>
+    </div>
   )
 }

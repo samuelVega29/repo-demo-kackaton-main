@@ -5,7 +5,7 @@ import { inverseHomography, projectFloor } from '../utils/homography'
 import { pointInPolygon } from '../utils/floorOutline'
 import { formatTime } from '../utils/format'
 
-const findingDotColor = { evidence: '#ff6b3d', recommendation: '#22c55e', quality: '#151323' }
+const findingDotColor = { evidence: '#ff7a1a', recommendation: '#22c55e', quality: '#151323' }
 
 const VIEW_MODES = [['original', 'Original'], ['heatmap', 'Mapa de calor'], ['pickup', 'Pick-ups'], ['zones', 'Zonas'], ['trajectories', 'Trayectorias']]
 const zoneStyles = {
@@ -139,7 +139,7 @@ export default function AnalysisVideo({ analysis }) {
     return [x, z]
   }
 
-  // Metricas principales dinamicas: se recalculan segun el instante actual del video.
+  // Métricas del video dinamicas: se recalculan segun el instante actual del video.
   // - Personas detectadas   -> presentes AHORA (track_id unicos en la ultima muestra <= time)
   // - Permanencia promedio  -> duracion media de presencia de las personas vistas hasta el instante
   // - Zonas calientes       -> zonas con actividad caliente (interaccion/pick-up) hasta el instante
@@ -469,20 +469,20 @@ export default function AnalysisVideo({ analysis }) {
   }
 
   return (
-    <section>
+    <section id="video-analisis" className="scroll-mt-24 rounded-3xl border border-[#e5e7ee] bg-[#f7f8fa] p-4 sm:p-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <span className="font-[ui-monospace,monospace] text-[10px] font-semibold tracking-[.17em] text-[#ff6b3d]">VIDEO INTERACTIVO</span>
-          <h2 className="mt-[9px] text-[clamp(32px,4vw,52px)] tracking-[-.045em] text-[#151323]">Analitica sobre el video real</h2>
+          <span className="text-[10px] font-medium tracking-[.17em] text-[#ff7a1a]">VIDEO INTERACTIVO</span>
+          <h2 className="mt-[9px] text-2xl font-bold tracking-[-.045em] text-[#151323]">Explora el video</h2><p className="mt-2 text-sm text-slate-500">Reproduce la grabación y elige una capa para entender lo que ocurre en cada zona.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2" role="tablist">
           {VIEW_MODES.map(([value, label]) => (
-            <button key={value} role="tab" aria-selected={viewMode === value} className={`rounded-full border px-4 py-2 text-[11px] font-bold transition ${viewMode === value ? 'border-[#ff6b3d] bg-[#ff6b3d] text-white' : 'border-[#e5e7ee] bg-white text-[#3f4858] hover:border-[#ff6b3d]'}`} onClick={() => setViewMode(value)}>{label}</button>
+            <button key={value} role="tab" aria-selected={viewMode === value} className={`rounded-full border px-4 py-2 text-[11px] font-medium transition ${viewMode === value ? 'border-[#ff7a1a] bg-[#ff7a1a] text-white' : 'border-[#e5e7ee] bg-white text-slate-600 hover:border-[#ff7a1a]'}`} onClick={() => setViewMode(value)}>{label}</button>
           ))}
         </div>
       </div>
 
-      <div className="grid overflow-hidden rounded-lg border border-[#e5e7ee] bg-[#05070a] shadow-[0_30px_90px_-45px_rgba(20,27,36,.55)] xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid overflow-hidden rounded-2xl border border-[#e5e7ee] bg-[#05070a] shadow-sm xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0">
         <div className="relative mx-auto bg-black" style={{ height: `min(${box ? `${box.width / videoRatio}px` : '100%'}, 72vh)` }}>
           <video ref={videoRef} src={videoUrl(analysis.id)} playsInline className="block h-full w-full bg-black object-contain" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
@@ -491,49 +491,49 @@ export default function AnalysisVideo({ analysis }) {
         </div>
 
         {viewMode === 'heatmap' ? (
-          <div className="text-white">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#101722] p-4">
-              <span className="text-[11px] text-white/60">Mapa de calor en vivo · corre el video y se acumulan las zonas calientes (interacción) y frías (tránsito)</span>
+          <div className="text-[#151323]">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e7ee] bg-white p-4">
+              <span className="text-[11px] text-slate-500">Mapa de calor en vivo · corre el video y se acumulan las zonas calientes (interacción) y frías (tránsito)</span>
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 text-[10px] text-white/80">
-                  <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#ff6b3d]" />Zona caliente
+                <div className="flex items-center gap-2 text-[10px] text-slate-600">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#ff7a1a]" />Zona caliente
                   <span className="ml-2 inline-block h-2.5 w-2.5 rounded-full bg-[#42aac9]" />Zona fría
                 </div>
                 {zones.length > 0 && (
-                  <button className="text-[11px] font-bold text-[#ff6b3d] underline underline-offset-2" onClick={() => setShowZoneBoundaries((value) => !value)}>
+                  <button className="text-[11px] font-medium text-[#ff7a1a] underline underline-offset-2" onClick={() => setShowZoneBoundaries((value) => !value)}>
                     {showZoneBoundaries ? 'Ocultar' : 'Mostrar'} limites de gondola
                   </button>
                 )}
               </div>
             </div>
-            <div className="grid gap-3 bg-[#101722] p-4 text-white md:grid-cols-[auto_1fr_auto_auto] md:items-center">
+            <div className="grid gap-3 bg-white p-4 text-[#151323] md:grid-cols-[auto_minmax(120px,1fr)] 2xl:grid-cols-[auto_minmax(120px,1fr)_auto] md:items-center">
               <div className="flex items-center gap-3">
-                <button className="grid h-10 w-10 place-items-center rounded-full border border-[#ff6b3d] bg-[#ff6b3d] text-[13px] font-bold text-white" onClick={() => { const video = videoRef.current; if (!video) return; video.paused ? video.play().catch(() => {}) : video.pause() }}>{playing ? 'II' : '▶'}</button>
-                <span className="font-[ui-monospace,monospace] text-[12px]">{formatTime(time)} / {formatTime(duration)}</span>
+                <button className="grid h-10 w-10 place-items-center rounded-full border border-[#ff7a1a] bg-[#ff7a1a] text-[13px] font-medium text-white" aria-label={playing ? 'Pausar video' : 'Reproducir video'} onClick={() => { const video = videoRef.current; if (!video) return; video.paused ? video.play().catch(() => {}) : video.pause() }}>{playing ? 'II' : '▶'}</button>
+                <span className="text-[12px]">{formatTime(time)} / {formatTime(duration)}</span>
               </div>
-              <input className="w-full accent-[#ff6b3d]" type="range" min="0" max={Math.max(1, duration)} step="0.1" value={Math.min(time, duration)} onChange={(event) => seek(Number(event.target.value))} />
-              <label className="flex items-center gap-2 text-[11px] text-white/75">Opacidad<input className="w-28 accent-[#ff6b3d]" type="range" min="0.05" max="0.7" step="0.05" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /></label>
-              <label className="flex items-center gap-2 text-[11px] text-white/75"><input className="accent-[#ff6b3d]" type="checkbox" checked={showHotZones} onChange={(event) => setShowHotZones(event.target.checked)} />Zonas calientes</label>
-              <label className="flex items-center gap-2 text-[11px] text-white/75"><input className="accent-[#42aac9]" type="checkbox" checked={showColdZones} onChange={(event) => setShowColdZones(event.target.checked)} />Zonas frías</label>
+              <input className="w-full accent-[#ff7a1a]" aria-label="Posición del video" type="range" min="0" max={Math.max(1, duration)} step="0.1" value={Math.min(time, duration)} onChange={(event) => seek(Number(event.target.value))} />
+              <label className="flex items-center gap-2 text-[11px] text-slate-600">Opacidad<input className="w-28 accent-[#ff7a1a]" type="range" min="0.05" max="0.7" step="0.05" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /></label>
+              <label className="flex items-center gap-2 text-[11px] text-slate-600"><input className="accent-[#ff7a1a]" type="checkbox" checked={showHotZones} onChange={(event) => setShowHotZones(event.target.checked)} />Zonas calientes</label>
+              <label className="flex items-center gap-2 text-[11px] text-slate-600"><input className="accent-[#42aac9]" type="checkbox" checked={showColdZones} onChange={(event) => setShowColdZones(event.target.checked)} />Zonas frías</label>
             </div>
           </div>
         ) : (
-          <div className="grid gap-3 border-t border-white/10 bg-[#101722] p-4 text-white md:grid-cols-[auto_1fr_auto_auto] md:items-center">
+          <div className="grid gap-3 border-t border-[#e5e7ee] bg-white p-4 text-[#151323] md:grid-cols-[auto_minmax(120px,1fr)] 2xl:grid-cols-[auto_minmax(120px,1fr)_auto] md:items-center">
             <div className="flex items-center gap-3">
-              <button className="grid h-10 w-10 place-items-center rounded-full border border-[#ff6b3d] bg-[#ff6b3d] text-[13px] font-bold text-white" onClick={() => { const video = videoRef.current; if (!video) return; video.paused ? video.play().catch(() => {}) : video.pause() }}>{playing ? 'II' : '▶'}</button>
-              <span className="font-[ui-monospace,monospace] text-[12px]">{formatTime(time)} / {formatTime(duration)}</span>
+              <button className="grid h-10 w-10 place-items-center rounded-full border border-[#ff7a1a] bg-[#ff7a1a] text-[13px] font-medium text-white" aria-label={playing ? 'Pausar video' : 'Reproducir video'} onClick={() => { const video = videoRef.current; if (!video) return; video.paused ? video.play().catch(() => {}) : video.pause() }}>{playing ? 'II' : '▶'}</button>
+              <span className="text-[12px]">{formatTime(time)} / {formatTime(duration)}</span>
             </div>
-            <input className="w-full accent-[#ff6b3d]" type="range" min="0" max={Math.max(1, duration)} step="0.1" value={Math.min(time, duration)} onChange={(event) => seek(Number(event.target.value))} />
-            <label className="flex items-center gap-2 text-[11px] text-white/75">Opacidad<input className="w-28 accent-[#ff6b3d]" type="range" min="0.05" max="0.7" step="0.05" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /></label>
-            <label className="flex items-center gap-2 text-[11px] text-white/75"><input className="accent-[#ff6b3d]" type="checkbox" checked={showHotZones} onChange={(event) => setShowHotZones(event.target.checked)} />Zonas calientes</label>
-            <label className="flex items-center gap-2 text-[11px] text-white/75"><input className="accent-[#42aac9]" type="checkbox" checked={showColdZones} onChange={(event) => setShowColdZones(event.target.checked)} />Zonas frías</label>
+            <input className="w-full accent-[#ff7a1a]" aria-label="Posición del video" type="range" min="0" max={Math.max(1, duration)} step="0.1" value={Math.min(time, duration)} onChange={(event) => seek(Number(event.target.value))} />
+            <label className="flex items-center gap-2 text-[11px] text-slate-600">Opacidad<input className="w-28 accent-[#ff7a1a]" type="range" min="0.05" max="0.7" step="0.05" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /></label>
+            <label className="flex items-center gap-2 text-[11px] text-slate-600"><input className="accent-[#ff7a1a]" type="checkbox" checked={showHotZones} onChange={(event) => setShowHotZones(event.target.checked)} />Zonas calientes</label>
+            <label className="flex items-center gap-2 text-[11px] text-slate-600"><input className="accent-[#42aac9]" type="checkbox" checked={showColdZones} onChange={(event) => setShowColdZones(event.target.checked)} />Zonas frías</label>
           </div>
         )}
         </div>
 
-        <aside className="max-h-[72vh] overflow-y-auto border-t border-white/10 bg-white p-4 xl:border-l xl:border-t-0">
+        <aside className="max-h-[85vh] overflow-y-auto border-t border-[#e5e7ee] bg-white p-4 xl:border-l xl:border-t-0">
           <div className="mb-5">
-            <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-[#7d8392]">Metricas principales</h3>
+            <h3 className="mb-3 text-[11px] font-medium uppercase tracking-wide text-slate-500">Métricas del video</h3>
             <div className="grid grid-cols-2 gap-2">
               <Metric icon={<Users size={18} />} label="Personas detectadas" value={liveMetrics.people} />
               <Metric icon={<Clock size={18} />} label="Permanencia promedio" value={`${liveMetrics.avgDwell.toFixed(1)} s`} />
@@ -544,46 +544,46 @@ export default function AnalysisVideo({ analysis }) {
 
           {findings.length > 0 && (
             <div className="mb-5 border-t border-[#e5e7ee] pt-4">
-              <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-[#7d8392]">Hallazgos clave</h3>
+              <h3 className="mb-3 text-[11px] font-medium uppercase tracking-wide text-slate-500">Hallazgos clave</h3>
               <ul className="grid gap-2">
                 {findings.slice(0, 4).map((finding, index) => (
-                  <li key={`${finding.title}-${index}`} className="flex items-start gap-2 text-xs leading-snug text-[#3f4858]">
-                    <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: findingDotColor[finding.type] || '#ff6b3d' }} />
+                  <li key={`${finding.title}-${index}`} className="flex items-start gap-2 text-xs leading-snug text-slate-600">
+                    <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: findingDotColor[finding.type] || '#ff7a1a' }} />
                     <span>{finding.title}</span>
                   </li>
                 ))}
               </ul>
-              <a href="#hallazgos" className="mt-3 inline-block text-[11px] font-bold text-[#ff6b3d] hover:underline">Ver recomendaciones →</a>
+              <a href="#hallazgos" className="mt-3 inline-block text-[11px] font-medium text-[#ff7a1a] hover:underline">Ver recomendaciones →</a>
             </div>
           )}
 
           <div className="mb-4 flex items-start justify-between gap-3 border-t border-[#e5e7ee] pt-4">
             <div>
-              <h3 className="text-lg font-black text-[#151323]">Eventos del video</h3>
-              <p className="mt-1 text-xs text-[#7d8392]">Salta al segundo exacto detectado por el analisis.</p>
+              <h3 className="text-lg font-semibold text-[#151323]">Eventos del video</h3>
+              <p className="mt-1 text-xs text-slate-500">Salta al segundo exacto detectado por el analisis.</p>
             </div>
-            <b className="rounded-full bg-[#fff1eb] px-3 py-1 text-[11px] text-[#ff6b3d]">{pickupEvents.length} pick-ups</b>
+            <b className="rounded-full bg-[#fff1eb] px-3 py-1 text-[11px] text-[#ff7a1a]">{pickupEvents.length} pick-ups</b>
           </div>
           <div className="mb-4 grid grid-cols-3 gap-1">
-            {['all', 'pickup', 'interaction'].map((value) => <button key={value} className={`rounded-md px-2 py-2 text-[10px] font-bold ${eventFilter === value ? 'bg-[#1f6feb] text-white' : 'bg-[#f6f6f4] text-[#7d8392]'}`} onClick={() => setEventFilter(value)}>{value === 'all' ? 'Todos' : value === 'pickup' ? 'Pick-ups' : 'Interacciones'}</button>)}
+            {['all', 'pickup', 'interaction'].map((value) => <button key={value} className={`rounded-md px-2 py-2 text-[10px] font-medium ${eventFilter === value ? 'bg-[#ff7a1a] text-white' : 'bg-slate-100 text-slate-500'}`} onClick={() => setEventFilter(value)}>{value === 'all' ? 'Todos' : value === 'pickup' ? 'Pick-ups' : 'Interacciones'}</button>)}
           </div>
           {visibleEvents.length ? (
             <div className="grid gap-2 pr-1">
               {visibleEvents.map((event, index) => {
                 const isPickup = pickupEvents.includes(event)
                 return (
-                  <button key={`${event.t}-${event.track_id}-${index}`} className="rounded-lg border border-[#e5e7ee] bg-white p-3 text-left transition hover:border-[#ff6b3d]" onClick={() => jumpToEvent(event)}>
+                  <button key={`${event.t}-${event.track_id}-${index}`} className="rounded-xl border border-[#e5e7ee] bg-white p-3 text-left transition hover:border-[#ff7a1a]" onClick={() => jumpToEvent(event)}>
                     <div className="flex items-center justify-between gap-2">
-                      <b className={`font-[ui-monospace,monospace] text-sm ${isPickup ? 'text-[#ff6b3d]' : 'text-[#1f6feb]'}`}>{formatTime(event.t || 0)}</b>
-                      <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${isPickup ? 'bg-[#fff1eb] text-[#ff6b3d]' : 'bg-[#eef5ff] text-[#1f6feb]'}`}>{isPickup ? 'Pick-up' : 'Interaccion'}</span>
+                      <b className={`text-sm ${isPickup ? 'text-[#ff7a1a]' : 'text-[#1f6feb]'}`}>{formatTime(event.t || 0)}</b>
+                      <span className={`rounded-full px-2 py-1 text-[10px] font-medium ${isPickup ? 'bg-[#fff1eb] text-[#ff7a1a]' : 'bg-[#eef5ff] text-[#1f6feb]'}`}>{isPickup ? 'Pick-up' : 'Interaccion'}</span>
                     </div>
                     <p className="mt-2 text-xs text-[#151323]">{event.product || event.gondola_name || `Track ${event.track_id}`}</p>
-                    {typeof event.row !== 'undefined' && typeof event.column !== 'undefined' && <p className="mt-1 text-[11px] text-[#7d8392]">Nivel {event.row + 1} · Seccion {event.column + 1}</p>}
+                    {typeof event.row !== 'undefined' && typeof event.column !== 'undefined' && <p className="mt-1 text-[11px] text-slate-500">Nivel {event.row + 1} · Seccion {event.column + 1}</p>}
                   </button>
                 )
               })}
             </div>
-          ) : <p className="rounded-lg border border-dashed border-[#e5e7ee] bg-[#f6f6f4] p-4 text-sm text-[#7d8392]">Este analisis no reporto eventos de pick-up o interaccion.</p>}
+          ) : <p className="rounded-lg border border-dashed border-[#e5e7ee] bg-slate-100 p-4 text-sm text-slate-500">Este analisis no reporto eventos de pick-up o interaccion.</p>}
         </aside>
       </div>
     </section>
@@ -592,11 +592,11 @@ export default function AnalysisVideo({ analysis }) {
 
 function Metric({ icon, label, value }) {
   return (
-    <article className="flex items-center gap-2 rounded-lg border border-[#e5e7ee] bg-white p-3">
+    <article className="flex items-center gap-2 rounded-xl border border-[#e5e7ee] bg-white p-3">
       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#fff1eb] text-[#ff5b12]">{icon}</span>
       <span className="min-w-0">
-        <b className="block truncate text-lg font-black text-[#151323]">{value}</b>
-        <span className="block text-[10px] font-bold leading-tight text-[#7d8392]">{label}</span>
+        <b className="block truncate text-lg font-semibold text-[#151323]">{value}</b>
+        <span className="block text-xs font-medium leading-relaxed text-slate-500">{label}</span>
       </span>
     </article>
   )
