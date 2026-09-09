@@ -49,6 +49,9 @@ GEMINI_FALLBACK_MODELS = [
     ).split(",")
     if item.strip()
 ]
+# Anonymize faces in every artifact (frames, overlays, served video). Set to
+# "0" to disable. On by default: matches the privacy-by-design requirement.
+BLUR_FACES = os.environ.get("SCAPDER_BLUR_FACES", "1") != "0"
 MODELS_ROOT = Path(os.environ.get("SCAPDER_MODELS", REPO_ROOT / "models"))
 EXPORTED_MODELS = MODELS_ROOT / "exported"
 BEHAVIOR_CONFIG = REPO_ROOT / "training" / "configs" / "behavior.yaml"
