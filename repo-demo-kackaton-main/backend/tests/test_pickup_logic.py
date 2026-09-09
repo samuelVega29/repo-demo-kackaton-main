@@ -126,6 +126,20 @@ def test_agarre_corto_registra_pick_up_y_credita_interaccion() -> None:
         f"pickups {g['pickups']} > interactions {g['interactions']}"
 
 
+def test_aliases_de_thresholds_tambien_registran_pick_up() -> None:
+    cfg = json_deepcopy(CONFIG)
+    cfg["thresholds"].pop("pickup_reach_m")
+    cfg["thresholds"].pop("pickup_min_seconds")
+    cfg["thresholds"]["hand_reach_m"] = 0.5
+    cfg["thresholds"]["pick_min_seconds"] = 0.6
+    engine = InteractionEngine(cfg)
+    for i in range(int(5.0 / DT)):
+        engine.observe(make_detection(321), i * DT, DT, frame_height=720, hand_point=HAND_IN)
+    g = engine.results()[0]
+    assert g["pickups"] >= 1
+    assert g["interactions"] >= 1
+
+
 def test_pase_rapido_sin_detenerse_no_genera_pick_up() -> None:
     """Un transeúnte que cruza frente a la góndola a velocidad alta no debe generar
     pick-ups (requiere estancia engaged: cerca, lento y >=engaged_seconds)."""

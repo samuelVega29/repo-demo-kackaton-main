@@ -91,7 +91,7 @@ export default function ProcessingPage() {
               {error && (
                 <div className="mt-6 rounded-md border border-[#ffd2c2] bg-[#fff1eb] p-4">
                   <p className="text-sm font-bold text-[#b43b1d]">{error}</p>
-                  <Link className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-md bg-[#111827] px-4 text-[13px] font-black text-white no-underline transition hover:-translate-y-px mt-3" to="/inicio">Volver a inicio</Link>
+                  <Link className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-md bg-[#111827] px-4 text-[13px] font-black text-white no-underline transition hover:-translate-y-px mt-3" to="/empresas">Volver a empresas</Link>
                 </div>
               )}
             </div>

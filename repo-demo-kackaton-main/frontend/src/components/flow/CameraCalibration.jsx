@@ -46,7 +46,7 @@ export default function CameraCalibration({ preview, configuration, onChange, on
       }
 
       if (homography) {
-        const gridStep = Math.max(0.5, Math.round(Math.max(1, Math.max(floor.width || 1, floor.depth || 1) / 12)) )
+        const gridStep = Math.max(0.5, Math.round(Math.max(1, Math.max(floor.width || 1, floor.depth || 1) / 12)))
         ctx.strokeStyle = 'rgba(212, 255, 112, .22)'
         ctx.lineWidth = 1
         for (let gx = 0; gx <= (floor.width || 1) + 1e-6; gx += gridStep) {
@@ -63,7 +63,7 @@ export default function CameraCalibration({ preview, configuration, onChange, on
         }
       }
 
-      ;(configuration.gondolas || []).forEach((gondola) => {
+      ; (configuration.gondolas || []).forEach((gondola) => {
         const corners = gondolaCorners(gondola)
         const pixels = corners.map(([x, z]) => toPx(x, z)).filter(Boolean)
         if (pixels.length < 4) return
@@ -282,36 +282,37 @@ export default function CameraCalibration({ preview, configuration, onChange, on
       {!preview
         ? <div className="px-5 py-[60px] text-center text-[10px] text-[#6c8179]">Primero selecciona un video MP4 para capturar un frame y calibrar la cámara.</div>
         : <><div className="mx-auto grid max-w-[860px] grid-cols-1 gap-[22px]">
-        {!externalCapture && <div className="min-w-0">
-          <video ref={videoRef} src={preview} controls muted playsInline className="aspect-auto h-auto max-h-[52vh] w-auto max-w-full bg-[#050a09]" />
-          <button className="mt-3 border border-[#d4ff70] bg-transparent p-[11px] px-[14px] text-[10px] text-[#d4ff70]" onClick={capture}>＋ Capturar frame</button>
-        </div>}
-        <div className={`grid min-h-[320px] min-w-0 place-items-center border border-dashed border-[#46685c] bg-[#08120f]${externalCapture ? ' hidden' : ''}`}>
-          {captured
-            ? <canvas ref={canvasRef} className="block h-auto max-h-[60vh] w-auto max-w-full cursor-crosshair touch-none border border-[#315148]" style={{ width: '100%', aspectRatio: `${captured.width}/${captured.height}` }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={release} onPointerCancel={release} />
-            : <div className="px-5 py-[60px] text-center text-[10px] text-[#6c8179]">Captura un frame para comenzar</div>}
+          {!externalCapture && <div className="min-w-0">
+            <video ref={videoRef} src={preview} controls muted playsInline className="aspect-auto h-auto max-h-[52vh] w-auto max-w-full bg-[#050a09]" />
+            <button className="mt-3 border border-[#d4ff70] bg-transparent p-[11px] px-[14px] text-[10px] text-[#d4ff70]" onClick={capture}>＋ Capturar frame</button>
+          </div>}
+          <div className={`grid min-h-[320px] min-w-0 place-items-center border border-dashed border-[#46685c] bg-[#08120f]${externalCapture ? ' hidden' : ''}`}>
+            {captured
+              ? <canvas ref={canvasRef} className="block h-auto max-h-[60vh] w-auto max-w-full cursor-crosshair touch-none border border-[#315148]" style={{ width: '100%', aspectRatio: `${captured.width}/${captured.height}` }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={release} onPointerCancel={release} />
+              : <div className="px-5 py-[60px] text-center text-[10px] text-[#6c8179]">Captura un frame para comenzar</div>}
+          </div>
         </div>
-      </div>
-      <div className="mt-4 mb-0 flex flex-wrap gap-x-[18px] gap-y-2 text-[9px] font-medium font-[ui-monospace,monospace] text-[#789087]">{targets.map(([x, z], index) => <span key={index}>P{index + 1} → ({x}, {z}) m</span>)}</div>
+          <div className="mt-4 mb-0 flex flex-wrap gap-x-[18px] gap-y-2 text-[9px] font-medium font-[ui-monospace,monospace] text-[#789087]">{targets.map(([x, z], index) => <span key={index}>P{index + 1} → ({x}, {z}) m</span>)}</div>
 
-      {/* Crop Info Display */}
-      {cropInfo?.has_bars && (
-        <div>
-          <b>Márgenes negros detectados</b>
-          <span>Arriba: {cropInfo.top}px · Abajo: {cropInfo.bottom}px · Izquierda: {cropInfo.left}px · Derecha: {cropInfo.right}px</span>
-          <span>Contenido: {cropInfo.content_width}×{cropInfo.content_height}px</span>
-          <small>Los márgenes negros se recortarán automáticamente durante el análisis para que la calibración quede alineada.</small>
-        </div>
-      )}
+          {/* Crop Info Display */}
+          {cropInfo?.has_bars && (
+            <div>
+              <b>Márgenes negros detectados</b>
+              <span>Arriba: {cropInfo.top}px · Abajo: {cropInfo.bottom}px · Izquierda: {cropInfo.left}px · Derecha: {cropInfo.right}px</span>
+              <span>Contenido: {cropInfo.content_width}×{cropInfo.content_height}px</span>
+              <small>Los márgenes negros se recortarán automáticamente durante el análisis para que la calibración quede alineada.</small>
+            </div>
 
-      {saveState.kind === 'ok' && <div className="mt-[10px] border border-[rgba(212,255,112,.35)] bg-[rgba(212,255,112,.06)] p-[10px] px-3 text-[10px] text-[#d4ff70]">{saveState.text}</div>}
-      {saveState.kind === 'warn' && <div className="mt-[10px] border border-[rgba(255,196,84,.4)] bg-[rgba(255,196,84,.07)] p-[10px] px-3 text-[10px] text-[#ffc454]">⚠ {saveState.text}</div>}
-      {saveState.kind === 'error' && <div className="mt-[10px] border border-[rgba(255,139,111,.4)] bg-[rgba(255,139,111,.06)] p-[10px] px-3 text-[10px] text-[#ff8b6f]">{saveState.text}</div>}
-      <div className="flex gap-2">
-        <button className="border border-[#3e5b51] bg-transparent p-3 px-[15px] text-[10px] text-[#b4c7bf]" onClick={restore}>Restaurar</button>
-        <button className="border border-[#3e5b51] bg-transparent p-3 px-[15px] text-[10px] text-[#b4c7bf] border-[#d4ff70]! text-[#d4ff70]! disabled:opacity-40 disabled:cursor-not-allowed" onClick={save} disabled={saving || !captured}>{saving ? 'Guardando…' : 'Guardar calibración'}</button>
-      </div>
-      </>}
+          )}
+
+          {saveState.kind === 'ok' && <div className="mt-[10px] border border-[rgba(212,255,112,.35)] bg-[rgba(212,255,112,.06)] p-[10px] px-3 text-[10px] text-[#d4ff70]">{saveState.text}</div>}
+          {saveState.kind === 'warn' && <div className="mt-[10px] border border-[rgba(255,196,84,.4)] bg-[rgba(255,196,84,.07)] p-[10px] px-3 text-[10px] text-[#ffc454]">⚠ {saveState.text}</div>}
+          {saveState.kind === 'error' && <div className="mt-[10px] border border-[rgba(255,139,111,.4)] bg-[rgba(255,139,111,.06)] p-[10px] px-3 text-[10px] text-[#ff8b6f]">{saveState.text}</div>}
+          <div className="flex gap-2">
+            <button className="border border-[#3e5b51] bg-transparent p-3 px-[15px] text-[10px] text-[#b4c7bf]" onClick={restore}>Restaurar</button>
+            <button className="border border-[#3e5b51] bg-transparent p-3 px-[15px] text-[10px] text-[#b4c7bf] border-[#d4ff70]! text-[#d4ff70]! disabled:opacity-40 disabled:cursor-not-allowed" onClick={save} disabled={saving || !captured}>{saving ? 'Guardando…' : 'Guardar calibración'}</button>
+          </div>
+        </>}
     </section>
   )
 }
