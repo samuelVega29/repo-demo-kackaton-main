@@ -1,13 +1,25 @@
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 
 from .database import Base, SessionLocal, engine
-from .models import Retailer, Site, User
+from .models import Analysis, Retailer, Site, User
 from .routers.catalog import empty_site_configuration
 from .security import hash_password
 
 
+def _add_missing_columns() -> None:
+    inspector = inspect(engine)
+    existing = {column["name"] for column in inspector.get_columns(Analysis.__tablename__)}
+    for column in Analysis.__table__.columns:
+        if column.name not in existing:
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    f'ALTER TABLE {Analysis.__tablename__} ADD COLUMN {column.name} {column.type.compile(engine.dialect)}'
+                )
+
+
 def initialize_database() -> None:
     Base.metadata.create_all(engine)
+    _add_missing_columns()
     with SessionLocal() as database:
         retailer = database.scalar(select(Retailer).where(Retailer.code == "demo-retail"))
         if not retailer:
