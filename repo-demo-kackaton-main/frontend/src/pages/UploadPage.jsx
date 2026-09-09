@@ -40,6 +40,10 @@ import {
 
 const MAX_VIDEO_DURATION_SECONDS = 120
 
+/* =========================================================
+   FORMATEAR TAMAÑO
+========================================================= */
+
 const formatBytes = (bytes) => {
   if (!bytes) {
     return ''
@@ -52,6 +56,10 @@ const formatBytes = (bytes) => {
     mb >= 10 ? 0 : 1
   )} MB`
 }
+
+/* =========================================================
+   FORMATEAR DURACIÓN
+========================================================= */
 
 const formatDuration = (seconds) => {
   if (
@@ -78,6 +86,10 @@ const formatDuration = (seconds) => {
   return `${minutes}:${rest}`
 }
 
+/* =========================================================
+   COMPONENTE PRINCIPAL
+========================================================= */
+
 export default function UploadPage() {
   const {
     file,
@@ -88,11 +100,13 @@ export default function UploadPage() {
     site,
   } = useApp()
 
-  const { siteId } =
-    useParams()
+  const {
+    siteId,
+  } = useParams()
 
-  const [searchParams] =
-    useSearchParams()
+  const [
+    searchParams,
+  ] = useSearchParams()
 
   const [
     metadata,
@@ -119,8 +133,14 @@ export default function UploadPage() {
     setHistoryError,
   ] = useState('')
 
+  /* =========================================================
+     CONFIGURACIÓN DE LA SEDE
+  ========================================================= */
+
   const configured =
-    isSiteConfigured(site)
+    isSiteConfigured(
+      site
+    )
 
   const reconfiguringCamera =
     searchParams.get(
@@ -128,10 +148,14 @@ export default function UploadPage() {
     ) === 'camara'
 
   const metricCalibrated =
-    isMetricCalibrated(site)
+    isMetricCalibrated(
+      site
+    )
 
   const calibrationLabel =
-    calibrationStatusLabel(site)
+    calibrationStatusLabel(
+      site
+    )
 
   const gondolaCount =
     site?.configuration
@@ -141,6 +165,10 @@ export default function UploadPage() {
   const referenceFrame =
     site?.configuration
       ?.reference_frame
+
+  /* =========================================================
+     ÚLTIMO FRAME GUARDADO
+  ========================================================= */
 
   const latestFrameAnalysis =
     history.find(
@@ -182,25 +210,19 @@ export default function UploadPage() {
           }`
         : 'Sin previsualización disponible'
 
-  /*
-    Si estamos recalibrando la cámara,
-    NO mostramos la revisión de configuración.
+  /* =========================================================
+     REVISAR CONFIGURACIÓN
+  ========================================================= */
 
-    Queremos ir directamente a cargar
-    un video de referencia.
-  */
   const mustReviewConfiguration =
     configured &&
     !acceptedConfig &&
     !reconfiguringCamera
 
-  /*
-    Flujo normal:
-    seleccionar área.
+  /* =========================================================
+     SIGUIENTE RUTA
+  ========================================================= */
 
-    Reconfiguración:
-    ir a captura.
-  */
   const nextPath =
     reconfiguringCamera
       ? `/sites/${siteId}/captura`
@@ -215,13 +237,27 @@ export default function UploadPage() {
     metadata?.duration >
     MAX_VIDEO_DURATION_SECONDS
 
+  /* =========================================================
+     REINICIAR CONFIGURACIÓN AL CAMBIAR SEDE
+  ========================================================= */
+
   useEffect(() => {
-    setAcceptedConfig(false)
-  }, [site?.id])
+    setAcceptedConfig(
+      false
+    )
+  }, [
+    site?.id,
+  ])
+
+  /* =========================================================
+     LEER METADATOS DEL VIDEO
+  ========================================================= */
 
   useEffect(() => {
     if (!preview) {
-      setMetadata(null)
+      setMetadata(
+        null
+      )
 
       return undefined
     }
@@ -254,14 +290,21 @@ export default function UploadPage() {
     return () => {
       video.src = ''
     }
-  }, [preview])
+  }, [
+    preview,
+  ])
+
+  /* =========================================================
+     HISTORIAL DE LA SEDE
+  ========================================================= */
 
   useEffect(() => {
     if (!siteId) {
       return undefined
     }
 
-    let active = true
+    let active =
+      true
 
     listAnalyses({
       site_id:
@@ -269,7 +312,9 @@ export default function UploadPage() {
     })
       .then(
         (items) => {
-          if (active) {
+          if (
+            active
+          ) {
             setHistory(
               items || []
             )
@@ -278,7 +323,9 @@ export default function UploadPage() {
       )
       .catch(
         (error) => {
-          if (active) {
+          if (
+            active
+          ) {
             setHistoryError(
               error.message
             )
@@ -287,9 +334,16 @@ export default function UploadPage() {
       )
 
     return () => {
-      active = false
+      active =
+        false
     }
-  }, [siteId])
+  }, [
+    siteId,
+  ])
+
+  /* =========================================================
+     RENDER
+  ========================================================= */
 
   return (
     <main
@@ -302,9 +356,9 @@ export default function UploadPage() {
         bg-[linear-gradient(105deg,#02182f_0%,#063d78_18%,#0a67b7_31%,#58acec_45%,#dceefd_63%,#f8fbff_82%,#f8fbff_100%)]
       "
     >
-      {/* =========================
+      {/* =====================================================
           DECORACIÓN IZQUIERDA
-      ========================== */}
+      ===================================================== */}
 
       <div
         className="
@@ -335,9 +389,9 @@ export default function UploadPage() {
         "
       />
 
-      {/* =========================
+      {/* =====================================================
           DECORACIÓN DERECHA
-      ========================== */}
+      ===================================================== */}
 
       <div
         className="
@@ -354,9 +408,9 @@ export default function UploadPage() {
         "
       />
 
-      {/* =========================
+      {/* =====================================================
           PUNTOS
-      ========================== */}
+      ===================================================== */}
 
       <div
         className="
@@ -371,7 +425,8 @@ export default function UploadPage() {
         "
       >
         {Array.from({
-          length: 25,
+          length:
+            25,
         }).map(
           (
             _,
@@ -392,9 +447,9 @@ export default function UploadPage() {
         )}
       </div>
 
-      {/* =========================
+      {/* =====================================================
           CONTENIDO
-      ========================== */}
+      ===================================================== */}
 
       <div
         className="
@@ -410,7 +465,9 @@ export default function UploadPage() {
           lg:px-7
         "
       >
-        {/* STEPPER */}
+        {/* =================================================
+            STEPPER
+        ================================================= */}
 
         <div
           className="
@@ -427,9 +484,9 @@ export default function UploadPage() {
           />
         </div>
 
-        {/* =========================
+        {/* =================================================
             CONTENEDOR PRINCIPAL
-        ========================== */}
+        ================================================= */}
 
         <div
           className="
@@ -441,9 +498,9 @@ export default function UploadPage() {
             xl:mr-0
           "
         >
-          {/* =========================
+          {/* =================================================
               ROBOT
-          ========================== */}
+          ================================================= */}
 
           <aside
             className="
@@ -539,7 +596,7 @@ export default function UploadPage() {
               "
             />
 
-            {/* IMAGEN ROBOT */}
+            {/* ROBOT */}
 
             <img
               src={
@@ -600,9 +657,9 @@ export default function UploadPage() {
             </div>
           </aside>
 
-          {/* =========================
-              FORMULARIO + SIDEBAR
-          ========================== */}
+          {/* =================================================
+              FORMULARIO + PANEL DERECHO
+          ================================================= */}
 
           <div
             className="
@@ -613,9 +670,9 @@ export default function UploadPage() {
               lg:items-stretch
             "
           >
-            {/* =========================
-                FORMULARIO
-            ========================== */}
+            {/* =================================================
+                PANEL PRINCIPAL
+            ================================================= */}
 
             <div
               className="
@@ -623,6 +680,10 @@ export default function UploadPage() {
               "
             >
               {mustReviewConfiguration ? (
+                /* =================================================
+                   CONFIGURACIÓN YA GUARDADA
+                ================================================= */
+
                 <section
                   className="
                     h-full
@@ -657,8 +718,7 @@ export default function UploadPage() {
                       text-[#102033]
                     "
                   >
-                    Revisa la configuración
-                    de esta sede
+                    Revisa la configuración de esta sede
                   </h1>
 
                   <p
@@ -671,11 +731,9 @@ export default function UploadPage() {
                       text-[#667991]
                     "
                   >
-                    Esta sede ya tiene
-                    plano y góndolas
-                    guardadas. Verifica la
-                    previsualización antes
-                    de continuar.
+                    Esta sede ya tiene plano y góndolas
+                    guardadas. Verifica la previsualización
+                    antes de continuar.
                   </p>
 
                   {/* PREVIEW */}
@@ -716,8 +774,7 @@ export default function UploadPage() {
                           text-white/65
                         "
                       >
-                        No hay frame guardado
-                        para previsualizar.
+                        No hay frame guardado para previsualizar.
                       </div>
                     )}
 
@@ -761,7 +818,9 @@ export default function UploadPage() {
                     />
 
                     <PipelineItem
-                      icon={Store}
+                      icon={
+                        Store
+                      }
                       active={
                         gondolaCount >
                         0
@@ -776,7 +835,9 @@ export default function UploadPage() {
                     />
 
                     <PipelineItem
-                      icon={Eye}
+                      icon={
+                        Eye
+                      }
                       active={Boolean(
                         previewFrameSrc
                       )}
@@ -820,6 +881,8 @@ export default function UploadPage() {
                         text-[11px]
                         font-black
                         text-white
+                        transition
+                        hover:-translate-y-0.5
                       "
                     >
                       <CheckCircle2
@@ -846,6 +909,8 @@ export default function UploadPage() {
                         font-black
                         text-[#ff5b12]
                         no-underline
+                        transition
+                        hover:border-[#ff641f]
                       "
                     >
                       <Wrench
@@ -857,6 +922,10 @@ export default function UploadPage() {
                   </div>
                 </section>
               ) : (
+                /* =================================================
+                   SUBIR / CAMBIAR VIDEO
+                ================================================= */
+
                 <section
                   className="
                     flex
@@ -871,8 +940,6 @@ export default function UploadPage() {
                     shadow-[0_18px_48px_-30px_rgba(4,43,87,.38)]
                   "
                 >
-                  {/* CABECERA */}
-
                   <div
                     className="
                       flex
@@ -962,9 +1029,7 @@ export default function UploadPage() {
                     </button>
                   </div>
 
-                  {/* =========================
-                      CARGA DE VIDEO
-                  ========================== */}
+                  {/* CARGA */}
 
                   <button
                     type="button"
@@ -1141,21 +1206,13 @@ export default function UploadPage() {
                       >
                         Formato: MP4
 
-                        <span
-                          className="
-                            mx-2
-                          "
-                        >
+                        <span className="mx-2">
                           |
                         </span>
 
                         Máximo 120 segundos
 
-                        <span
-                          className="
-                            mx-2
-                          "
-                        >
+                        <span className="mx-2">
                           |
                         </span>
 
@@ -1186,6 +1243,7 @@ export default function UploadPage() {
                         text-[10px]
                         font-black
                         text-[#b74322]
+                        transition
                         hover:bg-[#fff4ee]
                       "
                     >
@@ -1200,322 +1258,344 @@ export default function UploadPage() {
               )}
             </div>
 
-            {/* =========================
+            {/* =================================================
                 PANEL DERECHO
-            ========================== */}
+                SIEMPRE VISIBLE
+            ================================================= */}
 
-            {!mustReviewConfiguration && (
-              <aside
+            <aside
+              className="
+                flex
+                h-full
+                min-h-[500px]
+                flex-col
+                rounded-[22px]
+                border
+                border-[#c9dcec]
+                bg-white
+                p-4
+                shadow-[0_18px_48px_-30px_rgba(4,43,87,.32)]
+              "
+            >
+              {/* =================================================
+                  CABECERA DEL PANEL
+              ================================================= */}
+
+              <div
                 className="
-                  flex
-                  h-full
-                  min-h-[500px]
-                  flex-col
-                  rounded-[22px]
-                  border
-                  border-[#c9dcec]
-                  bg-white
-                  p-4
-                  shadow-[0_18px_48px_-30px_rgba(4,43,87,.32)]
+                  mb-2.5
+                  grid
+                  h-8
+                  w-8
+                  place-items-center
+                  rounded-[9px]
+                  bg-[#fff0e8]
+                  text-[#ff641f]
                 "
               >
-                <div
-                  className="
-                    mb-2.5
-                    grid
-                    h-8
-                    w-8
-                    place-items-center
-                    rounded-[9px]
-                    bg-[#fff0e8]
-                    text-[#ff641f]
-                  "
-                >
+                {mustReviewConfiguration ? (
+                  <Settings2
+                    size={16}
+                  />
+                ) : (
                   <FileVideo
                     size={16}
                   />
-                </div>
+                )}
+              </div>
 
-                <h2
-                  className="
-                    text-[15px]
-                    font-black
-                    leading-tight
-                    tracking-[-0.02em]
-                    text-[#102033]
-                  "
-                >
-                  {reconfiguringCamera
+              <h2
+                className="
+                  text-[15px]
+                  font-black
+                  leading-tight
+                  tracking-[-0.02em]
+                  text-[#102033]
+                "
+              >
+                {mustReviewConfiguration
+                  ? 'Configuración actual'
+                  : reconfiguringCamera
                     ? 'Siguiente: capturar frame'
                     : 'Siguiente: área y góndolas'}
-                </h2>
+              </h2>
 
-                <p
-                  className="
-                    mt-2
-                    text-[10px]
-                    font-semibold
-                    leading-[17px]
-                    text-[#718096]
-                  "
-                >
-                  {reconfiguringCamera
+              <p
+                className="
+                  mt-2
+                  text-[10px]
+                  font-semibold
+                  leading-[17px]
+                  text-[#718096]
+                "
+              >
+                {mustReviewConfiguration
+                  ? 'Esta sede ya cuenta con una configuración guardada. Revisa sus datos antes de continuar.'
+                  : reconfiguringCamera
                     ? 'Al continuar capturarás un nuevo frame. El plano guardado se mantiene para que solo ajustes lo necesario.'
                     : configured
                       ? 'Si la configuración guardada coincide con esta cámara, continúa para revisar el área y analizar.'
                       : 'Después de subir el video, captura un frame claro y guarda las góndolas de esta sede.'}
-                </p>
+              </p>
 
-                {/* PIPELINE */}
+              {/* =================================================
+                  ESTADOS
+              ================================================= */}
 
-                <div
-                  className="
-                    mt-3
-                    grid
-                    gap-2
-                  "
-                >
-                  <PipelineItem
-                    icon={
-                      Settings2
-                    }
-                    active={
-                      configured ||
-                      metricCalibrated
-                    }
-                    label="Estado de la sede"
-                    value={
-                      calibrationLabel
-                    }
-                  />
+              <div
+                className="
+                  mt-3
+                  grid
+                  gap-2
+                "
+              >
+                <PipelineItem
+                  icon={
+                    Settings2
+                  }
+                  active={
+                    configured ||
+                    metricCalibrated
+                  }
+                  label="Estado de la sede"
+                  value={
+                    calibrationLabel
+                  }
+                />
 
-                  <PipelineItem
-                    icon={Store}
-                    active={
-                      gondolaCount >
-                      0
-                    }
-                    label="Góndolas del plano"
-                    value={
-                      gondolaCount >
-                      0
-                        ? `${gondolaCount} guardadas`
-                        : 'Pendientes'
-                    }
-                  />
+                <PipelineItem
+                  icon={
+                    Store
+                  }
+                  active={
+                    gondolaCount >
+                    0
+                  }
+                  label="Góndolas del plano"
+                  value={
+                    gondolaCount >
+                    0
+                      ? `${gondolaCount} guardadas`
+                      : 'Pendientes'
+                  }
+                />
 
-                  <PipelineItem
-                    icon={
-                      UploadCloud
-                    }
-                    active={Boolean(
-                      file
-                    )}
-                    label={
-                      reconfiguringCamera
-                        ? 'Video de referencia'
-                        : 'Video del análisis'
-                    }
-                    value={
-                      file
-                        ? 'Listo'
-                        : 'Pendiente'
-                    }
-                  />
-                </div>
+                <PipelineItem
+                  icon={
+                    UploadCloud
+                  }
+                  active={Boolean(
+                    file
+                  )}
+                  label={
+                    reconfiguringCamera
+                      ? 'Video de referencia'
+                      : 'Video del análisis'
+                  }
+                  value={
+                    file
+                      ? 'Listo'
+                      : 'Pendiente'
+                  }
+                />
+              </div>
 
-                {/* INFORMACIÓN ARCHIVO */}
+              {/* =================================================
+                  VIDEO SELECCIONADO
+              ================================================= */}
 
-                {file ? (
-                  <>
-                    <h3
-                      className="
-                        mb-2
-                        mt-3
-                        text-[11px]
-                        font-black
-                        text-[#102033]
-                      "
-                    >
-                      Video seleccionado
-                    </h3>
-
-                    <div
-                      className="
-                        grid
-                        gap-1.5
-                      "
-                    >
-                      <Data
-                        label="Nombre"
-                        value={
-                          file.name
-                        }
-                      />
-
-                      <Data
-                        label="Tamaño"
-                        value={formatBytes(
-                          file.size
-                        )}
-                      />
-
-                      <Data
-                        label="Formato"
-                        value={
-                          file.type ||
-                          'video/mp4'
-                        }
-                      />
-
-                      {metadata?.duration ? (
-                        <Data
-                          label="Duración"
-                          value={formatDuration(
-                            metadata.duration
-                          )}
-                        />
-                      ) : null}
-
-                      {metadata?.width &&
-                      metadata?.height ? (
-                        <Data
-                          label="Resolución"
-                          value={`${metadata.width} x ${metadata.height}`}
-                        />
-                      ) : null}
-                    </div>
-
-                    {/* VIDEO MUY LARGO */}
-
-                    {videoTooLong && (
-                      <p
-                        className="
-                          mt-2
-                          rounded-[8px]
-                          border
-                          border-[#ffd7c4]
-                          bg-[#fff1eb]
-                          px-3
-                          py-2
-                          text-[9px]
-                          font-bold
-                          text-[#b43b1d]
-                        "
-                      >
-                        El video supera el límite de{' '}
-                        {
-                          MAX_VIDEO_DURATION_SECONDS
-                        }{' '}
-                        segundos. Selecciona un MP4 más corto.
-                      </p>
-                    )}
-
-                    {/* BOTONES */}
-
-                    <div
-                      className="
-                        mt-auto
-                        pt-3
-                      "
-                    >
-                      <Link
-                        aria-disabled={
-                          videoTooLong
-                        }
-                        to={
-                          videoTooLong
-                            ? '#'
-                            : nextPath
-                        }
-                        className={`
-                          inline-flex
-                          min-h-[36px]
-                          w-full
-                          items-center
-                          justify-center
-                          gap-2
-                          rounded-[8px]
-                          px-4
-                          text-[10px]
-                          font-black
-                          text-white
-                          no-underline
-                          transition
-                          ${
-                            videoTooLong
-                              ? 'pointer-events-none bg-[#cfd7e2] opacity-70'
-                              : 'bg-gradient-to-r from-[#ff5b12] to-[#ff7b31] hover:-translate-y-0.5'
-                          }
-                        `}
-                      >
-                        {nextLabel}
-
-                        <ArrowRight
-                          size={14}
-                        />
-                      </Link>
-
-                      <button
-                        type="button"
-                        onClick={
-                          clearFile
-                        }
-                        className="
-                          mt-2
-                          inline-flex
-                          min-h-[34px]
-                          w-full
-                          items-center
-                          justify-center
-                          gap-2
-                          rounded-[8px]
-                          border
-                          border-[#d7e3ee]
-                          bg-white
-                          px-4
-                          text-[10px]
-                          font-black
-                          text-[#102033]
-                          hover:border-[#ff641f]
-                        "
-                      >
-                        <X
-                          size={13}
-                        />
-
-                        Eliminar este video
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <p
+              {file ? (
+                <>
+                  <h3
                     className="
+                      mb-2
                       mt-3
-                      rounded-[9px]
-                      border
-                      border-[#dce9f5]
-                      bg-[#eef7ff]
-                      px-3
-                      py-3
-                      text-[9px]
-                      font-semibold
-                      leading-4
-                      text-[#61758c]
+                      text-[11px]
+                      font-black
+                      text-[#102033]
                     "
                   >
-                    {reconfiguringCamera
+                    Video seleccionado
+                  </h3>
+
+                  <div
+                    className="
+                      grid
+                      gap-1.5
+                    "
+                  >
+                    <Data
+                      label="Nombre"
+                      value={
+                        file.name
+                      }
+                    />
+
+                    <Data
+                      label="Tamaño"
+                      value={formatBytes(
+                        file.size
+                      )}
+                    />
+
+                    <Data
+                      label="Formato"
+                      value={
+                        file.type ||
+                        'video/mp4'
+                      }
+                    />
+
+                    {metadata?.duration ? (
+                      <Data
+                        label="Duración"
+                        value={formatDuration(
+                          metadata.duration
+                        )}
+                      />
+                    ) : null}
+
+                    {metadata?.width &&
+                    metadata?.height ? (
+                      <Data
+                        label="Resolución"
+                        value={`${metadata.width} x ${metadata.height}`}
+                      />
+                    ) : null}
+                  </div>
+
+                  {/* VIDEO MUY LARGO */}
+
+                  {videoTooLong && (
+                    <p
+                      className="
+                        mt-2
+                        rounded-[8px]
+                        border
+                        border-[#ffd7c4]
+                        bg-[#fff1eb]
+                        px-3
+                        py-2
+                        text-[9px]
+                        font-bold
+                        text-[#b43b1d]
+                      "
+                    >
+                      El video supera el límite de{' '}
+                      {MAX_VIDEO_DURATION_SECONDS}{' '}
+                      segundos. Selecciona un MP4 más corto.
+                    </p>
+                  )}
+
+                  {/* =================================================
+                      BOTONES
+                  ================================================= */}
+
+                  <div
+                    className="
+                      mt-auto
+                      pt-3
+                    "
+                  >
+                    <Link
+                      aria-disabled={
+                        videoTooLong
+                      }
+                      to={
+                        videoTooLong
+                          ? '#'
+                          : nextPath
+                      }
+                      className={`
+                        inline-flex
+                        min-h-[36px]
+                        w-full
+                        items-center
+                        justify-center
+                        gap-2
+                        rounded-[8px]
+                        px-4
+                        text-[10px]
+                        font-black
+                        text-white
+                        no-underline
+                        transition
+                        ${
+                          videoTooLong
+                            ? 'pointer-events-none bg-[#cfd7e2] opacity-70'
+                            : 'bg-gradient-to-r from-[#ff5b12] to-[#ff7b31] hover:-translate-y-0.5'
+                        }
+                      `}
+                    >
+                      {nextLabel}
+
+                      <ArrowRight
+                        size={14}
+                      />
+                    </Link>
+
+                    <button
+                      type="button"
+                      onClick={
+                        clearFile
+                      }
+                      className="
+                        mt-2
+                        inline-flex
+                        min-h-[34px]
+                        w-full
+                        items-center
+                        justify-center
+                        gap-2
+                        rounded-[8px]
+                        border
+                        border-[#d7e3ee]
+                        bg-white
+                        px-4
+                        text-[10px]
+                        font-black
+                        text-[#102033]
+                        transition
+                        hover:border-[#ff641f]
+                      "
+                    >
+                      <X
+                        size={13}
+                      />
+
+                      Eliminar este video
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p
+                  className="
+                    mt-3
+                    rounded-[9px]
+                    border
+                    border-[#dce9f5]
+                    bg-[#eef7ff]
+                    px-3
+                    py-3
+                    text-[9px]
+                    font-semibold
+                    leading-4
+                    text-[#61758c]
+                  "
+                >
+                  {mustReviewConfiguration
+                    ? 'La configuración de la sede está guardada. Selecciona un video para continuar con un nuevo análisis.'
+                    : reconfiguringCamera
                       ? 'Selecciona el nuevo video de referencia para continuar con la captura del frame.'
                       : 'Cuando selecciones un video, SCAPDER mostrará sus datos reales aquí.'}
-                  </p>
-                )}
-              </aside>
-            )}
+                </p>
+              )}
+            </aside>
           </div>
 
-          {/* =========================
+          {/* =================================================
               HISTORIAL
-          ========================== */}
+          ================================================= */}
 
           <section
             className="
@@ -1721,7 +1801,10 @@ export default function UploadPage() {
                                     : analysis.status ===
                                         'failed'
                                       ? 'bg-[#fff1eb] text-[#b43b1d]'
-                                      : 'bg-[#eef5ff] text-[#2f7df6]'
+                                      : analysis.status ===
+                                          'cancelled'
+                                        ? 'bg-[#f0f2f5] text-[#64748b]'
+                                        : 'bg-[#eef5ff] text-[#2f7df6]'
                                 }
                               `}
                             >
@@ -1740,9 +1823,9 @@ export default function UploadPage() {
         </div>
       </div>
 
-      {/* =========================
+      {/* =====================================================
           MODAL
-      ========================== */}
+      ===================================================== */}
 
       {instructionsOpen && (
         <InstructionsModal
@@ -1870,39 +1953,26 @@ function InstructionsModal({
             "
           >
             <p>
-              <b
-                className="
-                  text-[#151323]
-                "
-              >
+              <b className="text-[#151323]">
                 1. Sube el nuevo video.
               </b>{' '}
-              Usa un MP4 capturado desde la cámara
-              actual.
+              Usa un MP4 capturado desde la cámara actual.
             </p>
 
             <p>
-              <b
-                className="
-                  text-[#151323]
-                "
-              >
+              <b className="text-[#151323]">
                 2. Captura un nuevo frame.
               </b>{' '}
-              El siguiente paso utilizará el video
-              para actualizar la referencia.
+              El siguiente paso utilizará el video para
+              actualizar la referencia.
             </p>
 
             <p>
-              <b
-                className="
-                  text-[#151323]
-                "
-              >
+              <b className="text-[#151323]">
                 3. Conserva el plano.
               </b>{' '}
-              Las góndolas guardadas se mantienen para
-              que solo ajustes lo necesario.
+              Las góndolas guardadas se mantienen para que
+              solo ajustes lo necesario.
             </p>
           </div>
         ) : (
@@ -1917,39 +1987,26 @@ function InstructionsModal({
             "
           >
             <p>
-              <b
-                className="
-                  text-[#151323]
-                "
-              >
+              <b className="text-[#151323]">
                 1. Sube el video.
               </b>{' '}
               Usa un MP4 de la cámara fija de la sede.
             </p>
 
             <p>
-              <b
-                className="
-                  text-[#151323]
-                "
-              >
+              <b className="text-[#151323]">
                 2. Configura zonas.
               </b>{' '}
-              Elige si vas a analizar toda la cámara
-              o solo un área del video.
+              Elige si vas a analizar toda la cámara o
+              solo un área del video.
             </p>
 
             <p>
-              <b
-                className="
-                  text-[#151323]
-                "
-              >
+              <b className="text-[#151323]">
                 3. Dibuja el planograma.
               </b>{' '}
               En la siguiente pantalla puedes marcar
-              góndolas y guardar el plano antes de
-              analizar.
+              góndolas y guardar el plano antes de analizar.
             </p>
 
             {!configured && (
@@ -1965,8 +2022,8 @@ function InstructionsModal({
                 "
               >
                 Si la sede no tiene plano guardado,
-                dibuja las góndolas en el paso de
-                zonas antes de analizar.
+                dibuja las góndolas en el paso de zonas
+                antes de analizar.
               </p>
             )}
           </div>

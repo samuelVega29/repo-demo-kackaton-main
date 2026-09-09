@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import cv2
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -17,14 +18,22 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
-from fastapi.responses import FileResponse, JSONResponse
+
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+)
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..cv.pipeline import run_analysis
 from ..database import get_db
 from ..models import Analysis, Site, User
-from ..security import current_user, user_from_query_token
+from ..security import (
+    current_user,
+    user_from_query_token,
+)
 
 
 router = APIRouter(
@@ -32,13 +41,32 @@ router = APIRouter(
     tags=["analyses"],
 )
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
-UPLOAD_DIR = DATA_DIR / "uploads"
-RESULT_DIR = DATA_DIR / "results"
+DATA_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "data"
+)
+
+UPLOAD_DIR = (
+    DATA_DIR
+    / "uploads"
+)
+
+RESULT_DIR = (
+    DATA_DIR
+    / "results"
+)
+
 MAX_VIDEO_DURATION_SECONDS = 120
 
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-RESULT_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+RESULT_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
 
 
 # =========================================================
@@ -54,7 +82,8 @@ def can_access(
         site
         and (
             user.role == "admin"
-            or user.retailer_id == site.retailer_id
+            or user.retailer_id
+            == site.retailer_id
         )
     )
 
@@ -79,6 +108,7 @@ def parse_roi(
 
     try:
         raw = json.loads(roi)
+
     except json.JSONDecodeError as exc:
         raise HTTPException(
             status_code=400,
@@ -88,23 +118,34 @@ def parse_roi(
             ),
         ) from exc
 
-    if not isinstance(raw, list) or len(raw) < 4:
+    if (
+        not isinstance(raw, list)
+        or len(raw) < 4
+    ):
         raise HTTPException(
             status_code=400,
-            detail="roi necesita un mínimo de 4 puntos",
+            detail=(
+                "roi necesita un mínimo de 4 puntos"
+            ),
         )
 
     if len(raw) > 16:
         raise HTTPException(
             status_code=400,
-            detail="roi admite como máximo 16 puntos",
+            detail=(
+                "roi admite como máximo 16 puntos"
+            ),
         )
 
     polygon: list[list[float]] = []
 
     for point in raw:
+
         if (
-            not isinstance(point, (list, tuple))
+            not isinstance(
+                point,
+                (list, tuple),
+            )
             or len(point) != 2
         ):
             raise HTTPException(
@@ -115,9 +156,18 @@ def parse_roi(
             )
 
         try:
-            x = float(point[0])
-            y = float(point[1])
-        except (TypeError, ValueError) as exc:
+            x = float(
+                point[0]
+            )
+
+            y = float(
+                point[1]
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ) as exc:
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -128,7 +178,8 @@ def parse_roi(
 
         if not (
             0.0 <= x <= 1.0
-            and 0.0 <= y <= 1.0
+            and
+            0.0 <= y <= 1.0
         ):
             raise HTTPException(
                 status_code=400,
@@ -138,7 +189,9 @@ def parse_roi(
                 ),
             )
 
-        polygon.append([x, y])
+        polygon.append(
+            [x, y]
+        )
 
     return polygon
 
@@ -162,9 +215,13 @@ def normalize_created_at(
         return None
 
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(
+            tzinfo=timezone.utc
+        )
 
-    return value.astimezone(timezone.utc)
+    return value.astimezone(
+        timezone.utc
+    )
 
 
 def payload(
@@ -175,19 +232,35 @@ def payload(
     )
 
     return {
-        "id": analysis.id,
-        "site_id": analysis.site_id,
-        "filename": analysis.filename,
-        "status": analysis.status,
-        "stage": analysis.stage,
-        "progress": analysis.progress,
-        "message": analysis.message,
+        "id":
+            analysis.id,
+
+        "site_id":
+            analysis.site_id,
+
+        "filename":
+            analysis.filename,
+
+        "status":
+            analysis.status,
+
+        "stage":
+            analysis.stage,
+
+        "progress":
+            analysis.progress,
+
+        "message":
+            analysis.message,
+
         "created_at": (
             created_at.isoformat()
             if created_at
             else None
         ),
-        "result": analysis.result,
+
+        "result":
+            analysis.result,
     }
 
 
@@ -201,6 +274,7 @@ def owned_analysis(
     user: User,
     database: Session,
 ) -> tuple[Analysis, Site]:
+
     analysis = database.get(
         Analysis,
         analysis_id,
@@ -209,7 +283,9 @@ def owned_analysis(
     if not analysis:
         raise HTTPException(
             status_code=404,
-            detail="Análisis no encontrado",
+            detail=(
+                "Análisis no encontrado"
+            ),
         )
 
     site = database.get(
@@ -217,15 +293,25 @@ def owned_analysis(
         analysis.site_id,
     )
 
-    if not site or not can_access(user, site):
+    if (
+        not site
+        or not can_access(
+            user,
+            site,
+        )
+    ):
         raise HTTPException(
             status_code=403,
             detail=(
-                "No tienes acceso a este análisis"
+                "No tienes acceso "
+                "a este análisis"
             ),
         )
 
-    return analysis, site
+    return (
+        analysis,
+        site,
+    )
 
 
 # =========================================================
@@ -236,35 +322,61 @@ def owned_analysis(
 def status_payload(
     analysis: Analysis,
 ) -> dict:
+
     return {
-        "analysis_id": analysis.id,
-        "status": analysis.status,
-        "stage": analysis.stage,
-        "progress": analysis.progress,
-        "message": analysis.message,
+        "analysis_id":
+            analysis.id,
+
+        "status":
+            analysis.status,
+
+        "stage":
+            analysis.stage,
+
+        "progress":
+            analysis.progress,
+
+        "message":
+            analysis.message,
     }
 
 
 def not_ready_response(
     analysis: Analysis,
 ) -> JSONResponse:
-    code = (
-        422
-        if analysis.status == "failed"
-        else 409
-    )
 
-    body = status_payload(analysis)
+    if analysis.status == "failed":
+        code = 422
 
-    body["detail"] = (
-        "El análisis falló; "
-        "no hay resultados disponibles"
-        if analysis.status == "failed"
-        else (
+        detail = (
+            "El análisis falló; "
+            "no hay resultados disponibles"
+        )
+
+    elif analysis.status in {
+        "cancelling",
+        "cancelled",
+    }:
+        code = 409
+
+        detail = (
+            "El análisis fue cancelado "
+            "o está siendo cancelado"
+        )
+
+    else:
+        code = 409
+
+        detail = (
             "El análisis aún no tiene "
             "resultados disponibles"
         )
+
+    body = status_payload(
+        analysis
     )
+
+    body["detail"] = detail
 
     return JSONResponse(
         status_code=code,
@@ -275,10 +387,19 @@ def not_ready_response(
 def require_result(
     analysis: Analysis,
 ) -> dict:
-    if analysis.status == "completed":
-        return analysis.result or {}
 
-    return not_ready_response(analysis)  # type: ignore[return-value]
+    if (
+        analysis.status
+        == "completed"
+    ):
+        return (
+            analysis.result
+            or {}
+        )
+
+    return not_ready_response(
+        analysis
+    )  # type: ignore[return-value]
 
 
 # =========================================================
@@ -289,32 +410,47 @@ def require_result(
 def result_floor(
     result: dict,
 ) -> dict:
+
     return (
         result
-        .get("site", {})
-        .get("configuration", {})
-        .get("floor", {})
+        .get(
+            "site",
+            {},
+        )
+        .get(
+            "configuration",
+            {},
+        )
+        .get(
+            "floor",
+            {},
+        )
     )
 
 
 def average_dwell(
     zones: list[dict],
 ) -> float:
+
     values = [
         zone.get(
             "dwell_seconds",
             0.0,
         )
         or 0.0
+
         for zone in zones
     ]
 
     return (
         round(
-            sum(values) / len(values),
+            sum(values)
+            / len(values),
             2,
         )
+
         if values
+
         else 0.0
     )
 
@@ -322,15 +458,27 @@ def average_dwell(
 def get_video_duration_seconds(
     video_path: Path,
 ) -> float:
-    capture = cv2.VideoCapture(str(video_path))
+
+    capture = cv2.VideoCapture(
+        str(video_path)
+    )
 
     try:
-        fps = capture.get(cv2.CAP_PROP_FPS)
-        frame_count = capture.get(cv2.CAP_PROP_FRAME_COUNT)
+        fps = capture.get(
+            cv2.CAP_PROP_FPS
+        )
+
+        frame_count = capture.get(
+            cv2.CAP_PROP_FRAME_COUNT
+        )
+
     finally:
         capture.release()
 
-    if fps <= 0 or frame_count <= 0:
+    if (
+        fps <= 0
+        or frame_count <= 0
+    ):
         raise HTTPException(
             status_code=400,
             detail=(
@@ -339,7 +487,10 @@ def get_video_duration_seconds(
             ),
         )
 
-    return frame_count / fps
+    return (
+        frame_count
+        / fps
+    )
 
 
 # =========================================================
@@ -358,15 +509,21 @@ def create_analysis(
     user: User = Depends(current_user),
     database: Session = Depends(get_db),
 ) -> dict:
+
     site = database.get(
         Site,
         site_id,
     )
 
-    if not can_access(user, site):
+    if not can_access(
+        user,
+        site,
+    ):
         raise HTTPException(
             status_code=404,
-            detail="Sede no encontrada",
+            detail=(
+                "Sede no encontrada"
+            ),
         )
 
     filename = (
@@ -390,47 +547,77 @@ def create_analysis(
     ):
         raise HTTPException(
             status_code=400,
-            detail="Carga un archivo MP4 válido",
+            detail=(
+                "Carga un archivo MP4 válido"
+            ),
         )
 
-    roi_polygon = parse_roi(roi)
+    roi_polygon = parse_roi(
+        roi
+    )
 
-    analysis_id = uuid.uuid4().hex
+    analysis_id = (
+        uuid.uuid4().hex
+    )
 
     video_path = (
         UPLOAD_DIR
         / f"{analysis_id}.mp4"
     )
 
+    # =====================================================
+    # GUARDAR VIDEO
+    # =====================================================
+
     with video_path.open(
         "wb"
     ) as target:
+
         shutil.copyfileobj(
             video.file,
             target,
         )
 
-    if video_path.stat().st_size == 0:
+    if (
+        video_path
+        .stat()
+        .st_size
+        == 0
+    ):
         video_path.unlink(
             missing_ok=True
         )
 
         raise HTTPException(
             status_code=400,
-            detail="El archivo está vacío",
+            detail=(
+                "El archivo está vacío"
+            ),
         )
 
+    # =====================================================
+    # VALIDAR DURACIÓN
+    # =====================================================
+
     try:
-        duration_seconds = get_video_duration_seconds(
-            video_path
+        duration_seconds = (
+            get_video_duration_seconds(
+                video_path
+            )
         )
+
     except HTTPException:
+
         video_path.unlink(
             missing_ok=True
         )
+
         raise
 
-    if duration_seconds > MAX_VIDEO_DURATION_SECONDS:
+    if (
+        duration_seconds
+        > MAX_VIDEO_DURATION_SECONDS
+    ):
         video_path.unlink(
             missing_ok=True
         )
@@ -443,57 +630,90 @@ def create_analysis(
             ),
         )
 
-    # -----------------------------------------------------
+    # =====================================================
     # HORA REAL DE CREACIÓN
-    # -----------------------------------------------------
+    # =====================================================
 
-    current_utc = datetime.now(
-        timezone.utc
+    current_utc = (
+        datetime.now(
+            timezone.utc
+        )
     )
 
     analysis = Analysis(
         id=analysis_id,
-        site_id=site.id,
-        user_id=user.id,
-        filename=Path(filename).name,
-        video_path=str(video_path),
-        status="queued",
-        stage="upload",
-        progress=1,
+
+        site_id=
+            site.id,
+
+        user_id=
+            user.id,
+
+        filename=
+            Path(filename).name,
+
+        video_path=
+            str(video_path),
+
+        status=
+            "queued",
+
+        stage=
+            "upload",
+
+        progress=
+            1,
+
         message=(
             "Video guardado; "
             "esperando inferencia"
         ),
 
-        # IMPORTANTE:
-        # Guardamos explícitamente la hora UTC
-        # exacta en que se crea el análisis.
-        created_at=current_utc,
+        created_at=
+            current_utc,
     )
 
-    database.add(analysis)
+    database.add(
+        analysis
+    )
+
     database.commit()
 
-    # Refrescamos para obtener exactamente
-    # lo guardado en la base de datos.
-    database.refresh(analysis)
+    database.refresh(
+        analysis
+    )
+
+    # =====================================================
+    # INICIAR PROCESAMIENTO
+    # =====================================================
 
     threading.Thread(
-        target=run_analysis,
-        args=(analysis_id,),
+        target=
+            run_analysis,
+
+        args=(
+            analysis_id,
+        ),
+
         kwargs={
-            "roi": roi_polygon,
+            "roi":
+                roi_polygon,
         },
+
         daemon=True,
     ).start()
 
     return {
-        "id": analysis_id,
+        "id":
+            analysis_id,
+
         "created_at": (
             normalize_created_at(
                 analysis.created_at
             ).isoformat()
+
             if analysis.created_at
+
             else None
         ),
     }
@@ -510,15 +730,21 @@ def list_analyses(
     user: User = Depends(current_user),
     database: Session = Depends(get_db),
 ) -> list[dict]:
+
     query = (
         select(Analysis)
         .join(Site)
         .order_by(
-            Analysis.created_at.desc()
+            Analysis
+            .created_at
+            .desc()
         )
     )
 
-    if user.role != "admin":
+    if (
+        user.role
+        != "admin"
+    ):
         query = query.where(
             Site.retailer_id
             == user.retailer_id
@@ -536,7 +762,9 @@ def list_analyses(
 
     return [
         payload(item)
-        for item in analyses
+
+        for item
+        in analyses
     ]
 
 
@@ -553,6 +781,7 @@ def analysis_detail(
     user: User = Depends(current_user),
     database: Session = Depends(get_db),
 ) -> dict:
+
     analysis = database.get(
         Analysis,
         analysis_id,
@@ -563,7 +792,9 @@ def analysis_detail(
             Site,
             analysis.site_id,
         )
+
         if analysis
+
         else None
     )
 
@@ -576,10 +807,14 @@ def analysis_detail(
     ):
         raise HTTPException(
             status_code=404,
-            detail="Análisis no encontrado",
+            detail=(
+                "Análisis no encontrado"
+            ),
         )
 
-    return payload(analysis)
+    return payload(
+        analysis
+    )
 
 
 # =========================================================
@@ -598,6 +833,7 @@ def artifact(
     ),
     database: Session = Depends(get_db),
 ):
+
     analysis = database.get(
         Analysis,
         analysis_id,
@@ -608,7 +844,9 @@ def artifact(
             Site,
             analysis.site_id,
         )
+
         if analysis
+
         else None
     )
 
@@ -621,19 +859,24 @@ def artifact(
     ):
         raise HTTPException(
             status_code=404,
-            detail="Artefacto no encontrado",
+            detail=(
+                "Artefacto no encontrado"
+            ),
         )
 
     safe_name = Path(
         filename
     ).name
 
-    base_ok = safe_name in {
-        "traffic.png",
-        "dwell.png",
-        "interaction.png",
-        "pickup.png",
-    }
+    base_ok = (
+        safe_name
+        in {
+            "traffic.png",
+            "dwell.png",
+            "interaction.png",
+            "pickup.png",
+        }
+    )
 
     overlay_ok = re.fullmatch(
         r"overlay_(traffic|dwell|interaction|pickup)_[1-9]\d*\.jpg",
@@ -661,7 +904,9 @@ def artifact(
     ):
         raise HTTPException(
             status_code=404,
-            detail="Artefacto no encontrado",
+            detail=(
+                "Artefacto no encontrado"
+            ),
         )
 
     path = (
@@ -673,10 +918,14 @@ def artifact(
     if not path.exists():
         raise HTTPException(
             status_code=404,
-            detail="Artefacto no encontrado",
+            detail=(
+                "Artefacto no encontrado"
+            ),
         )
 
-    return FileResponse(path)
+    return FileResponse(
+        path
+    )
 
 
 # =========================================================
@@ -694,6 +943,7 @@ def analysis_video(
     ),
     database: Session = Depends(get_db),
 ):
+
     analysis = database.get(
         Analysis,
         analysis_id,
@@ -704,7 +954,9 @@ def analysis_video(
             Site,
             analysis.site_id,
         )
+
         if analysis
+
         else None
     )
 
@@ -717,7 +969,9 @@ def analysis_video(
     ):
         raise HTTPException(
             status_code=404,
-            detail="Análisis no encontrado",
+            detail=(
+                "Análisis no encontrado"
+            ),
         )
 
     path = Path(
@@ -727,12 +981,15 @@ def analysis_video(
     if not path.exists():
         raise HTTPException(
             status_code=404,
-            detail="Video no encontrado",
+            detail=(
+                "Video no encontrado"
+            ),
         )
 
     return FileResponse(
         path,
-        media_type="video/mp4",
+        media_type=
+            "video/mp4",
     )
 
 
@@ -749,10 +1006,128 @@ def analysis_status(
     user: User = Depends(current_user),
     database: Session = Depends(get_db),
 ) -> dict:
-    analysis, _ = owned_analysis(
-        analysis_id,
-        user,
-        database,
+
+    analysis, _ = (
+        owned_analysis(
+            analysis_id,
+            user,
+            database,
+        )
+    )
+
+    return status_payload(
+        analysis
+    )
+
+
+# =========================================================
+# CANCELAR ANÁLISIS
+# =========================================================
+
+
+@router.post(
+    "/{analysis_id}/cancel"
+)
+def cancel_analysis(
+    analysis_id: str,
+    user: User = Depends(current_user),
+    database: Session = Depends(get_db),
+) -> dict:
+    """
+    Solicita la cancelación de un análisis.
+
+    Este endpoint NO mata directamente el thread.
+
+    Cambia el estado del análisis a "cancelling".
+    El pipeline debe consultar ese estado periódicamente
+    y detenerse cuando lo encuentre.
+    """
+
+    analysis, _ = (
+        owned_analysis(
+            analysis_id,
+            user,
+            database,
+        )
+    )
+
+    # -----------------------------------------------------
+    # YA FINALIZÓ
+    # -----------------------------------------------------
+
+    if (
+        analysis.status
+        == "completed"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "El análisis ya finalizó "
+                "y no puede cancelarse"
+            ),
+        )
+
+    # -----------------------------------------------------
+    # YA FALLÓ
+    # -----------------------------------------------------
+
+    if (
+        analysis.status
+        == "failed"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "El análisis ya falló "
+                "y no puede cancelarse"
+            ),
+        )
+
+    # -----------------------------------------------------
+    # YA ESTÁ CANCELADO
+    # -----------------------------------------------------
+
+    if (
+        analysis.status
+        == "cancelled"
+    ):
+        return status_payload(
+            analysis
+        )
+
+    # -----------------------------------------------------
+    # CANCELACIÓN YA SOLICITADA
+    # -----------------------------------------------------
+
+    if (
+        analysis.status
+        == "cancelling"
+    ):
+        return status_payload(
+            analysis
+        )
+
+    # -----------------------------------------------------
+    # SOLICITAR CANCELACIÓN
+    # -----------------------------------------------------
+
+    analysis.status = (
+        "cancelling"
+    )
+
+    analysis.message = (
+        "Cancelación solicitada; "
+        "deteniendo el procesamiento"
+    )
+
+    database.add(
+        analysis
+    )
+
+    database.commit()
+
+    database.refresh(
+        analysis
     )
 
     return status_payload(
@@ -773,10 +1148,13 @@ def analysis_summary(
     user: User = Depends(current_user),
     database: Session = Depends(get_db),
 ):
-    analysis, _ = owned_analysis(
-        analysis_id,
-        user,
-        database,
+
+    analysis, _ = (
+        owned_analysis(
+            analysis_id,
+            user,
+            database,
+        )
     )
 
     result = require_result(
@@ -790,29 +1168,42 @@ def analysis_summary(
         return result
 
     return {
-        "analysis_id": analysis.id,
-        "analysis_mode": result.get(
-            "analysis_mode"
-        ),
-        "coordinate_system": result.get(
-            "coordinate_system"
-        ),
-        "video": result.get(
-            "video",
-            {},
-        ),
-        "metrics": result.get(
-            "metrics",
-            {},
-        ),
-        "zones": result.get(
-            "zones",
-            [],
-        ),
-        "gondolas": result.get(
-            "gondolas",
-            [],
-        ),
+        "analysis_id":
+            analysis.id,
+
+        "analysis_mode":
+            result.get(
+                "analysis_mode"
+            ),
+
+        "coordinate_system":
+            result.get(
+                "coordinate_system"
+            ),
+
+        "video":
+            result.get(
+                "video",
+                {},
+            ),
+
+        "metrics":
+            result.get(
+                "metrics",
+                {},
+            ),
+
+        "zones":
+            result.get(
+                "zones",
+                [],
+            ),
+
+        "gondolas":
+            result.get(
+                "gondolas",
+                [],
+            ),
     }
 
 
@@ -829,10 +1220,13 @@ def analysis_heatmap(
     user: User = Depends(current_user),
     database: Session = Depends(get_db),
 ):
-    analysis, _ = owned_analysis(
-        analysis_id,
-        user,
-        database,
+
+    analysis, _ = (
+        owned_analysis(
+            analysis_id,
+            user,
+            database,
+        )
     )
 
     result = require_result(
@@ -846,20 +1240,29 @@ def analysis_heatmap(
         return result
 
     return {
-        "analysis_id": analysis.id,
-        "analysis_mode": result.get(
-            "analysis_mode"
-        ),
-        "heatmaps": result.get(
-            "heatmaps",
-            {},
-        ),
-        "floor": result_floor(
-            result
-        ),
-        "roi": result.get(
-            "roi"
-        ),
+        "analysis_id":
+            analysis.id,
+
+        "analysis_mode":
+            result.get(
+                "analysis_mode"
+            ),
+
+        "heatmaps":
+            result.get(
+                "heatmaps",
+                {},
+            ),
+
+        "floor":
+            result_floor(
+                result
+            ),
+
+        "roi":
+            result.get(
+                "roi"
+            ),
     }
 
 
@@ -876,10 +1279,13 @@ def analysis_trajectories(
     user: User = Depends(current_user),
     database: Session = Depends(get_db),
 ):
-    analysis, _ = owned_analysis(
-        analysis_id,
-        user,
-        database,
+
+    analysis, _ = (
+        owned_analysis(
+            analysis_id,
+            user,
+            database,
+        )
     )
 
     result = require_result(
@@ -893,21 +1299,30 @@ def analysis_trajectories(
         return result
 
     return {
-        "analysis_id": analysis.id,
-        "coordinate_system": result.get(
-            "coordinate_system"
-        ),
-        "trajectories": result.get(
-            "trajectories",
-            [],
-        ),
-        "metrics": result.get(
-            "metrics",
-            {},
-        ),
-        "floor": result_floor(
-            result
-        ),
+        "analysis_id":
+            analysis.id,
+
+        "coordinate_system":
+            result.get(
+                "coordinate_system"
+            ),
+
+        "trajectories":
+            result.get(
+                "trajectories",
+                [],
+            ),
+
+        "metrics":
+            result.get(
+                "metrics",
+                {},
+            ),
+
+        "floor":
+            result_floor(
+                result
+            ),
     }
 
 
@@ -924,10 +1339,13 @@ def analysis_dwell(
     user: User = Depends(current_user),
     database: Session = Depends(get_db),
 ):
-    analysis, _ = owned_analysis(
-        analysis_id,
-        user,
-        database,
+
+    analysis, _ = (
+        owned_analysis(
+            analysis_id,
+            user,
+            database,
+        )
     )
 
     result = require_result(
@@ -946,21 +1364,31 @@ def analysis_dwell(
     )
 
     return {
-        "analysis_id": analysis.id,
+        "analysis_id":
+            analysis.id,
+
         "duration_seconds": (
-            result.get("video")
+            result.get(
+                "video"
+            )
             or {}
         ).get(
             "duration_seconds"
         ),
-        "avg_dwell_seconds": average_dwell(
-            zones
-        ),
-        "zones": zones,
-        "gondolas": result.get(
-            "gondolas",
-            [],
-        ),
+
+        "avg_dwell_seconds":
+            average_dwell(
+                zones
+            ),
+
+        "zones":
+            zones,
+
+        "gondolas":
+            result.get(
+                "gondolas",
+                [],
+            ),
     }
 
 
@@ -977,10 +1405,13 @@ def analysis_interactions(
     user: User = Depends(current_user),
     database: Session = Depends(get_db),
 ):
-    analysis, _ = owned_analysis(
-        analysis_id,
-        user,
-        database,
+
+    analysis, _ = (
+        owned_analysis(
+            analysis_id,
+            user,
+            database,
+        )
     )
 
     result = require_result(
@@ -994,25 +1425,36 @@ def analysis_interactions(
         return result
 
     return {
-        "analysis_id": analysis.id,
-        "gondolas": result.get(
-            "gondolas",
-            [],
-        ),
-        "interaction_events_log": result.get(
-            "interaction_events_log",
-            [],
-        ),
-        "interaction_histogram": result.get(
-            "interaction_histogram"
-        ),
-        "pickup_events_log": result.get(
-            "pickup_events_log",
-            [],
-        ),
-        "pickup_histogram": result.get(
-            "pickup_histogram"
-        ),
+        "analysis_id":
+            analysis.id,
+
+        "gondolas":
+            result.get(
+                "gondolas",
+                [],
+            ),
+
+        "interaction_events_log":
+            result.get(
+                "interaction_events_log",
+                [],
+            ),
+
+        "interaction_histogram":
+            result.get(
+                "interaction_histogram"
+            ),
+
+        "pickup_events_log":
+            result.get(
+                "pickup_events_log",
+                [],
+            ),
+
+        "pickup_histogram":
+            result.get(
+                "pickup_histogram"
+            ),
     }
 
 
@@ -1029,10 +1471,13 @@ def analysis_zones(
     user: User = Depends(current_user),
     database: Session = Depends(get_db),
 ):
-    analysis, _ = owned_analysis(
-        analysis_id,
-        user,
-        database,
+
+    analysis, _ = (
+        owned_analysis(
+            analysis_id,
+            user,
+            database,
+        )
     )
 
     result = require_result(
@@ -1046,17 +1491,24 @@ def analysis_zones(
         return result
 
     return {
-        "analysis_id": analysis.id,
-        "coordinate_system": result.get(
-            "coordinate_system"
-        ),
-        "zones": result.get(
-            "zones",
-            [],
-        ),
-        "floor": result_floor(
-            result
-        ),
+        "analysis_id":
+            analysis.id,
+
+        "coordinate_system":
+            result.get(
+                "coordinate_system"
+            ),
+
+        "zones":
+            result.get(
+                "zones",
+                [],
+            ),
+
+        "floor":
+            result_floor(
+                result
+            ),
     }
 
 
@@ -1073,10 +1525,13 @@ def analysis_recommendations(
     user: User = Depends(current_user),
     database: Session = Depends(get_db),
 ):
-    analysis, _ = owned_analysis(
-        analysis_id,
-        user,
-        database,
+
+    analysis, _ = (
+        owned_analysis(
+            analysis_id,
+            user,
+            database,
+        )
     )
 
     result = require_result(
@@ -1089,27 +1544,40 @@ def analysis_recommendations(
     ):
         return result
 
-    recommendations = result.get(
-        "recommendations"
+    recommendations = (
+        result.get(
+            "recommendations"
+        )
     )
 
     if recommendations is None:
+
         recommendations = [
             finding
-            for finding in result.get(
+
+            for finding
+            in result.get(
                 "findings",
                 [],
             )
-            if finding.get("type")
+
+            if finding.get(
+                "type"
+            )
             == "recommendation"
         ]
 
     return {
-        "analysis_id": analysis.id,
-        "analysis_mode": result.get(
-            "analysis_mode"
-        ),
-        "recommendations": recommendations,
+        "analysis_id":
+            analysis.id,
+
+        "analysis_mode":
+            result.get(
+                "analysis_mode"
+            ),
+
+        "recommendations":
+            recommendations,
     }
 
 
@@ -1126,10 +1594,13 @@ def analysis_visualization_3d(
     user: User = Depends(current_user),
     database: Session = Depends(get_db),
 ):
-    analysis, _ = owned_analysis(
-        analysis_id,
-        user,
-        database,
+
+    analysis, _ = (
+        owned_analysis(
+            analysis_id,
+            user,
+            database,
+        )
     )
 
     result = require_result(
@@ -1143,12 +1614,18 @@ def analysis_visualization_3d(
         return result
 
     if (
-        result.get("analysis_mode")
+        result.get(
+            "analysis_mode"
+        )
         != "advanced"
     ):
         return {
-            "analysis_id": analysis.id,
-            "available": False,
+            "analysis_id":
+                analysis.id,
+
+            "available":
+                False,
+
             "reason": (
                 "3D requires calibrated camera"
             ),
@@ -1156,7 +1633,10 @@ def analysis_visualization_3d(
 
     configuration = (
         result
-        .get("site", {})
+        .get(
+            "site",
+            {},
+        )
         .get(
             "configuration",
             {},
@@ -1164,19 +1644,30 @@ def analysis_visualization_3d(
     )
 
     return {
-        "analysis_id": analysis.id,
-        "available": True,
-        "configuration": configuration,
-        "camera": configuration.get(
-            "camera",
-            {},
-        ),
-        "gondolas": result.get(
-            "gondolas",
-            [],
-        ),
-        "zones": result.get(
-            "zones",
-            [],
-        ),
+        "analysis_id":
+            analysis.id,
+
+        "available":
+            True,
+
+        "configuration":
+            configuration,
+
+        "camera":
+            configuration.get(
+                "camera",
+                {},
+            ),
+
+        "gondolas":
+            result.get(
+                "gondolas",
+                [],
+            ),
+
+        "zones":
+            result.get(
+                "zones",
+                [],
+            ),
     }

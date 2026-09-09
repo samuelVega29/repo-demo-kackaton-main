@@ -1578,6 +1578,10 @@ function PlanogramEditor({
       }
     }
 
+  /* =========================================================
+     CONTENIDO
+  ========================================================= */
+
   return (
     <section
       className="
@@ -1585,346 +1589,1279 @@ function PlanogramEditor({
         w-full
         min-w-0
         overflow-hidden
-        rounded-[16px]
-        border
-        border-[#dce8f2]
         bg-white
-        p-0
         text-[#102033]
       "
     >
       {/* =====================================================
-          CABECERA
+          GRID PRINCIPAL ESCRITORIO
       ===================================================== */}
 
       <div
         className="
           grid
-          min-h-0
-          grid-cols-[1fr_auto]
-          items-start
-          gap-[30px]
-          border-b
-          border-[#e2ebf3]
+          grid-cols-1
+          gap-3
           bg-white
-          p-[18px]
-          max-[980px]:grid-cols-[1fr]
-          max-[760px]:flex
-          max-[760px]:flex-col
-          max-[760px]:items-stretch
-          max-[760px]:gap-[18px]
+          p-3
+          xl:grid-cols-[minmax(0,56fr)_minmax(0,44fr)]
+          xl:items-start
         "
       >
-        <div>
-          <span
-            className="
-              text-[9px]
-              font-black
-              uppercase
-              tracking-[.14em]
-              text-[#1686e8]
-            "
-          >
-            Configuración física de la sede
-          </span>
-
-          <h2
-            className="
-              mb-[5px]
-              mt-[6px]
-              text-[25px]
-              font-black
-              tracking-[-.04em]
-              text-[#102033]
-            "
-          >
-            Dibuja tu planograma
-          </h2>
-
-          <p
-            className="
-              m-0
-              text-[9px]
-              font-semibold
-              leading-4
-              text-[#718096]
-            "
-          >
-            Añade, arrastra y cambia el tamaño
-            de cada góndola. Esta geometría
-            se reutiliza en futuros videos.
-          </p>
-        </div>
-
-        {/* DIMENSIONES */}
+        {/* =================================================
+            COLUMNA IZQUIERDA
+        ================================================= */}
 
         <div
           className="
-            grid
-            grid-cols-2
-            gap-3
+            min-w-0
           "
         >
-          <label
-            className="
-              relative
-              grid
-              gap-[5px]
-              text-[8px]
-              font-bold
-              uppercase
-              text-[#61758c]
-            "
-          >
-            Ancho
+          {/* =========================
+              VIDEO
+          ========================== */}
 
-            <input
-              className="
-                min-w-0
-                w-full
-                rounded-[7px]
-                border
-                border-[#cdddeb]
-                bg-white
-                p-[10px]
-                pr-[28px]
-                text-[#102033]
-                outline-none
-                transition
-                focus:border-[#1686e8]
-                focus:ring-2
-                focus:ring-[#1686e8]/10
-              "
-              type="number"
-              min="2"
-              step="0.5"
-              value={
-                floor.width
-              }
-              onChange={(
-                event
-              ) =>
-                changeFloor(
-                  'width',
-                  event.target
-                    .value
-                )
-              }
-            />
-
-            <small
-              className="
-                absolute
-                bottom-[11px]
-                right-2
-                font-black
-                text-[#1686e8]
-              "
-            >
-              m
-            </small>
-          </label>
-
-          <label
-            className="
-              relative
-              grid
-              gap-[5px]
-              text-[8px]
-              font-bold
-              uppercase
-              text-[#61758c]
-            "
-          >
-            Fondo
-
-            <input
-              className="
-                min-w-0
-                w-full
-                rounded-[7px]
-                border
-                border-[#cdddeb]
-                bg-white
-                p-[10px]
-                pr-[28px]
-                text-[#102033]
-                outline-none
-                transition
-                focus:border-[#1686e8]
-                focus:ring-2
-                focus:ring-[#1686e8]/10
-              "
-              type="number"
-              min="2"
-              step="0.5"
-              value={
-                floor.depth
-              }
-              onChange={(
-                event
-              ) =>
-                changeFloor(
-                  'depth',
-                  event.target
-                    .value
-                )
-              }
-            />
-
-            <small
-              className="
-                absolute
-                bottom-[11px]
-                right-2
-                font-black
-                text-[#1686e8]
-              "
-            >
-              m
-            </small>
-          </label>
-        </div>
-
-        {/* BOTONES */}
-
-        <div
-          className="
-            col-span-full
-            flex
-            flex-wrap
-            justify-start
-            gap-[8px]
-          "
-        >
-          <button
-            type="button"
-            onClick={() =>
-              setSnapEnabled(
-                (value) =>
-                  !value
-              )
+          <div
+            className={
+              tab === 'video'
+                ? 'block'
+                : 'hidden xl:block'
             }
-            title="Snap a cuadrícula de 0.25m"
-            className={`
-              cursor-pointer
-              rounded-[8px]
-              border
-              px-[14px]
-              py-[10px]
-              text-[9px]
-              font-black
-              whitespace-nowrap
-              transition
-              max-[760px]:flex-1
-              ${
-                snapEnabled
-                  ? 'border-[#1686e8] bg-[#eef7ff] text-[#1686e8]'
-                  : 'border-[#d5e1ec] bg-white text-[#53657a] hover:border-[#1686e8] hover:text-[#1686e8]'
-              }
-            `}
           >
-            ⊞ Snap
-          </button>
+            <div
+              className="
+                rounded-[10px]
+                border
+                border-[#dce8f2]
+                bg-white
+                p-2.5
+              "
+            >
+              <h3
+                className="
+                  mb-2
+                  text-[10px]
+                  font-black
+                  text-[#102033]
+                "
+              >
+                Frame del video
+              </h3>
 
-          <button
-            type="button"
-            onClick={() => {
-              setFloorDrawMode(
-                false
-              )
+              <div
+                className="
+                  overflow-hidden
+                  rounded-[8px]
+                  border
+                  border-[#dce8f2]
+                  bg-[#f8fbff]
+                "
+              >
+                <LiveAlignment
+                  frameCapture={
+                    frameCapture
+                  }
+                  configuration={
+                    configuration
+                  }
+                  drawMode={
+                    floorDrawMode &&
+                    Boolean(
+                      frameCapture
+                    )
+                  }
+                  onDrawCommit={
+                    commitOutline
+                  }
+                  onDrawCancel={() =>
+                    setFloorDrawMode(
+                      false
+                    )
+                  }
+                  interactive
+                  onMoveGondola={(
+                    id,
+                    values
+                  ) =>
+                    updateGondola(
+                      id,
+                      values
+                    )
+                  }
+                  selectedId={
+                    selectedId
+                  }
+                  onSelect={
+                    setSelectedId
+                  }
+                  addMode={
+                    addMode
+                  }
+                  onAddAt={(
+                    x,
+                    z
+                  ) =>
+                    addGondolaAt(
+                      x,
+                      z
+                    )
+                  }
+                  zone={zone}
+                  handOutline={
+                    handOutline
+                  }
+                />
+              </div>
 
-              setAddMode(
-                (value) =>
-                  !value
-              )
-            }}
-            title="Haz clic sobre el plano o el video para colocarla"
-            className={`
-              cursor-pointer
-              rounded-[8px]
-              border
-              px-[14px]
-              py-[10px]
-              text-[9px]
-              font-black
-              whitespace-nowrap
-              transition
-              max-[760px]:flex-1
-              ${
-                addMode
-                  ? 'border-[#ff641f] bg-[#fff3eb] text-[#ff641f]'
-                  : 'border-[#ff641f] bg-white text-[#ff641f] hover:bg-[#fff5ef]'
-              }
-            `}
-          >
-            ＋ Añadir góndola
-          </button>
+              <p
+                className="
+                  mt-2
+                  text-[8px]
+                  font-semibold
+                  leading-[13px]
+                  text-[#718096]
+                "
+              >
+                Calibra las góndolas arrastrándolas
+                sobre el video proyectado o coloca una
+                nueva haciendo clic en “Añadir góndola”.
+                Con “Dibujar el piso” trazas el contorno
+                directamente sobre el video.
+              </p>
 
-          <button
-            type="button"
-            onClick={() => {
-              setAddMode(
-                false
-              )
+              {/* =========================
+                  BOTONES BAJO VIDEO
+              ========================== */}
 
-              setFloorDrawMode(
-                (value) =>
-                  !value
-              )
-            }}
-            title="Traza el contorno del piso a mano"
-            className={`
-              cursor-pointer
-              rounded-[8px]
-              border
-              px-[14px]
-              py-[10px]
-              text-[9px]
-              font-black
-              whitespace-nowrap
-              transition
-              max-[760px]:flex-1
-              ${
-                floorDrawMode
-                  ? 'border-[#1686e8] bg-[#eef7ff] text-[#1686e8]'
-                  : 'border-[#d5e1ec] bg-white text-[#53657a] hover:border-[#1686e8] hover:text-[#1686e8]'
-              }
-            `}
-          >
-            ▱ Dibujar el piso
-          </button>
+              <div
+                className="
+                  mt-2
+                  grid
+                  grid-cols-2
+                  gap-2
+                  sm:grid-cols-4
+                "
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSnapEnabled(
+                      (value) =>
+                        !value
+                    )
+                  }
+                  className={`
+                    rounded-[7px]
+                    border
+                    px-2
+                    py-2
+                    text-[8px]
+                    font-black
+                    transition
+                    ${
+                      snapEnabled
+                        ? 'border-[#1686e8] bg-[#eef7ff] text-[#1686e8]'
+                        : 'border-[#d5e1ec] bg-white text-[#53657a]'
+                    }
+                  `}
+                >
+                  ⊞ Snap
+                </button>
 
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFloorDrawMode(
+                      false
+                    )
+
+                    setAddMode(
+                      (value) =>
+                        !value
+                    )
+                  }}
+                  className={`
+                    rounded-[7px]
+                    border
+                    px-2
+                    py-2
+                    text-[8px]
+                    font-black
+                    transition
+                    ${
+                      addMode
+                        ? 'border-[#ff641f] bg-[#fff3eb] text-[#ff641f]'
+                        : 'border-[#ff641f] bg-white text-[#ff641f]'
+                    }
+                  `}
+                >
+                  ＋ Añadir góndola
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddMode(
+                      false
+                    )
+
+                    setFloorDrawMode(
+                      (value) =>
+                        !value
+                    )
+                  }}
+                  className={`
+                    rounded-[7px]
+                    border
+                    px-2
+                    py-2
+                    text-[8px]
+                    font-black
+                    transition
+                    ${
+                      floorDrawMode
+                        ? 'border-[#1686e8] bg-[#eef7ff] text-[#1686e8]'
+                        : 'border-[#d5e1ec] bg-white text-[#53657a]'
+                    }
+                  `}
+                >
+                  ▱ Dibujar el piso
+                </button>
+
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={
+                    saving
+                  }
+                  className="
+                    rounded-[7px]
+                    border
+                    border-[#ff641f]
+                    bg-gradient-to-r
+                    from-[#ff5b12]
+                    to-[#ff741f]
+                    px-2
+                    py-2
+                    text-[8px]
+                    font-black
+                    text-white
+                    transition
+                    disabled:opacity-40
+                  "
+                >
+                  {saving
+                    ? 'Guardando…'
+                    : 'Guardar plano'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* =========================
+              PLANO DEBAJO DEL VIDEO
+          ========================== */}
+
+          <div
             className="
-              cursor-pointer
-              rounded-[8px]
+              mt-3
+              rounded-[10px]
               border
-              border-[#ff641f]
-              bg-gradient-to-r
-              from-[#ff5b12]
-              to-[#ff741f]
-              px-[16px]
-              py-[10px]
-              text-[9px]
-              font-black
-              whitespace-nowrap
-              text-white
-              shadow-[0_8px_18px_-12px_rgba(255,91,18,.8)]
-              transition
-              hover:-translate-y-0.5
-              disabled:cursor-not-allowed
-              disabled:opacity-40
-              max-[760px]:flex-1
+              border-[#dce8f2]
+              bg-white
+              p-2.5
             "
           >
-            {saving
-              ? 'Guardando…'
-              : 'Guardar plano'}
-          </button>
+            <div
+              className="
+                mb-2
+                flex
+                items-center
+                justify-between
+              "
+            >
+              <h3
+                className="
+                  text-[10px]
+                  font-black
+                  text-[#102033]
+                "
+              >
+                Plano de la sede
+              </h3>
+
+              <span
+                className="
+                  text-[7px]
+                  font-bold
+                  text-[#718096]
+                "
+              >
+                Arrastra y ajusta
+              </span>
+            </div>
+
+            <div
+              ref={
+                canvasRef
+              }
+              className="
+                relative
+                mx-auto
+                w-full
+                overflow-hidden
+                rounded-[8px]
+                border
+                border-[#d6e5f1]
+                bg-white
+                touch-none
+                select-none
+              "
+              style={{
+                aspectRatio:
+                  `${floor.width}/${floor.depth}`,
+              }}
+              onPointerDown={(
+                event
+              ) => {
+                if (
+                  !addMode
+                ) {
+                  return
+                }
+
+                const rect =
+                  canvasRef.current.getBoundingClientRect()
+
+                addGondolaAt(
+                  view.minX +
+                    (
+                      event.clientX -
+                      rect.left
+                    ) /
+                      rect.width *
+                      view.width,
+
+                  view.minZ +
+                    (
+                      event.clientY -
+                      rect.top
+                    ) /
+                      rect.height *
+                      view.depth
+                )
+              }}
+              onPointerMove={
+                movePointer
+              }
+              onPointerUp={() => {
+                pointer.current =
+                  null
+
+                setDragInfo(
+                  null
+                )
+              }}
+              onPointerCancel={() => {
+                pointer.current =
+                  null
+
+                setDragInfo(
+                  null
+                )
+              }}
+            >
+              <svg
+                className="
+                  pointer-events-none
+                  absolute
+                  inset-0
+                  h-full
+                  w-full
+                "
+                viewBox={`${view.minX} ${view.minZ} ${view.width} ${view.depth}`}
+                preserveAspectRatio="none"
+              >
+                <rect
+                  x={view.minX}
+                  y={view.minZ}
+                  width={view.width}
+                  height={view.depth}
+                  fill="#ffffff"
+                />
+
+                {(() => {
+                  const target =
+                    view.width /
+                    14
+
+                  const step =
+                    target > 5
+                      ? 5
+                      : target > 2
+                        ? 2
+                        : target > 1
+                          ? 1
+                          : target > 0.5
+                            ? 0.5
+                            : 0.25
+
+                  const lines =
+                    []
+
+                  for (
+                    let x =
+                      Math.ceil(
+                        view.minX /
+                          step
+                      ) *
+                      step;
+                    x <=
+                    view.maxX +
+                      1e-6;
+                    x += step
+                  ) {
+                    lines.push(
+                      <line
+                        key={`v${x}`}
+                        x1={x}
+                        y1={view.minZ}
+                        x2={x}
+                        y2={view.maxZ}
+                        stroke="rgba(22,134,232,.10)"
+                        strokeWidth="0.05"
+                      />
+                    )
+                  }
+
+                  for (
+                    let z =
+                      Math.ceil(
+                        view.minZ /
+                          step
+                      ) *
+                      step;
+                    z <=
+                    view.maxZ +
+                      1e-6;
+                    z += step
+                  ) {
+                    lines.push(
+                      <line
+                        key={`h${z}`}
+                        x1={view.minX}
+                        y1={z}
+                        x2={view.maxX}
+                        y2={z}
+                        stroke="rgba(22,134,232,.10)"
+                        strokeWidth="0.05"
+                      />
+                    )
+                  }
+
+                  return lines
+                })()}
+
+                {polygon && (
+                  <g>
+                    <polygon
+                      points={polygon
+                        .map(
+                          ([x, z]) =>
+                            `${x},${z}`
+                        )
+                        .join(' ')}
+                      fill="rgba(22,134,232,.08)"
+                      stroke="#1686e8"
+                      strokeWidth={Math.max(
+                        0.05,
+                        view.width /
+                          150
+                      )}
+                      strokeDasharray="0.26 0.14"
+                      strokeLinejoin="round"
+                    />
+
+                    <text
+                      x={
+                        polygon[0][0]
+                      }
+                      y={
+                        polygon[0][1] -
+                        0.5
+                      }
+                      fill="#1686e8"
+                      fontSize={Math.max(
+                        0.32,
+                        view.width /
+                          42
+                      )}
+                      fontFamily="ui-monospace, monospace"
+                      fontWeight="bold"
+                    >
+                      ZONA
+                    </text>
+                  </g>
+                )}
+
+                {handOutline?.length >=
+                  3 && (
+                  <g>
+                    <polygon
+                      points={handOutline
+                        .map(
+                          ([x, z]) =>
+                            `${x},${z}`
+                        )
+                        .join(' ')}
+                      fill="none"
+                      stroke="#8abbe7"
+                      strokeWidth="0.05"
+                      strokeDasharray="0.14 0.1"
+                      strokeLinejoin="round"
+                    />
+                  </g>
+                )}
+
+                {sketchZones.map(
+                  (
+                    zoneItem
+                  ) => {
+                    const points =
+                      (
+                        zoneItem.polygon ||
+                        []
+                      )
+                        .map(
+                          ([x, z]) =>
+                            `${x},${z}`
+                        )
+                        .join(' ')
+
+                    if (
+                      (
+                        zoneItem.polygon ||
+                        []
+                      ).length <
+                      3
+                    ) {
+                      return null
+                    }
+
+                    return (
+                      <polygon
+                        key={
+                          zoneItem.id
+                        }
+                        points={
+                          points
+                        }
+                        fill="rgba(22,134,232,.025)"
+                        stroke="rgba(92,145,194,.55)"
+                        strokeWidth={Math.max(
+                          0.045,
+                          view.width /
+                            210
+                        )}
+                        strokeDasharray="0.22 0.12"
+                        strokeLinejoin="round"
+                      />
+                    )
+                  }
+                )}
+              </svg>
+
+              {configuration.gondolas.map(
+                (item) => {
+                  const isSelected =
+                    selectedId ===
+                    item.id
+
+                  const zoneLevel =
+                    gondolaZoneStatus(
+                      item
+                    ).level
+
+                  const outOfZone =
+                    zoneLevel ===
+                      'out' ||
+                    zoneLevel ===
+                      'partial'
+
+                  return (
+                    <div
+                      key={
+                        item.id
+                      }
+                      className={`
+                        absolute
+                        grid
+                        min-h-[20px]
+                        min-w-[25px]
+                        touch-none
+                        place-items-center
+                        rounded-[4px]
+                        border
+                        text-[#102033]
+
+                        ${
+                          isSelected
+                            ? 'z-[2] border-[#ff641f] bg-[#fff1e9]'
+                            : outOfZone
+                              ? 'border-[#ff876a] bg-[#fff6f1]'
+                              : 'border-[#72afe3] bg-[#eaf5ff]'
+                        }
+                      `}
+                      style={{
+                        left:
+                          `${(
+                            (
+                              item.x -
+                              view.minX
+                            ) /
+                            view.width
+                          ) *
+                          100}%`,
+
+                        top:
+                          `${(
+                            (
+                              item.z -
+                              view.minZ
+                            ) /
+                            view.depth
+                          ) *
+                          100}%`,
+
+                        width:
+                          `${(
+                            item.width /
+                            view.width
+                          ) *
+                          100}%`,
+
+                        height:
+                          `${(
+                            item.depth /
+                            view.depth
+                          ) *
+                          100}%`,
+
+                        transform:
+                          `rotate(${item.rotation || 0}deg)`,
+                      }}
+                      onPointerDown={(
+                        event
+                      ) =>
+                        startPointer(
+                          event,
+                          item,
+                          'move'
+                        )
+                      }
+                    >
+                      <span
+                        className="
+                          pointer-events-none
+                          text-[7px]
+                          font-black
+                        "
+                      >
+                        {item.name}
+                      </span>
+
+                      <i
+                        className="
+                          absolute
+                          -top-[20px]
+                          left-1/2
+                          h-3
+                          w-3
+                          -translate-x-1/2
+                          cursor-grab
+                          rounded-full
+                          border-2
+                          border-[#ff641f]
+                          bg-white
+                        "
+                        onPointerDown={(
+                          event
+                        ) =>
+                          startPointer(
+                            event,
+                            item,
+                            'rotate'
+                          )
+                        }
+                      />
+
+                      <i
+                        className="
+                          absolute
+                          -bottom-px
+                          -right-px
+                          h-4
+                          w-4
+                          cursor-nwse-resize
+                          bg-[linear-gradient(135deg,transparent_45%,#ff641f_46%_55%,transparent_56%)]
+                        "
+                        onPointerDown={(
+                          event
+                        ) =>
+                          startPointer(
+                            event,
+                            item,
+                            'resize'
+                          )
+                        }
+                      />
+                    </div>
+                  )
+                }
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* =================================================
+            COLUMNA DERECHA
+        ================================================= */}
+
+        <div
+          className="
+            min-w-0
+          "
+        >
+          {/* =========================
+              DIMENSIONES
+          ========================== */}
+
+          <div
+            className="
+              rounded-[10px]
+              border
+              border-[#dce8f2]
+              bg-white
+              p-3
+            "
+          >
+            <h3
+              className="
+                mb-2
+                text-[9px]
+                font-black
+                text-[#102033]
+              "
+            >
+              Dimensiones del área de trabajo
+            </h3>
+
+            <div
+              className="
+                grid
+                grid-cols-2
+                gap-2
+              "
+            >
+              <label
+                className="
+                  relative
+                  grid
+                  gap-1
+                  text-[7px]
+                  font-bold
+                  uppercase
+                  text-[#61758c]
+                "
+              >
+                Ancho
+
+                <input
+                  className="
+                    w-full
+                    rounded-[6px]
+                    border
+                    border-[#cdddeb]
+                    bg-white
+                    p-2
+                    pr-7
+                    text-[8px]
+                    text-[#102033]
+                    outline-none
+                  "
+                  type="number"
+                  min="2"
+                  step="0.5"
+                  value={
+                    floor.width
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    changeFloor(
+                      'width',
+                      event.target
+                        .value
+                    )
+                  }
+                />
+
+                <small
+                  className="
+                    absolute
+                    bottom-[8px]
+                    right-2
+                    text-[#1686e8]
+                  "
+                >
+                  m
+                </small>
+              </label>
+
+              <label
+                className="
+                  relative
+                  grid
+                  gap-1
+                  text-[7px]
+                  font-bold
+                  uppercase
+                  text-[#61758c]
+                "
+              >
+                Fondo
+
+                <input
+                  className="
+                    w-full
+                    rounded-[6px]
+                    border
+                    border-[#cdddeb]
+                    bg-white
+                    p-2
+                    pr-7
+                    text-[8px]
+                    text-[#102033]
+                    outline-none
+                  "
+                  type="number"
+                  min="2"
+                  step="0.5"
+                  value={
+                    floor.depth
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    changeFloor(
+                      'depth',
+                      event.target
+                        .value
+                    )
+                  }
+                />
+
+                <small
+                  className="
+                    absolute
+                    bottom-[8px]
+                    right-2
+                    text-[#1686e8]
+                  "
+                >
+                  m
+                </small>
+              </label>
+            </div>
+          </div>
+
+          {/* =========================
+              GÓNDOLA
+          ========================== */}
+
+          <aside
+            className="
+              mt-3
+              rounded-[10px]
+              border
+              border-[#dce8f2]
+              bg-[#f9fcff]
+              p-3
+            "
+          >
+            {selected ? (
+              <>
+                <div
+                  className="
+                    mb-3
+                    flex
+                    items-center
+                    justify-between
+                    gap-2
+                  "
+                >
+                  <div>
+                    <span
+                      className="
+                        text-[7px]
+                        font-black
+                        uppercase
+                        tracking-[.12em]
+                        text-[#1686e8]
+                      "
+                    >
+                      Configuración
+                    </span>
+
+                    <h3
+                      className="
+                        mt-1
+                        text-[11px]
+                        font-black
+                        text-[#102033]
+                      "
+                    >
+                      Góndola seleccionada
+                    </h3>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={
+                      removeGondola
+                    }
+                    className="
+                      rounded-[6px]
+                      border
+                      border-[#ffb79a]
+                      bg-[#fff5ef]
+                      px-2.5
+                      py-1.5
+                      text-[7px]
+                      font-black
+                      text-[#e44d22]
+                    "
+                  >
+                    Eliminar
+                  </button>
+                </div>
+
+                <label
+                  className="
+                    grid
+                    gap-1
+                    text-[7px]
+                    font-bold
+                    uppercase
+                    text-[#61758c]
+                  "
+                >
+                  Nombre
+
+                  <input
+                    className="
+                      w-full
+                      rounded-[6px]
+                      border
+                      border-[#cdddeb]
+                      bg-white
+                      p-2
+                      text-[8px]
+                      font-semibold
+                      normal-case
+                      text-[#102033]
+                      outline-none
+                    "
+                    value={
+                      selected.name
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      updateGondola(
+                        selected.id,
+                        {
+                          name:
+                            event.target
+                              .value,
+                        }
+                      )
+                    }
+                  />
+                </label>
+
+                <div
+                  className="
+                    mt-2
+                    grid
+                    grid-cols-2
+                    gap-2
+                  "
+                >
+                  <NumericInput
+                    label="X (m)"
+                    value={
+                      selected.x
+                    }
+                    step="0.01"
+                    onChange={(
+                      value
+                    ) =>
+                      commitNumeric(
+                        'x',
+                        value
+                      )
+                    }
+                  />
+
+                  <NumericInput
+                    label="Y (m)"
+                    value={
+                      selected.z
+                    }
+                    step="0.01"
+                    onChange={(
+                      value
+                    ) =>
+                      commitNumeric(
+                        'z',
+                        value
+                      )
+                    }
+                  />
+
+                  <NumericInput
+                    label="Ancho (m)"
+                    value={
+                      selected.width
+                    }
+                    min="0.5"
+                    step="0.1"
+                    onChange={(
+                      value
+                    ) =>
+                      commitNumeric(
+                        'width',
+                        value
+                      )
+                    }
+                  />
+
+                  <NumericInput
+                    label="Fondo (m)"
+                    value={
+                      selected.depth
+                    }
+                    min="0.4"
+                    step="0.1"
+                    onChange={(
+                      value
+                    ) =>
+                      commitNumeric(
+                        'depth',
+                        value
+                      )
+                    }
+                  />
+
+                  <NumericInput
+                    label="Rotación (°)"
+                    value={
+                      selected.rotation
+                    }
+                    min="0"
+                    max="360"
+                    step="1"
+                    onChange={(
+                      value
+                    ) =>
+                      commitNumeric(
+                        'rotation',
+                        value
+                      )
+                    }
+                  />
+                </div>
+
+                <div
+                  className="
+                    mt-2
+                    rounded-[6px]
+                    border
+                    border-[#d9e7f2]
+                    bg-white
+                    px-2
+                    py-1.5
+                  "
+                >
+                  <span
+                    className="
+                      text-[7px]
+                      font-black
+                    "
+                    style={{
+                      color:
+                        ZONE_STATUS[
+                          selectedStatus
+                            .level
+                        ].color,
+                    }}
+                  >
+                    {selected.width.toFixed(
+                      2
+                    )}
+                    ×
+                    {selected.depth.toFixed(
+                      2
+                    )}
+                    m ·{' '}
+                    {
+                      ZONE_STATUS[
+                        selectedStatus
+                          .level
+                      ].label
+                    }{' '}
+                    {
+                      ZONE_STATUS[
+                        selectedStatus
+                          .level
+                      ].dot
+                    }
+                  </span>
+                </div>
+
+                {/* =========================
+                    PRODUCTOS
+                ========================== */}
+
+                <div
+                  className="
+                    mt-3
+                  "
+                >
+                  <span
+                    className="
+                      block
+                      text-[7px]
+                      font-black
+                      uppercase
+                      tracking-[.12em]
+                      text-[#1686e8]
+                    "
+                  >
+                    Productos por segmento
+                  </span>
+
+                  <div
+                    className="
+                      mt-2
+                      grid
+                      grid-cols-3
+                      gap-1.5
+                    "
+                  >
+                    {rows.map(
+                      (
+                        row,
+                        rowIndex
+                      ) =>
+                        columns.map(
+                          (
+                            column,
+                            columnIndex
+                          ) => (
+                            <label
+                              key={`${row}-${column}`}
+                              className="
+                                grid
+                                gap-1
+                                rounded-[6px]
+                                border
+                                border-[#dce8f2]
+                                bg-white
+                                p-1.5
+                                text-[6px]
+                                font-bold
+                                uppercase
+                                text-[#61758c]
+                              "
+                            >
+                              <small
+                                className="
+                                  h-[13px]
+                                  text-[5px]
+                                  leading-[1.2]
+                                  text-[#718096]
+                                "
+                              >
+                                {row} · {column}
+                              </small>
+
+                              <input
+                                className="
+                                  w-full
+                                  rounded-[4px]
+                                  border
+                                  border-[#d5e2ed]
+                                  bg-[#f9fcff]
+                                  px-1.5
+                                  py-1.5
+                                  text-[7px]
+                                  normal-case
+                                  text-[#102033]
+                                  outline-none
+                                "
+                                value={
+                                  selected
+                                    .products?.[
+                                    rowIndex
+                                  ]?.[
+                                    columnIndex
+                                  ] ||
+                                  ''
+                                }
+                                placeholder="Producto"
+                                onChange={(
+                                  event
+                                ) =>
+                                  updateProduct(
+                                    rowIndex,
+                                    columnIndex,
+                                    event.target
+                                      .value
+                                  )
+                                }
+                              />
+                            </label>
+                          )
+                        )
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div
+                className="
+                  grid
+                  min-h-[220px]
+                  place-items-center
+                  rounded-[8px]
+                  border
+                  border-dashed
+                  border-[#c9dcec]
+                  bg-white
+                  px-4
+                  text-center
+                  text-[9px]
+                  font-semibold
+                  text-[#718096]
+                "
+              >
+                Selecciona una góndola para configurar
+                sus segmentos y productos.
+              </div>
+            )}
+          </aside>
         </div>
       </div>
 
@@ -1933,62 +2870,36 @@ function PlanogramEditor({
       {addMode && (
         <div
           className="
-            mx-4
+            mx-3
             mb-3
-            mt-3
-            rounded-[9px]
+            rounded-[8px]
             border
             border-[#ffd7c5]
             bg-[#fff5ef]
             px-3
-            py-3
-            text-[9px]
+            py-2
+            text-[8px]
             font-semibold
             text-[#c54b20]
           "
         >
           Modo añadir: haz clic en el video o
           en el plano para colocar una góndola.
-          Pulsa el botón nuevamente para salir.
         </div>
       )}
-
-      {floorDrawMode &&
-        !frameCapture && (
-          <div
-            className="
-              mx-4
-              mb-3
-              mt-3
-              rounded-[9px]
-              border
-              border-[#ffe2a8]
-              bg-[#fff9e9]
-              px-3
-              py-3
-              text-[9px]
-              font-semibold
-              text-[#a46600]
-            "
-          >
-            Captura un frame para poder trazar
-            el contorno sobre el video.
-          </div>
-        )}
 
       {saveState && (
         <div
           className="
-            mx-4
+            mx-3
             mb-3
-            mt-3
             rounded-[8px]
             border
             border-[#c6ecd8]
             bg-[#effbf5]
             px-3
             py-2
-            text-[9px]
+            text-[8px]
             font-black
             text-[#16834f]
           "
@@ -1996,1359 +2907,6 @@ function PlanogramEditor({
           {saveState}
         </div>
       )}
-
-      {/* TABS MOBILE */}
-
-      <div
-        className="
-          mx-4
-          mb-4
-          flex
-          items-center
-          gap-[7px]
-          xl:hidden
-        "
-      >
-        <button
-          type="button"
-          onClick={() =>
-            setTab('video')
-          }
-          className={`
-            cursor-pointer
-            rounded-[8px]
-            border
-            px-[16px]
-            py-[9px]
-            text-[9px]
-            font-black
-            uppercase
-            tracking-[.08em]
-            ${
-              tab === 'video'
-                ? 'border-[#1686e8] bg-[#1686e8] text-white'
-                : 'border-[#d5e1ec] bg-white text-[#53657a]'
-            }
-          `}
-        >
-          Video
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            setTab('plano')
-          }
-          className={`
-            cursor-pointer
-            rounded-[8px]
-            border
-            px-[16px]
-            py-[9px]
-            text-[9px]
-            font-black
-            uppercase
-            tracking-[.08em]
-            ${
-              tab === 'plano'
-                ? 'border-[#1686e8] bg-[#1686e8] text-white'
-                : 'border-[#d5e1ec] bg-white text-[#53657a]'
-            }
-          `}
-        >
-          Plano
-        </button>
-      </div>
-
-      {/* =====================================================
-          CONTENIDO PRINCIPAL
-      ===================================================== */}
-
-      <div
-        className="
-          grid
-          min-h-0
-          grid-cols-1
-          gap-4
-          bg-white
-          p-4
-          xl:grid-cols-[minmax(0,55fr)_minmax(0,45fr)]
-          xl:items-start
-        "
-      >
-        {/* VIDEO */}
-
-        <div
-          className={
-            tab === 'video'
-              ? 'block'
-              : 'hidden xl:block'
-          }
-        >
-          <div
-            className="
-              flex
-              w-full
-              flex-col
-              gap-2
-            "
-          >
-            <span
-              className="
-                text-[8px]
-                font-black
-                uppercase
-                tracking-[.08em]
-                text-[#1686e8]
-              "
-            >
-              Sobre el frame · plano en vivo —
-              arrastra y coloca góndolas sobre el video
-            </span>
-
-            <div
-              className="
-                overflow-hidden
-                rounded-[12px]
-                border
-                border-[#dce8f2]
-                bg-[#f8fbff]
-              "
-            >
-              <LiveAlignment
-                frameCapture={
-                  frameCapture
-                }
-                configuration={
-                  configuration
-                }
-                drawMode={
-                  floorDrawMode &&
-                  Boolean(
-                    frameCapture
-                  )
-                }
-                onDrawCommit={
-                  commitOutline
-                }
-                onDrawCancel={() =>
-                  setFloorDrawMode(
-                    false
-                  )
-                }
-                interactive
-                onMoveGondola={(
-                  id,
-                  values
-                ) =>
-                  updateGondola(
-                    id,
-                    values
-                  )
-                }
-                selectedId={
-                  selectedId
-                }
-                onSelect={
-                  setSelectedId
-                }
-                addMode={
-                  addMode
-                }
-                onAddAt={(
-                  x,
-                  z
-                ) =>
-                  addGondolaAt(
-                    x,
-                    z
-                  )
-                }
-                zone={zone}
-                handOutline={
-                  handOutline
-                }
-              />
-            </div>
-
-            <p
-              className="
-                m-0
-                text-[9px]
-                font-semibold
-                leading-[1.6]
-                text-[#718096]
-              "
-            >
-              Calibra las góndolas arrastrándolas
-              sobre el video proyectado o coloca
-              una nueva haciendo clic en “Añadir
-              góndola”. Con “Dibujar el piso”
-              trazas el contorno directamente sobre
-              el video.
-            </p>
-          </div>
-        </div>
-
-        {/* PLANO + FORMULARIO */}
-
-        <div
-          className={
-            tab === 'plano'
-              ? 'block'
-              : 'hidden xl:block'
-          }
-        >
-          <div
-            className="
-              sticky
-              top-2
-              z-20
-              mb-3
-              xl:hidden
-            "
-          >
-            <PlanPreview
-              frameCapture={
-                frameCapture
-              }
-              configuration={
-                configuration
-              }
-              selectedId={
-                selectedId
-              }
-              zone={zone}
-              onPreviewClick={() =>
-                setTab(
-                  'video'
-                )
-              }
-            />
-          </div>
-
-          <div
-            className="
-              grid
-              min-h-0
-              grid-cols-1
-              gap-4
-            "
-          >
-            {/* PLANO */}
-
-            <div
-              className="
-                rounded-[14px]
-                border
-                border-[#dce8f2]
-                bg-[#f9fcff]
-                p-3
-              "
-            >
-              <div
-                className="
-                  mb-2
-                  flex
-                  items-center
-                  justify-between
-                "
-              >
-                <h3
-                  className="
-                    text-[11px]
-                    font-black
-                    text-[#102033]
-                  "
-                >
-                  Plano de la sede
-                </h3>
-
-                <span
-                  className="
-                    text-[8px]
-                    font-bold
-                    text-[#718096]
-                  "
-                >
-                  Arrastra y ajusta
-                </span>
-              </div>
-
-              <div
-                ref={canvasRef}
-                className={`
-                  relative
-                  mx-auto
-                  h-auto
-                  w-full
-                  max-w-full
-                  overflow-hidden
-                  rounded-[10px]
-                  border
-                  border-[#d6e5f1]
-                  bg-white
-                  touch-none
-                  select-none
-                `}
-                style={{
-                  aspectRatio:
-                    `${floor.width}/${floor.depth}`,
-                }}
-                onPointerDown={(
-                  event
-                ) => {
-                  if (
-                    !addMode
-                  ) {
-                    return
-                  }
-
-                  const rect =
-                    canvasRef.current.getBoundingClientRect()
-
-                  addGondolaAt(
-                    view.minX +
-                      (
-                        event.clientX -
-                        rect.left
-                      ) /
-                        rect.width *
-                        view.width,
-
-                    view.minZ +
-                      (
-                        event.clientY -
-                        rect.top
-                      ) /
-                        rect.height *
-                        view.depth
-                  )
-                }}
-                onPointerMove={
-                  movePointer
-                }
-                onPointerUp={() => {
-                  pointer.current =
-                    null
-
-                  setDragInfo(
-                    null
-                  )
-                }}
-                onPointerCancel={() => {
-                  pointer.current =
-                    null
-
-                  setDragInfo(
-                    null
-                  )
-                }}
-              >
-                {/* GRID */}
-
-                <svg
-                  className="
-                    pointer-events-none
-                    absolute
-                    inset-0
-                    h-full
-                    w-full
-                  "
-                  viewBox={`${view.minX} ${view.minZ} ${view.width} ${view.depth}`}
-                  preserveAspectRatio="none"
-                >
-                  <rect
-                    x={
-                      view.minX
-                    }
-                    y={
-                      view.minZ
-                    }
-                    width={
-                      view.width
-                    }
-                    height={
-                      view.depth
-                    }
-                    fill="#ffffff"
-                  />
-
-                  {(() => {
-                    const target =
-                      view.width /
-                      14
-
-                    const step =
-                      target > 5
-                        ? 5
-                        : target > 2
-                          ? 2
-                          : target > 1
-                            ? 1
-                            : target > 0.5
-                              ? 0.5
-                              : 0.25
-
-                    const lines =
-                      []
-
-                    for (
-                      let x =
-                        Math.ceil(
-                          view.minX /
-                            step
-                        ) *
-                        step;
-                      x <=
-                      view.maxX +
-                        1e-6;
-                      x += step
-                    ) {
-                      lines.push(
-                        <line
-                          key={`v${x}`}
-                          x1={x}
-                          y1={
-                            view.minZ
-                          }
-                          x2={x}
-                          y2={
-                            view.maxZ
-                          }
-                          stroke="rgba(22,134,232,.10)"
-                          strokeWidth="0.05"
-                        />
-                      )
-                    }
-
-                    for (
-                      let z =
-                        Math.ceil(
-                          view.minZ /
-                            step
-                        ) *
-                        step;
-                      z <=
-                      view.maxZ +
-                        1e-6;
-                      z += step
-                    ) {
-                      lines.push(
-                        <line
-                          key={`h${z}`}
-                          x1={
-                            view.minX
-                          }
-                          y1={z}
-                          x2={
-                            view.maxX
-                          }
-                          y2={z}
-                          stroke="rgba(22,134,232,.10)"
-                          strokeWidth="0.05"
-                        />
-                      )
-                    }
-
-                    return lines
-                  })()}
-
-                  {snapEnabled &&
-                    (() => {
-                      const lines =
-                        []
-
-                      for (
-                        let x =
-                          Math.ceil(
-                            view.minX /
-                              GRID_SNAP
-                          ) *
-                          GRID_SNAP;
-                        x <=
-                        view.maxX +
-                          1e-6;
-                        x +=
-                        GRID_SNAP
-                      ) {
-                        lines.push(
-                          <line
-                            key={`s${x}`}
-                            x1={x}
-                            y1={
-                              view.minZ
-                            }
-                            x2={x}
-                            y2={
-                              view.maxZ
-                            }
-                            stroke="rgba(22,134,232,.06)"
-                            strokeWidth="0.04"
-                          />
-                        )
-                      }
-
-                      for (
-                        let z =
-                          Math.ceil(
-                            view.minZ /
-                              GRID_SNAP
-                          ) *
-                          GRID_SNAP;
-                        z <=
-                        view.maxZ +
-                          1e-6;
-                        z +=
-                        GRID_SNAP
-                      ) {
-                        lines.push(
-                          <line
-                            key={`s${z}`}
-                            x1={
-                              view.minX
-                            }
-                            y1={z}
-                            x2={
-                              view.maxX
-                            }
-                            y2={z}
-                            stroke="rgba(22,134,232,.06)"
-                            strokeWidth="0.04"
-                          />
-                        )
-                      }
-
-                      return lines
-                    })()}
-
-                  {polygon && (
-                    <g>
-                      <polygon
-                        points={polygon
-                          .map(
-                            ([
-                              x,
-                              z,
-                            ]) =>
-                              `${x},${z}`
-                          )
-                          .join(
-                            ' '
-                          )}
-                        fill="rgba(22,134,232,.08)"
-                        stroke="#1686e8"
-                        strokeWidth={Math.max(
-                          0.05,
-                          view.width /
-                            150
-                        )}
-                        strokeDasharray="0.26 0.14"
-                        strokeLinejoin="round"
-                      />
-
-                      <text
-                        x={
-                          polygon[0][0]
-                        }
-                        y={
-                          polygon[0][1] -
-                          0.5
-                        }
-                        fill="#1686e8"
-                        fontSize={Math.max(
-                          0.32,
-                          view.width /
-                            42
-                        )}
-                        fontFamily="ui-monospace, monospace"
-                        fontWeight="bold"
-                      >
-                        ZONA
-                      </text>
-                    </g>
-                  )}
-
-                  {handOutline?.length >=
-                    3 && (
-                    <g>
-                      <polygon
-                        points={handOutline
-                          .map(
-                            ([
-                              x,
-                              z,
-                            ]) =>
-                              `${x},${z}`
-                          )
-                          .join(
-                            ' '
-                          )}
-                        fill="none"
-                        stroke="#8abbe7"
-                        strokeWidth="0.05"
-                        strokeDasharray="0.14 0.1"
-                        strokeLinejoin="round"
-                      />
-
-                      <text
-                        x={
-                          handOutline[0][0]
-                        }
-                        y={
-                          handOutline[0][1] +
-                          0.8
-                        }
-                        fill="#5f89ad"
-                        fontSize={Math.max(
-                          0.28,
-                          view.width /
-                            48
-                        )}
-                        fontFamily="ui-monospace, monospace"
-                      >
-                        PISO
-                      </text>
-                    </g>
-                  )}
-
-                  {sketchZones.map(
-                    (
-                      zoneItem
-                    ) => {
-                      const points =
-                        (
-                          zoneItem.polygon ||
-                          []
-                        )
-                          .map(
-                            ([
-                              x,
-                              z,
-                            ]) =>
-                              `${x},${z}`
-                          )
-                          .join(
-                            ' '
-                          )
-
-                      if (
-                        (
-                          zoneItem.polygon ||
-                          []
-                        ).length <
-                        3
-                      ) {
-                        return null
-                      }
-
-                      const first =
-                        zoneItem.polygon[0]
-
-                      return (
-                        <g
-                          key={
-                            zoneItem.id
-                          }
-                        >
-                          <polygon
-                            points={
-                              points
-                            }
-                            fill="rgba(22,134,232,.025)"
-                            stroke="rgba(92,145,194,.55)"
-                            strokeWidth={Math.max(
-                              0.045,
-                              view.width /
-                                210
-                            )}
-                            strokeDasharray="0.22 0.12"
-                            strokeLinejoin="round"
-                          />
-
-                          <text
-                            x={
-                              first[0]
-                            }
-                            y={
-                              first[1] +
-                              1
-                            }
-                            fill="#557b9d"
-                            fontSize={Math.max(
-                              0.34,
-                              view.width /
-                                40
-                            )}
-                            fontFamily="ui-monospace, monospace"
-                            fontWeight="bold"
-                          >
-                            {
-                              zoneItem.name
-                            }
-                          </text>
-                        </g>
-                      )
-                    }
-                  )}
-                </svg>
-
-                {/* GÓNDOLAS */}
-
-                {configuration.gondolas.map(
-                  (item) => {
-                    const isSelected =
-                      selectedId ===
-                      item.id
-
-                    const zoneLevel =
-                      gondolaZoneStatus(
-                        item
-                      ).level
-
-                    const outOfZone =
-                      zoneLevel ===
-                        'out' ||
-                      zoneLevel ===
-                        'partial'
-
-                    return (
-                      <div
-                        key={
-                          item.id
-                        }
-                        className={`
-                          absolute
-                          grid
-                          min-h-[20px]
-                          min-w-[25px]
-                          touch-none
-                          place-items-center
-                          rounded-[4px]
-                          border
-                          p-0
-                          text-[#102033]
-                          shadow-[0_4px_15px_rgba(13,60,105,.16)]
-                          transition-shadow
-                          duration-150
-                          hover:z-[2]
-                          hover:border-[#ff641f]
-                          ${
-                            isSelected
-                              ? 'z-[2] border-[#ff641f] bg-[#fff1e9] shadow-[0_4px_22px_rgba(255,100,31,.25)]'
-                              : outOfZone
-                                ? 'border-[#ff876a] bg-[#fff6f1]'
-                                : 'border-[#72afe3] bg-[#eaf5ff]'
-                          }
-                        `}
-                        style={{
-                          left:
-                            `${(
-                              (
-                                item.x -
-                                view.minX
-                              ) /
-                              view.width
-                            ) *
-                            100}%`,
-
-                          top:
-                            `${(
-                              (
-                                item.z -
-                                view.minZ
-                              ) /
-                              view.depth
-                            ) *
-                            100}%`,
-
-                          width:
-                            `${(
-                              item.width /
-                              view.width
-                            ) *
-                            100}%`,
-
-                          height:
-                            `${(
-                              item.depth /
-                              view.depth
-                            ) *
-                            100}%`,
-
-                          transform:
-                            `rotate(${item.rotation || 0}deg)`,
-                        }}
-                        onPointerDown={(
-                          event
-                        ) =>
-                          startPointer(
-                            event,
-                            item,
-                            'move'
-                          )
-                        }
-                      >
-                        <span
-                          className="
-                            pointer-events-none
-                            max-w-[92%]
-                            overflow-hidden
-                            text-ellipsis
-                            whitespace-nowrap
-                            text-[8px]
-                            font-black
-                            text-[#102033]
-                          "
-                        >
-                          {item.name}
-                        </span>
-
-                        <span
-                          className="
-                            pointer-events-none
-                            absolute
-                            -bottom-[20px]
-                            left-1/2
-                            -translate-x-1/2
-                            whitespace-nowrap
-                            rounded-[4px]
-                            border
-                            border-[#d9e6f1]
-                            bg-white
-                            px-1.5
-                            py-[2px]
-                            text-[7px]
-                            font-bold
-                            text-[#61758c]
-                            shadow-sm
-                          "
-                        >
-                          {item.width.toFixed(
-                            1
-                          )}
-                          ×
-                          {item.depth.toFixed(
-                            1
-                          )}
-                          m
-                        </span>
-
-                        {/* ROTAR */}
-
-                        <i
-                          className="
-                            absolute
-                            -top-[24px]
-                            left-1/2
-                            h-3
-                            w-3
-                            -translate-x-1/2
-                            cursor-grab
-                            touch-none
-                            rounded-full
-                            border-2
-                            border-[#ff641f]
-                            bg-white
-                            after:absolute
-                            after:left-1/2
-                            after:top-full
-                            after:h-[13px]
-                            after:w-px
-                            after:-translate-x-1/2
-                            after:bg-[#ff641f]
-                            after:content-['']
-                            active:cursor-grabbing
-                          "
-                          onPointerDown={(
-                            event
-                          ) =>
-                            startPointer(
-                              event,
-                              item,
-                              'rotate'
-                            )
-                          }
-                          title="Rotar"
-                        />
-
-                        {/* RESIZE */}
-
-                        <i
-                          className="
-                            absolute
-                            -bottom-px
-                            -right-px
-                            h-4
-                            w-4
-                            cursor-nwse-resize
-                            touch-none
-                            bg-[linear-gradient(135deg,transparent_45%,#ff641f_46%_55%,transparent_56%)]
-                          "
-                          onPointerDown={(
-                            event
-                          ) =>
-                            startPointer(
-                              event,
-                              item,
-                              'resize'
-                            )
-                          }
-                        />
-                      </div>
-                    )
-                  }
-                )}
-
-                {!configuration
-                  .gondolas
-                  .length && (
-                  <button
-                    type="button"
-                    onClick={
-                      addGondola
-                    }
-                    className="
-                      absolute
-                      inset-[28%]
-                      grid
-                      cursor-pointer
-                      place-items-center
-                      rounded-[10px]
-                      border-2
-                      border-dashed
-                      border-[#ff9a68]
-                      bg-[#fff6f1]/95
-                      px-3
-                      text-center
-                      text-[10px]
-                      font-black
-                      text-[#ff5b12]
-                      transition
-                      hover:bg-[#fff0e8]
-                    "
-                  >
-                    ＋ Dibuja tu primera góndola
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* =================================================
-                GÓNDOLA SELECCIONADA
-            ================================================= */}
-
-            <aside
-              className="
-                min-w-0
-                rounded-[14px]
-                border
-                border-[#dce8f2]
-                bg-[#f9fcff]
-                p-[18px]
-              "
-            >
-              {selected ? (
-                <>
-                  <div
-                    className="
-                      mb-4
-                      flex
-                      items-center
-                      justify-between
-                      gap-[10px]
-                    "
-                  >
-                    <div>
-                      <span
-                        className="
-                          text-[8px]
-                          font-black
-                          uppercase
-                          tracking-[.12em]
-                          text-[#1686e8]
-                        "
-                      >
-                        Configuración
-                      </span>
-
-                      <h3
-                        className="
-                          mt-1
-                          text-[13px]
-                          font-black
-                          text-[#102033]
-                        "
-                      >
-                        Góndola seleccionada
-                      </h3>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={
-                        removeGondola
-                      }
-                      className="
-                        cursor-pointer
-                        rounded-[7px]
-                        border
-                        border-[#ffb79a]
-                        bg-[#fff5ef]
-                        px-[11px]
-                        py-2
-                        text-[8px]
-                        font-black
-                        whitespace-nowrap
-                        text-[#e44d22]
-                        transition
-                        hover:bg-[#ffebe2]
-                      "
-                    >
-                      Eliminar
-                    </button>
-                  </div>
-
-                  {/* NOMBRE */}
-
-                  <label
-                    className="
-                      relative
-                      grid
-                      gap-[5px]
-                      text-[8px]
-                      font-bold
-                      uppercase
-                      text-[#61758c]
-                    "
-                  >
-                    Nombre
-
-                    <input
-                      className="
-                        min-w-0
-                        w-full
-                        rounded-[7px]
-                        border
-                        border-[#cdddeb]
-                        bg-white
-                        p-[9px]
-                        text-[9px]
-                        font-semibold
-                        normal-case
-                        text-[#102033]
-                        outline-none
-                        focus:border-[#1686e8]
-                        focus:ring-2
-                        focus:ring-[#1686e8]/10
-                      "
-                      value={
-                        selected.name
-                      }
-                      onChange={(
-                        event
-                      ) =>
-                        updateGondola(
-                          selected.id,
-                          {
-                            name:
-                              event.target
-                                .value,
-                          }
-                        )
-                      }
-                    />
-                  </label>
-
-                  {/* NUMÉRICOS */}
-
-                  <div
-                    className="
-                      mt-[12px]
-                      grid
-                      grid-cols-2
-                      gap-[8px]
-                    "
-                  >
-                    <NumericInput
-                      label="X (m)"
-                      value={
-                        selected.x
-                      }
-                      step="0.01"
-                      onChange={(
-                        value
-                      ) =>
-                        commitNumeric(
-                          'x',
-                          value
-                        )
-                      }
-                    />
-
-                    <NumericInput
-                      label="Y (m)"
-                      value={
-                        selected.z
-                      }
-                      step="0.01"
-                      onChange={(
-                        value
-                      ) =>
-                        commitNumeric(
-                          'z',
-                          value
-                        )
-                      }
-                    />
-
-                    <NumericInput
-                      label="Ancho (m)"
-                      value={
-                        selected.width
-                      }
-                      min="0.5"
-                      step="0.1"
-                      onChange={(
-                        value
-                      ) =>
-                        commitNumeric(
-                          'width',
-                          value
-                        )
-                      }
-                    />
-
-                    <NumericInput
-                      label="Fondo (m)"
-                      value={
-                        selected.depth
-                      }
-                      min="0.4"
-                      step="0.1"
-                      onChange={(
-                        value
-                      ) =>
-                        commitNumeric(
-                          'depth',
-                          value
-                        )
-                      }
-                    />
-
-                    <NumericInput
-                      label="Rotación (°)"
-                      value={
-                        selected.rotation
-                      }
-                      min="0"
-                      max="360"
-                      step="1"
-                      onChange={(
-                        value
-                      ) =>
-                        commitNumeric(
-                          'rotation',
-                          value
-                        )
-                      }
-                    />
-                  </div>
-
-                  {/* ESTADO */}
-
-                  <div
-                    className="
-                      mt-3
-                      rounded-[8px]
-                      border
-                      border-[#d9e7f2]
-                      bg-white
-                      px-3
-                      py-2
-                    "
-                  >
-                    <span
-                      className="
-                        block
-                        text-[9px]
-                        font-black
-                      "
-                      style={{
-                        color:
-                          ZONE_STATUS[
-                            selectedStatus
-                              .level
-                          ].color,
-                      }}
-                    >
-                      {selected.width.toFixed(
-                        2
-                      )}
-                      ×
-                      {selected.depth.toFixed(
-                        2
-                      )}
-                      m ·{' '}
-                      {
-                        ZONE_STATUS[
-                          selectedStatus
-                            .level
-                        ].label
-                      }{' '}
-                      {
-                        ZONE_STATUS[
-                          selectedStatus
-                            .level
-                        ].dot
-                      }
-                    </span>
-                  </div>
-
-                  {/* PRODUCTOS */}
-
-                  <div
-                    className="
-                      mt-5
-                    "
-                  >
-                    <span
-                      className="
-                        block
-                        text-[8px]
-                        font-black
-                        uppercase
-                        tracking-[.12em]
-                        text-[#1686e8]
-                      "
-                    >
-                      Productos por segmento
-                    </span>
-
-                    <div
-                      className="
-                        mt-[10px]
-                        grid
-                        grid-cols-3
-                        gap-[6px]
-                      "
-                    >
-                      {rows.map(
-                        (
-                          row,
-                          rowIndex
-                        ) =>
-                          columns.map(
-                            (
-                              column,
-                              columnIndex
-                            ) => (
-                              <label
-                                key={`${row}-${column}`}
-                                className="
-                                  relative
-                                  grid
-                                  gap-[5px]
-                                  rounded-[7px]
-                                  border
-                                  border-[#dce8f2]
-                                  bg-white
-                                  p-[6px]
-                                  text-[7px]
-                                  font-bold
-                                  uppercase
-                                  text-[#61758c]
-                                "
-                              >
-                                <small
-                                  className="
-                                    h-[17px]
-                                    text-[6px]
-                                    font-bold
-                                    leading-[1.25]
-                                    text-[#718096]
-                                  "
-                                >
-                                  {row} · {column}
-                                </small>
-
-                                <input
-                                  className="
-                                    min-w-0
-                                    w-full
-                                    rounded-[5px]
-                                    border
-                                    border-[#d5e2ed]
-                                    bg-[#f9fcff]
-                                    px-[6px]
-                                    py-[7px]
-                                    text-[8px]
-                                    font-semibold
-                                    normal-case
-                                    text-[#102033]
-                                    outline-none
-                                    transition
-                                    focus:border-[#1686e8]
-                                  "
-                                  value={
-                                    selected
-                                      .products?.[
-                                      rowIndex
-                                    ]?.[
-                                      columnIndex
-                                    ] ||
-                                    ''
-                                  }
-                                  placeholder="Producto"
-                                  onChange={(
-                                    event
-                                  ) =>
-                                    updateProduct(
-                                      rowIndex,
-                                      columnIndex,
-                                      event.target
-                                        .value
-                                    )
-                                  }
-                                />
-                              </label>
-                            )
-                          )
-                      )}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div
-                  className="
-                    grid
-                    min-h-[220px]
-                    place-items-center
-                    rounded-[10px]
-                    border
-                    border-dashed
-                    border-[#c9dcec]
-                    bg-white
-                    px-5
-                    text-center
-                    text-[10px]
-                    font-semibold
-                    leading-[1.7]
-                    text-[#718096]
-                  "
-                >
-                  Selecciona una góndola para
-                  configurar sus segmentos y productos.
-                </div>
-              )}
-            </aside>
-          </div>
-        </div>
-      </div>
-
-      {/* =====================================================
-          INFORMACIÓN DE ZONA
-      ===================================================== */}
 
       {(
         handOutline?.length >=
@@ -3358,19 +2916,18 @@ function PlanogramEditor({
       ) && (
         <div
           className="
-            mx-4
-            mb-4
-            mt-1
+            mx-3
+            mb-3
             flex
             items-center
             gap-3
-            rounded-[9px]
+            rounded-[8px]
             border
             border-[#cae4fa]
             bg-[#eef7ff]
             px-3
-            py-3
-            text-[8px]
+            py-2
+            text-[7px]
             font-semibold
             text-[#61758c]
           "
@@ -3393,7 +2950,7 @@ function PlanogramEditor({
           >
             {handOutline?.length >=
             3
-              ? 'Solo referencia visual, no se guarda. Al cerrar o salir de la sede desaparece.'
+              ? 'Solo referencia visual.'
               : 'Define la forma del mapa; el movimiento de las góndolas queda dentro de la zona.'}
           </span>
 
@@ -3405,17 +2962,15 @@ function PlanogramEditor({
                 clearOutline
               }
               className="
-                cursor-pointer
                 rounded-[6px]
                 border
                 border-[#9cc7eb]
                 bg-white
-                px-[10px]
-                py-2
-                text-[8px]
+                px-2
+                py-1.5
+                text-[7px]
                 font-black
                 text-[#1686e8]
-                hover:border-[#1686e8]
               "
             >
               Borrar contorno
@@ -3428,7 +2983,7 @@ function PlanogramEditor({
 }
 
 /* =========================================================
-   INPUT NUMÉRICO REUTILIZABLE
+   INPUT NUMÉRICO
 ========================================================= */
 
 function NumericInput({
@@ -3442,10 +2997,9 @@ function NumericInput({
   return (
     <label
       className="
-        relative
         grid
-        gap-[5px]
-        text-[7px]
+        gap-1
+        text-[6px]
         font-bold
         uppercase
         text-[#61758c]
@@ -3455,22 +3009,17 @@ function NumericInput({
 
       <input
         className="
-          min-w-0
           w-full
-          rounded-[7px]
+          rounded-[6px]
           border
           border-[#cdddeb]
           bg-white
-          p-[9px]
-          text-[9px]
+          p-2
+          text-[8px]
           font-semibold
           normal-case
           text-[#102033]
           outline-none
-          transition
-          focus:border-[#1686e8]
-          focus:ring-2
-          focus:ring-[#1686e8]/10
         "
         type="number"
         min={min}
