@@ -52,15 +52,35 @@ CONFIG = {
 
 # Pie quieto a 0.3m de la gondola -> engaged tras ~2s a velocidad 0.
 FOOT = [1.5, 1.3]
-HAND_IN = [2.9, 1.67]   # centro de la gondola -> distancia 0 al alcance
-HAND_OUT = [2.9, 3.2]   # 1.5m al borde -> fuera del alcance
+HAND_BOUNDARY = [2.9, 2.45]  # 0.45m al borde -> dentro del alcance pero poco profundo
+HAND_IN = [2.9, 1.67]        # centro de la gondola -> distancia 0 al alcance (pico)
+HAND_OUT = [2.9, 3.2]        # 1.5m al borde -> fuera del alcance
 
 DT = 0.1
 INTERACT_SECONDS = CONFIG["thresholds"]["interaction_seconds"]
+SWEEP_TICKS = 2  # frames que tarda la mano en deslizarse del borde al pico
 
 
 def make_detection(track_id: int) -> dict:
     return {"track_id": track_id, "floor_point": FOOT, "body_center_y": 0.5, "hand_pose_verified": True}
+
+
+def reach_in(frame: int) -> list[float]:
+    """Trayectoria de un alcance real: la mano roza el radio y se desliza al pico.
+
+    El punto de entrada (borde) dista 0.45m del pico (centro), muy por encima del umbral
+    de amplitud por defecto (0.10m), de modo que un gesto genuino sí registra pick-up.
+    """
+    if frame < SWEEP_TICKS:
+        return [2.9, HAND_BOUNDARY[1] - 0.39 * frame]
+    return HAND_IN
+
+
+def simulate_reach(engine: InteractionEngine, track_id: int, seconds: float) -> None:
+    """Mano entra al alcance, se desliza al pico y permanece ahí (gesto genuino)."""
+    ticks = int(seconds / DT)
+    for i in range(ticks):
+        engine.observe(make_detection(track_id), i * DT, DT, frame_height=720, hand_point=reach_in(i))
 
 
 def simulate_oscillating_hand(engine: InteractionEngine, seconds: float = 30.0, in_s: float = 0.9, out_s: float = 0.3) -> None:
@@ -68,7 +88,11 @@ def simulate_oscillating_hand(engine: InteractionEngine, seconds: float = 30.0, 
     period = int((in_s + out_s) / DT)
     in_phase = int(in_s / DT)
     for i in range(ticks):
-        hand = HAND_IN if (i % period) < in_phase else HAND_OUT
+        phase = i % period
+        if phase < in_phase:
+            hand = reach_in(phase)
+        else:
+            hand = HAND_OUT
         engine.observe(
             make_detection(71), i * DT, DT, frame_height=720, hand_point=hand
         )
@@ -115,8 +139,7 @@ def test_agarre_corto_registra_pick_up_y_credita_interaccion() -> None:
     (4.0s) debe registrar el pick-up de todos modos, y la interacción queda acreditada
     para mantener la invariante `pickups <= interactions`."""
     engine = InteractionEngine(CONFIG)
-    for i in range(int(5.0 / DT)):
-        engine.observe(make_detection(123), i * DT, DT, frame_height=720, hand_point=HAND_IN)
+    simulate_reach(engine, track_id=123, seconds=5.0)
     g = engine.results()[0]
     first_t = g["pickup_events"][0]["t"] if g["pickup_events"] else None
     assert g["pickups"] >= 1, "El agarre corto no registró ningún pick-up"
@@ -133,8 +156,7 @@ def test_aliases_de_thresholds_tambien_registran_pick_up() -> None:
     cfg["thresholds"]["hand_reach_m"] = 0.5
     cfg["thresholds"]["pick_min_seconds"] = 0.6
     engine = InteractionEngine(cfg)
-    for i in range(int(5.0 / DT)):
-        engine.observe(make_detection(321), i * DT, DT, frame_height=720, hand_point=HAND_IN)
+    simulate_reach(engine, track_id=321, seconds=5.0)
     g = engine.results()[0]
     assert g["pickups"] >= 1
     assert g["interactions"] >= 1
@@ -150,6 +172,41 @@ def test_pase_rapido_sin_detenerse_no_genera_pick_up() -> None:
     g = engine.results()[0]
     assert g["pickups"] == 0, "Un pase rápido sin mano adentro generó pick-ups"
     assert g["interactions"] == 0, "Un pase rápido sin estancia generó interacciones"
+
+
+def test_mano_estatica_dentro_del_reach_no_genera_pick_up() -> None:
+    """Una mano con wrists reales que reposa SIN moverse dentro del alcance no es un
+    pick-up: el filtro de amplitud mínima (0.10m por defecto) la descarta como FP."""
+    engine = InteractionEngine(CONFIG)
+    for i in range(int(6.0 / DT)):
+        engine.observe(make_detection(999), i * DT, DT, frame_height=720, hand_point=HAND_IN)
+    g = engine.results()[0]
+    assert g["pickups"] == 0, f"Una mano estática generó {g['pickups']} pick-ups"
+    for ev in g["pickup_events"]:
+        assert ev["amplitude"] < 0.10, f"Evento con amplitud {ev['amplitude']} >= 0.10"
+
+
+def test_mano_sin_pose_real_no_filtra_amplitud() -> None:
+    """Sin keypoints reales de pose el filtro de amplitud se salta: la heurística de bbox
+    es casi estática y no debe matar los pick-ups por no desplazarse."""
+    engine = InteractionEngine(CONFIG)
+    det = make_detection(555)
+    det["hand_pose_verified"] = False
+    for i in range(int(6.0 / DT)):
+        engine.observe(det, i * DT, DT, frame_height=720, hand_point=HAND_IN)
+    g = engine.results()[0]
+    assert g["pickups"] >= 1, "El pick-up sin pose real fue descartado por amplitud"
+
+
+def test_filtro_de_amplitud_configurable_se_desactiva_con_none() -> None:
+    """pickup_min_amplitude_m=None desactiva el filtro: la mano estática vuelve a contar."""
+    cfg = json_deepcopy(CONFIG)
+    cfg["thresholds"]["pickup_min_amplitude_m"] = None
+    engine = InteractionEngine(cfg)
+    for i in range(int(6.0 / DT)):
+        engine.observe(make_detection(777), i * DT, DT, frame_height=720, hand_point=HAND_IN)
+    g = engine.results()[0]
+    assert g["pickups"] >= 1, "El filtro desactivado aún descartó el pick-up"
 
 
 def json_deepcopy(obj):

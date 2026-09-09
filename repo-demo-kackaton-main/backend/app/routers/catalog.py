@@ -58,6 +58,7 @@ def empty_site_configuration(width: float, depth: float, camera_name: str) -> di
             "pickup_reach_m": 0.5,
             "pickup_min_seconds": 0.6,
             "pickup_cooldown_s": None,
+            "pickup_min_amplitude_m": 0.10,
         },
     }
 
