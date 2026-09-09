@@ -12,7 +12,7 @@ const BrowserDots = () => (
   </div>
 )
 
-export default function SiteFlowPage({ step, children, hideHeader = false }) {
+export default function SiteFlowPage({ step, children, hideHeader = false, hideProgress = false }) {
   const { site, job, loadSite } = useApp()
   const { siteId } = useParams()
   const [loading, setLoading] = useState(Boolean(siteId && (!site || String(site.id) !== String(siteId))))
@@ -53,7 +53,7 @@ export default function SiteFlowPage({ step, children, hideHeader = false }) {
                 <p className="mt-2 text-sm leading-6 text-[#7d8392]">{site.city} - {site.name} - Estado: <b className="text-[#151323]">{calibrationLabel}</b></p>
               </div>
             </div>}
-            {!hideHeader && (
+            {!hideHeader && !hideProgress && (
               <div className="mb-5 grid gap-2 rounded-lg border border-[#e5e7ee] bg-white p-3 shadow-[0_18px_50px_-42px_rgba(18,22,33,.55)] sm:grid-cols-5">
                 {sessionSteps.map((item, index) => {
                   const done = item.done({ site, job })
