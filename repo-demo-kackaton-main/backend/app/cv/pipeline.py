@@ -7,15 +7,17 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from ..config import settings
 from ..database import SessionLocal
 from ..models import Analysis, Site
 from .detector import get_person_detector, inference_lock
 from .heatmaps import create_floor_heatmap, overlay_heatmap_on_frame
 from .interaction import InteractionEngine
+from .privacy import blur_detection_faces
 from .recommendations import build_recommendations
 from .spatial import SpatialEngine, with_homographies
 from .track_stab import TrackStabilizer
-from .video_utils import detect_black_bars
+from .video_utils import AnonymizedVideoWriter, detect_black_bars
 from .zones import compute_zone_metrics
 
 
@@ -559,6 +561,19 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
         result_dir = Path(__file__).resolve().parents[2] / "data" / "results" / analysis_id
         result_dir.mkdir(parents=True, exist_ok=True)
 
+        # When privacy blur is enabled, an anonymized copy of the video (faces
+        # blurred) is written during the same frame loop and later served by the
+        # /video endpoint instead of the raw upload. Uses the ffmpeg binary from
+        # imageio-ffmpeg (libx264, browser-playable); if it cannot start, blur
+        # still applies to the exported images.
+        writer = None
+        if settings.BLUR_FACES:
+            try:
+                writer = AnonymizedVideoWriter(result_dir / "anonymized.mp4", fps, width, height)
+            except Exception as exc:
+                print(f"[PRIVACY] No se pudo anonimizar el video ({exc}); solo se difuminarán las imágenes")
+                writer = None
+
         trajectories: dict[int, list[list[float]]] = defaultdict(list)
         track_frames: dict[int, int] = defaultdict(int)
         zone_stats: dict[str, dict] = {
@@ -632,6 +647,18 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
                         continue
                     detection["floor_point"] = floor_point
                     valid_detections.append(detection)
+                # Anonymize before anything mutates the frame: blur only the copy
+                # exported to the video/evidence, never the tracked frame itself.
+                anon_frame = None
+                if settings.BLUR_FACES:
+                    anon_frame = blur_detection_faces(frame, valid_detections)
+                    if writer is not None:
+                        try:
+                            writer.write(anon_frame)
+                        except Exception as exc:
+                            print(f"[PRIVACY] ffmpeg dejó de escribir el video ({exc}); continuando solo con imágenes")
+                            writer.release()
+                            writer = None
                 # Second pass: unify fragmented ByteTrack ids into stable people identities
                 # and rewrite track_id so all downstream state is keyed by the stable person.
                 track_stabilizer.update(valid_detections, timestamp, frame_index, frame)
@@ -716,9 +743,12 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
                     frame_samples.append({"frame": frame_index, "timestamp": round(timestamp, 2), "detections": sample_detections})
                 if frame_index in evidence_targets:
                     name = f"frame_{len(evidence) + 1}.jpg"
-                    cv2.imwrite(str(result_dir / name), prediction.plot())
+                    plotted = prediction.plot()
+                    if anon_frame is not None:
+                        plotted = blur_detection_faces(plotted, valid_detections)
+                    cv2.imwrite(str(result_dir / name), plotted)
                     evidence.append(name)
-                    evidence_frames.append(frame.copy())
+                    evidence_frames.append(anon_frame if anon_frame is not None else frame.copy())
                 if frame_index % max(1, round(fps)) == 0:
                     progress = min(88, 8 + int((frame_index + 1) / total_frames * 80))
                     update_analysis(analysis_id, stage="tracking", progress=progress, message=f"YOLO + ByteTrack · frame {frame_index + 1}/{total_frames}")
@@ -862,7 +892,7 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
             "roi": roi,
             "site": {"id": site.id, "name": site.name, "city": site.city, "configuration": with_homographies(output_config)},
             "video": {"fps": round(fps, 2), "duration_seconds": round(total_frames / fps, 2), "width": width, "height": height, "total_frames": total_frames, "processed_frames": frame_index},
-            "model": {"detector": "YOLO11n COCO person", "pose": "yolov8n-pose" if has_pose else None, "tracker": "ByteTrack", "privacy": "temporary_ids_only", "custom_behavior_model": False, "has_pose": has_pose},
+            "model": {"detector": "YOLO11n COCO person", "pose": "yolov8n-pose" if has_pose else None, "tracker": "ByteTrack", "privacy": "temporary_ids_only + face_blur" if settings.BLUR_FACES else "temporary_ids_only", "custom_behavior_model": False, "has_pose": has_pose},
             "metrics": {
                 "people_detected": len(valid_track_ids),
                 "tracked_presences": len(valid_track_ids),
@@ -896,11 +926,18 @@ def run_analysis(analysis_id: str, configuration: dict | None = None, site_id: i
             "annotated_frames": evidence,
             "recommendations": recommendations,
             "findings": findings,
+            "privacy": {
+                "temporary_ids_only": True,
+                "face_blur": settings.BLUR_FACES,
+                "anonymized_video": bool(writer),
+            },
             "quality": {"calibration": process_config["camera"].get("calibration_status", "unknown"), "analysis_mode": mode, "coordinate_system": "normalized" if mode == "fast" else "meters", "vertical_analysis": "pose_refined_when_available", "interaction": "inferred_from_proximity_speed_and_time" if interaction_points else "insufficient_evidence", "pickup": "hand_reach_with_pose_keypoints_when_available"},
         }
         update_analysis(analysis_id, status="completed", stage="results", progress=100, message="Análisis espacial completado", result=result, duration_seconds=result["video"]["duration_seconds"])
     except Exception as exc:
         update_analysis(analysis_id, status="failed", stage="failed", progress=100, message=str(exc)[:300])
     finally:
+        if writer is not None:
+            writer.release()
         if capture is not None:
             capture.release()
