@@ -7,6 +7,7 @@ from conftest import _override_current_user, _override_get_db, advanced_result, 
 
 from app.config import settings
 from app.database import get_db
+from app.models import Analysis
 from app.routers import chat as chat_module
 from app.security import current_user
 
@@ -64,7 +65,7 @@ def test_chat_without_site_has_no_report_context(chat_client, state, monkeypatch
     body = response.json()
     assert body["reply"] == "Respuesta de prueba del asistente"
     assert body["report_context"] is False
-    assert "datos reales del último análisis" not in captured["system"]
+    assert captured["system"] == chat_module.SYSTEM_PROMPT
     assert [m["role"] for m in captured["messages"]] == ["user", "user"]
 
 
@@ -108,6 +109,109 @@ def test_chat_unknown_site_404(chat_client, state, monkeypatch):
     set_user(state, 1)
     response = chat_client.post("/api/chat", json={"message": "hola", "site_id": 999})
     assert response.status_code == 404
+
+
+def test_chat_during_processing_uses_progress_context(chat_client, state, monkeypatch):
+    """Mientras se analiza un video (sin informe completado) no debe dar 404:
+    el bot recibe el estado real del job en curso."""
+    _enable_key(monkeypatch)
+    captured = _capture_ask(monkeypatch)
+    make_analysis(
+        state,
+        "proc001",
+        site_id=1,
+        status="processing",
+        stage="tracking",
+        progress=47,
+        message="YOLO + ByteTrack · frame 57/120",
+    )
+    set_user(state, 1)
+    response = chat_client.post("/api/chat", json={"message": "¿cómo va el análisis?", "site_id": 1})
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["report_context"] is True
+    assert body["status"] == "processing"
+    assert body["progress"] == 47
+    assert body["stage"] == "tracking"
+    assert "ESTADO_DEL_ANALISIS" in captured["system"]
+    assert "47%" in captured["system"]
+    assert "Analizando trayectorias" in captured["system"]
+    assert captured["messages"][-1] == {"role": "user", "content": "¿cómo va el análisis?"}
+
+
+def test_chat_with_analysis_id_points_to_running_job(chat_client, state, monkeypatch):
+    """El frontend puede apuntar al job exacto en ejecución aunque exista un
+    análisis anterior completado."""
+    _enable_key(monkeypatch)
+    captured = _capture_ask(monkeypatch)
+    make_analysis(state, "prev001", site_id=1, status="completed", result=advanced_result("prev001"))
+    make_analysis(
+        state,
+        "running1",
+        site_id=1,
+        status="processing",
+        stage="tracking",
+        progress=63,
+        message="Procesando frame 75",
+    )
+    set_user(state, 1)
+    response = chat_client.post(
+        "/api/chat",
+        json={"message": "¿cuánto falta?", "site_id": 1, "analysis_id": "running1"},
+    )
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["analysis_id"] == "running1"
+    assert body["progress"] == 63
+    assert "ESTADO_DEL_ANALISIS" in captured["system"]
+    assert "prev001" not in captured["system"]
+
+
+def test_chat_without_any_analysis_is_friendly_not_404(chat_client, state, monkeypatch):
+    """Sede sin análisis: respuesta amable (no 404 opaco) para que el bot
+    explique cómo cargar un video."""
+    _enable_key(monkeypatch)
+    captured = _capture_ask(monkeypatch)
+    set_user(state, 1)
+    # Aislamiento: la base es compartida entre tests de esta sesión.
+    state.session.query(Analysis).delete()
+    state.session.commit()
+    response = chat_client.post("/api/chat", json={"message": "dame cifras", "site_id": 1})
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["report_context"] is True
+    assert body["analysis_id"] is None
+    assert "no hay ningún análisis" in captured["system"].lower() or "ningún análisis" in captured["system"]
+
+
+def test_chat_stream_yields_deltas_and_done(chat_client, state, monkeypatch):
+    _enable_key(monkeypatch)
+    set_user(state, 1)
+
+    def fake_stream(system_prompt, messages):
+        yield "Hola, "
+        yield "soy el asistente."
+
+    monkeypatch.setattr(chat_module, "_stream_gemini", fake_stream)
+
+    response = chat_client.post(
+        "/api/chat/stream",
+        json={"message": "¿cómo va el análisis?", "site_id": 1},
+    )
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers["content-type"]
+    assert '{"type": "delta", "delta": "Hola, "}' in response.text
+    assert '{"type": "delta", "delta": "soy el asistente."}' in response.text
+    assert '"type": "done"' in response.text
+
+
+def test_chat_stream_no_key_returns_setup_reply(chat_client, state, monkeypatch):
+    _enable_key(monkeypatch, value="")
+    set_user(state, 1)
+    response = chat_client.post("/api/chat/stream", json={"message": "hola"})
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers["content-type"]
+    assert chat_module.NO_KEY_REPLY in response.text
 
 
 def test_ask_gemini_tries_fallback_models(chat_client, state, monkeypatch):
