@@ -64,11 +64,9 @@ export default function ResultsPage() {
         </div>
         <nav aria-label="Secciones del análisis" className="relative mb-8 mt-6 flex flex-wrap gap-2 border-t border-[#ff7a1a]/20 pt-5">
           {[[Video, '#video-analisis', 'Explorar video'], [Map, '#mapa-analisis', 'Mapa de la tienda'], [Activity, '#hallazgos', 'Resultados y evidencia']].map(([Icon, href, label]) => <a key={href} href={href} className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs text-slate-600 hover:bg-[#ff7a1a]/10 hover:text-[#cf4921]"><Icon size={14} aria-hidden="true" />{label}</a>)}
-        </nav>
-
+</nav>
 
       <AnalysisVideo analysis={analysis} />
-
       <div id="mapa-analisis" className="mt-8 scroll-mt-24 rounded-3xl border border-[#e5e7ee] bg-[#f7f8fa] p-4 sm:p-6">
         <div className="mb-6">
           <span className="text-[10px] font-medium tracking-[.17em] text-[#cf4921]">GEMELO ESPACIAL</span>

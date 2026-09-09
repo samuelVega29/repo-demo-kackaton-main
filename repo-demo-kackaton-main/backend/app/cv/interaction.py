@@ -27,6 +27,11 @@ class InteractionEngine:
         # after the hand leaves the reach for that many seconds.
         raw_cooldown = self.thresholds.get("pickup_cooldown_s")
         self.pickup_cooldown_s = float(raw_cooldown) if raw_cooldown is not None else None
+        # Minimum hand displacement (entry into the reach -> peak of approach) required to
+        # accept a pick-up. Only enforced for real pose wrists (see _observe_pickup).
+        # None disables the filter, smaller values tolerate subtle grabs.
+        raw_amplitude = self.thresholds.get("pickup_min_amplitude_m")
+        self.pickup_min_amplitude_m = float(raw_amplitude) if raw_amplitude is not None else None
         self.gondolas = {
             item["id"]: {
                 **item,
@@ -57,8 +62,13 @@ class InteractionEngine:
             "pickup_reach_m": 0.65,
             "pickup_min_seconds": 0.35,
             "pickup_cooldown_s": None,
+            "pickup_min_amplitude_m": 0.10,
         }
         normalized.update({key: value for key, value in thresholds.items() if value is not None})
+        # pickups_min_amplitude_m: un None explícito DESACTIVA el filtro, así que no puede
+        # descartarse en el update genérico (que filtra None) ni caer al default 0.10.
+        if "pickup_min_amplitude_m" in thresholds and thresholds["pickup_min_amplitude_m"] is None:
+            normalized["pickup_min_amplitude_m"] = None
         if "hand_reach_m" in thresholds and "pickup_reach_m" not in thresholds:
             normalized["pickup_reach_m"] = thresholds["hand_reach_m"]
         if "pick_min_seconds" in thresholds and "pickup_min_seconds" not in thresholds:
@@ -219,9 +229,12 @@ class InteractionEngine:
         state.setdefault("pickup_cell", None)
         state.setdefault("pickup_amplitude", 0.0)
         state.setdefault("pickup_since", None)
+        state.setdefault("hand_entry_point", None)
+        state.setdefault("hand_peak_point", None)
+        state.setdefault("hand_peak_dist", float("inf"))
 
     def _reset_hand(self, state: dict) -> None:
-        state.update({"hand_inside": False, "pickup_counted": False, "hand_since": None, "hand_out_since": None, "pickup_cell": None, "pickup_amplitude": 0.0, "pickup_since": None})
+        state.update({"hand_inside": False, "pickup_counted": False, "hand_since": None, "hand_out_since": None, "pickup_cell": None, "pickup_amplitude": 0.0, "pickup_since": None, "hand_entry_point": None, "hand_peak_point": None, "hand_peak_dist": float("inf")})
 
     def _observe_pickup(
         self,
@@ -250,6 +263,9 @@ class InteractionEngine:
           matches the reach.
         * The reported position is anchored to the gondola footprint so a pick never lands
           far outside the gondola due to the perspective-distorted hand projection.
+        * When the hand comes from real pose wrists, it must move at least
+          ``pickup_min_amplitude_m`` from the reach entry to the peak of approach; a hand
+          resting at the shelf without reaching in is never counted.
 
         Returns ``(pickup, interaction_now)``. When a reach registers before the
         ``interaction_seconds`` mark it is also credited as the stay's interaction, so the
@@ -275,6 +291,17 @@ class InteractionEngine:
         state["hand_out_since"] = None
         if state["hand_since"] is None:
             state["hand_since"] = timestamp
+            # First frame inside the reach: this is the pivot for the amplitude measure.
+            state["hand_entry_point"] = hand_point
+            state["hand_peak_point"] = hand_point
+            state["hand_peak_dist"] = SpatialEngine.distance_to_gondola(hand_point, gondola)
+        elif hand_point is not None:
+            # Track the peak of approach (closest hand sample to the gondola) so the
+            # amplitude can be measured from the reach entry to the peak.
+            current_dist = SpatialEngine.distance_to_gondola(hand_point, gondola)
+            if current_dist < state["hand_peak_dist"]:
+                state["hand_peak_dist"] = current_dist
+                state["hand_peak_point"] = hand_point
         state["hand_inside"] = True
 
         # A pick is only counted while the person is genuinely engaged (close + slow +
@@ -304,6 +331,18 @@ class InteractionEngine:
         if (timestamp - state["hand_since"]) < self.pickup_min_seconds:
             return False, False
 
+        # Amplitude gate: from the reach entry to the peak of approach the hand must have
+        # moved at least ``pickup_min_amplitude_m``. A hand resting at the shelf without
+        # reaching in is a false positive. Only enforced for real pose wrists - the bbox
+        # heuristic/proxy is largely static and would otherwise zero every pick-up.
+        amplitude = 0.0
+        pose_verified = bool(detection.get("hand_pose_verified", False))
+        if pose_verified and state["hand_entry_point"] is not None and state["hand_peak_point"] is not None:
+            amplitude = math.dist(state["hand_entry_point"], state["hand_peak_point"])
+            state["pickup_amplitude"] = amplitude
+            if self.pickup_min_amplitude_m is not None and amplitude < self.pickup_min_amplitude_m:
+                return False, False
+
         state["pickup_counted"] = True
         state["pickup_since"] = timestamp
         data["pickups"] += 1
@@ -327,7 +366,10 @@ class InteractionEngine:
             interaction_now = True
         # Anchor the reported location to the gondola (avoids out-of-rectangle picks).
         anchor = SpatialEngine.nearest_point_on_gondola(hand_point, gondola) if hand_point is not None else [gondola["x"], gondola["z"]]
-        data["pickup_events"].append({"t": round(timestamp, 2), "track_id": detection["track_id"], "x": anchor[0], "z": anchor[1], "row": row_id, "column": column_id, "product": product, "pose_verified": bool(detection.get("hand_pose_verified", False)) or bool(detection.get("row_pose_verified", False))})
+        data["pickup_events"].append({"t": round(timestamp, 2), "track_id": detection["track_id"], "x": anchor[0], "z": anchor[1], "row": row_id, "column": column_id, "product": product, "pose_verified": bool(detection.get("hand_pose_verified", False)) or bool(detection.get("row_pose_verified", False)), "amplitude": round(amplitude, 3)})
+        state["hand_entry_point"] = None
+        state["hand_peak_point"] = None
+        state["hand_peak_dist"] = float("inf")
         return True, interaction_now
 
     def results(self) -> list[dict]:

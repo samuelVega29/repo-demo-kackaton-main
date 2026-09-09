@@ -39,6 +39,8 @@ DATASET_ROOT = Path(os.environ.get("SCAPDER_DATASET", REPO_ROOT / "training" / "
 ANNOTATIONS_ROOT = Path(os.environ.get("SCAPDER_ANNOTATIONS", REPO_ROOT / "training" / "annotations"))
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
+# Modelos alternativos para el chat: si el configurado está saturado (503) o
+# sin cuota (429), el backend prueba estos en orden antes de rendirse.
 GEMINI_FALLBACK_MODELS = [
     item.strip()
     for item in os.environ.get(

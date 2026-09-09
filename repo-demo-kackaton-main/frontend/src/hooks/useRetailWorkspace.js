@@ -46,7 +46,6 @@ export default function useRetailWorkspace(user, logout) {
       setJob({ status: 'failed', stage: 'upload', progress: 0, message: 'Selecciona un archivo MP4' })
       return
     }
-    if (preview) URL.revokeObjectURL(preview)
     setFile(candidate)
     setPreview(URL.createObjectURL(candidate))
     setJob(null)

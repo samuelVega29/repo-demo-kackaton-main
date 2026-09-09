@@ -103,7 +103,6 @@ export function AppProvider({ children }) {
   const chooseFile = (candidate) => {
     if (!candidate) return
     if (!candidate.name.toLowerCase().endsWith('.mp4')) { setJob({ status: 'failed', stage: 'upload', progress: 0, message: 'Selecciona un archivo MP4' }); return }
-    if (preview) URL.revokeObjectURL(preview)
     setFile(candidate)
     setPreview(URL.createObjectURL(candidate))
     setJob(null)
@@ -112,7 +111,6 @@ export function AppProvider({ children }) {
   }
 
   const clearFile = () => {
-    if (preview) URL.revokeObjectURL(preview)
     setFile(null)
     setPreview('')
     setJob(null)

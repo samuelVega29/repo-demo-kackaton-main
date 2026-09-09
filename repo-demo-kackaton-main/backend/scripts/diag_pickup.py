@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -89,6 +90,24 @@ def main() -> int:
     with_car = set()
     n_eviden = 0
     samples: list[tuple[float, float]] = []
+    # Amplitud de mano por segmento dentro del reach: desplazamiento desde la entrada
+    # al radio hasta el pico de acercamiento (misma métrica que el filtro del engine).
+    reach_state: dict[int, dict] = {}
+    amplitudes: list[float] = []
+
+    def _track_amplitude(track_id: int, hand_point: list[float], active: dict) -> None:
+        d = SpatialEngine.distance_to_gondola(hand_point, active)
+        st = reach_state.get(track_id)
+        if d <= reach + 0.001:
+            if st is None:
+                reach_state[track_id] = {"entry": hand_point, "peak": hand_point, "peak_d": d}
+            elif d < st["peak_d"]:
+                st["peak_d"] = d
+                st["peak"] = hand_point
+        elif st is not None:
+            amplitudes.append(math.dist(st["entry"], st["peak"]))
+            reach_state.pop(track_id, None)
+
     while True:
         ok, frame = capture.read()
         if not ok or frame_index > args.max_frames:
@@ -139,6 +158,7 @@ def main() -> int:
                         hand_dist_close += 1
                     if len(samples) < 4000:
                         samples.append((d, 1.0 if pose_verified else 0.0))
+                    _track_amplitude(detection["track_id"], hand_point, active)
                 behavior = interactions.observe(detection, timestamp, dt, height, hand_point=hand_point)
                 if behavior["state"] == "ENGAGED" or behavior["state"] == "INTERACTION":
                     engaged_frames += 1
@@ -160,6 +180,17 @@ def main() -> int:
           f"<=0.5:{sum(1 for d, _ in samples if d <= 0.5)} <=1.0:{sum(1 for d, _ in samples if d <= 1.0)}")
     pose_ok = sum(1 for _, p in samples if p)
     print(f"samples con wrists reales: {pose_ok}/{len(samples)}")
+    # Volcar segmentos de alcance que quedaron abiertos al terminar el video.
+    for st in reach_state.values():
+        amplitudes.append(math.dist(st["entry"], st["peak"]))
+    if amplitudes:
+        over = sum(1 for a in amplitudes if a >= 0.10)
+        amps = sorted(amplitudes)
+        print(f"amplitudes mano en reach: n={len(amps)} "
+              f"min={amps[0]:.3f} mediana={amps[len(amps)//2]:.3f} max={amps[-1]:.3f} "
+              f">=0.10m:{over} ({over/len(amps)*100:.0f}%)")
+    else:
+        print("amplitudes mano en reach: sin segmentos dentro del alcance")
     print("\n=== RESULTADO ENGINE ===")
     for g in interactions.results():
         print(f"  {g['name']:<18} vis={g['visitors']:<4} int={g['interactions']:<4} pick={g['pickups']} "

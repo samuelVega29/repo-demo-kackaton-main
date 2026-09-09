@@ -1338,12 +1338,12 @@ export default function SitePickerPage() {
               <h2 className="text-[31px] font-black leading-[.98] tracking-[-0.04em] text-white">
                 Crea un nuevo
 
-                <span className="block text-[#ff681e]">
+                <span className="block text-white">
                   espacio Scapder.
                 </span>
               </h2>
 
-              <p className="mt-3 max-w-[450px] text-[12px] leading-5 text-[#9fb2c4]">
+              <p className="mt-3 max-w-[450px] text-[12px] leading-5 text-white/80">
                 Registra la información
                 básica de la sede para
                 comenzar a configurarla.
