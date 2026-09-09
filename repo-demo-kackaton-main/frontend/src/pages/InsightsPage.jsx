@@ -64,7 +64,7 @@ export default function InsightsPage() {
         <h1 className="my-[17px] mb-6 text-[clamp(40px,6vw,72px)] font-medium leading-[.95] tracking-[-.045em] text-[#151323]">
           Lo que dice <em className="not-italic text-[#ff6b3d]">Claude.</em>
         </h1>
-        <p className="max-w-[560px] text-sm text-[#7d8392]">Claude interpreta las metricas y los frames ya calculados en el analisis anterior para darte hallazgos accionables, con evidencia visual citada por frame, y un informe descargable en Word.</p>
+        <p className="max-w-[560px] text-sm text-[#7d8392]">Claude interpreta las metricas y los frames ya calculados en el analisis anterior para darte hallazgos accionables, con evidencia visual citada por frame, e informes descargables en Word y Excel (con gráficas).</p>
       </div>
 
       <div className="mb-8 flex flex-col items-start gap-2">
@@ -117,7 +117,7 @@ export default function InsightsPage() {
 
           <p className="mb-0 mt-5 text-[11px] leading-relaxed text-[#7d8392]">{insights.resumen_ejecutivo}</p>
 
-          <div className="mt-5 flex items-center gap-3">
+          <div className="mt-5 flex flex-wrap items-center gap-3">
             <a
               className="inline-flex items-center gap-1 rounded-lg border border-[#ff6b3d] px-4 py-2 text-xs font-black uppercase tracking-wide text-[#ff6b3d] transition hover:bg-[#ff6b3d] hover:text-white"
               href={resolveApiUrl(`/api/analyses/${analysis.id}/insights/export?token=${getToken()}`)}
@@ -125,6 +125,24 @@ export default function InsightsPage() {
               rel="noreferrer"
             >
               ⬇ Exportar Word
+            </a>
+            <a
+              className="inline-flex items-center gap-1 rounded-lg bg-[#1d7a3a] px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-[#256f3c]"
+              href={resolveApiUrl(`/api/analyses/${analysis.id}/insights/export-excel?token=${getToken()}`)}
+              target="_blank"
+              rel="noreferrer"
+              title="Descarga un Excel con resumen, métricas por zona, recomendaciones y dashboard con gráficas"
+            >
+              📊 Exportar Excel
+            </a>
+            <a
+              className="inline-flex items-center gap-1 rounded-lg bg-[#c0392b] px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-[#a93226]"
+              href={resolveApiUrl(`/api/analyses/${analysis.id}/insights/export-pdf?token=${getToken()}`)}
+              target="_blank"
+              rel="noreferrer"
+              title="Descarga un PDF con resumen, métricas por zona, recomendaciones y gráficas"
+            >
+              📄 Exportar PDF
             </a>
           </div>
         </div>
