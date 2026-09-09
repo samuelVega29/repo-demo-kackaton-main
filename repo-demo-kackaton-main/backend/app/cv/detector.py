@@ -33,6 +33,10 @@ SKELETON_CONNECTIONS = [
 ]
 
 
+inference_lock = threading.RLock()
+_detector_cache: dict[bool, "PersonDetector"] = {}
+
+
 def _find_model(detection_only: bool) -> Path:
     """Resolve model path: env override, exported, then bundled, then bare name."""
     project_root = Path(__file__).resolve().parents[3]

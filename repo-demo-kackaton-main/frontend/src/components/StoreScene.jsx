@@ -296,7 +296,7 @@ function Person({ slot, label }) {
 // floor position between the two neighboring samples so motion reads as walking, not teleporting.
 // Track ids keep a stable pool slot for as long as they're active, so an avatar doesn't jump
 // between visual identities frame to frame.
-function PeopleLayer({ samples, floor, timeWindow, poolSize }) {
+function PeopleLayer({ samples, floor, timeWindow, poolSize, scale = 1 }) {
   const pool = useMemo(
     () => Array.from({ length: Math.max(1, Math.min(40, poolSize)) }, () => ({
       group: createRef(), ring: createRef(), body: createRef(), head: createRef(),
@@ -376,8 +376,8 @@ function PeopleLayer({ samples, floor, timeWindow, poolSize }) {
       const rawB = mapB.get(trackId)
       const from = (rawA || rawB).floor_point
       const to = (rawB || rawA).floor_point
-      const x = from[0] + (to[0] - from[0]) * t
-      const z = from[1] + (to[1] - from[1]) * t
+      const x = (from[0] + (to[0] - from[0]) * t) * scale
+      const z = (from[1] + (to[1] - from[1]) * t) * scale
       if (slot.group.current) {
         slot.group.current.visible = true
         slot.group.current.position.set(x - floor.width / 2, 0, z - floor.depth / 2)
@@ -421,8 +421,8 @@ function PeopleLayer({ samples, floor, timeWindow, poolSize }) {
         line.visible = !!show
         if (show && line.geometry.attributes.position) {
           const pos = line.geometry.attributes.position
-          pos.setXYZ(0, pa[0] - x, pa[2], pa[1] - z)
-          pos.setXYZ(1, pb[0] - x, pb[2], pb[1] - z)
+          pos.setXYZ(0, pa[0] * scale - x, pa[2] * scale, pa[1] * scale - z)
+          pos.setXYZ(1, pb[0] * scale - x, pb[2] * scale, pb[1] * scale - z)
           pos.needsUpdate = true
         }
       }
@@ -432,7 +432,7 @@ function PeopleLayer({ samples, floor, timeWindow, poolSize }) {
         const kp = sk3d?.[j]
         joint.visible = !!kp
         if (kp) {
-          joint.position.set(kp[0] - x, kp[2], kp[1] - z)
+          joint.position.set(kp[0] * scale - x, kp[2] * scale, kp[1] * scale - z)
           if (j === 9) leftWrist3D = kp
           if (j === 10) rightWrist3D = kp
         }
@@ -442,11 +442,11 @@ function PeopleLayer({ samples, floor, timeWindow, poolSize }) {
       const reachVisible = state === 'INTERACTION' || state === 'ENGAGED'
       if (slot.reachLeftRef.current && leftWrist3D) {
         slot.reachLeftRef.current.visible = reachVisible
-        slot.reachLeftRef.current.position.set(leftWrist3D[0] - x, leftWrist3D[2], leftWrist3D[1] - z)
+        slot.reachLeftRef.current.position.set(leftWrist3D[0] * scale - x, leftWrist3D[2] * scale, leftWrist3D[1] * scale - z)
       }
       if (slot.reachRightRef.current && rightWrist3D) {
         slot.reachRightRef.current.visible = reachVisible
-        slot.reachRightRef.current.position.set(rightWrist3D[0] - x, rightWrist3D[2], rightWrist3D[1] - z)
+        slot.reachRightRef.current.position.set(rightWrist3D[0] * scale - x, rightWrist3D[2] * scale, rightWrist3D[1] * scale - z)
       }
       if (!reachVisible) {
         if (slot.reachLeftRef.current) slot.reachLeftRef.current.visible = false
@@ -460,26 +460,58 @@ function PeopleLayer({ samples, floor, timeWindow, poolSize }) {
   return <>{pool.map((slot, index) => <Person key={index} slot={slot} label={labels[index]} />)}</>
 }
 
-function Store({ result, mode, selectedId, onSelect, heatmapUrl, sliceEntries, sliceIndex, analysisId }) {
+function Store({ result, mode, selectedId, onSelect, heatmapUrl, sliceEntries, sliceIndex, analysisId, sceneFloor, scale, fallbackGondolas, fallbackFloor }) {
   const configuration = result.site.configuration
-  const floor = configuration.floor
+  const floor = sceneFloor
   const zones = configuration.zones || []
+  // Las góndolas llegan en metros (calibrado) o normalizadas 0..1 (modo rápido). `scale`
+  // convierte lo normalizado a metros de presentación realistas; en modo metros es 1.
+  const defaultHeight = scale === 1 ? 1.45 : 0.22
+  const defaultTiers = scale === 1 ? [0.25, 0.73, 1.2] : [0.06, 0.13, 0.2]
+  // En modo calibrado (meters) las coordenadas de las góndolas son metros reales (x/z > 2) y
+  // jamás deben re-normalizarse dividiendo por el video, o desaparecen del plano 3D. El paso
+  // píxel->0..1 solo aplica dentro del modo normalizado (modo rápido), para payloads legados.
+  const normalizedSpace = scale !== 1
   const sceneGondolas = useMemo(() => {
-    const gondolas = result.gondolas || []
+    // Si el análisis corrió antes de que la sede tuviera góndolas guardadas su snapshot viene
+    // vacío: se cae a la configuración ACTUAL de la sede para que las góndolas dibujadas sí
+    // aparezcan en el plano 3D (el backend reproduce exámente esta normalización al re-correr).
+    const fallbackLive = (fallbackGondolas || []).map((item) => {
+      if (!normalizedSpace) return item
+      const floorW = Math.max(0.001, fallbackFloor?.width || 1)
+      const floorD = Math.max(0.001, fallbackFloor?.depth || 1)
+      return {
+        ...item,
+        x: item.x / floorW,
+        z: item.z / floorD,
+        width: item.width / floorW,
+        depth: item.depth / floorD,
+        height: 0.22,
+        tier_heights: [0.06, 0.13, 0.2],
+      }
+    })
+    const gondolas = (result.gondolas || []).length ? result.gondolas : fallbackLive
     const video = result.video || {}
-    const normalizedFloor = floor.width <= 1.5 && floor.depth <= 1.5
-    const looksLikePixels = normalizedFloor && gondolas.some((item) => item.x > 2 || item.z > 2 || item.width > 2 || item.depth > 2)
-    if (!looksLikePixels || !video.width || !video.height) return gondolas
-    return gondolas.map((item) => ({
+    const looksLikePixels = gondolas.some((item) => (item.x ?? 0) > 2 || (item.z ?? 0) > 2 || (item.width ?? 0) > 2 || (item.depth ?? 0) > 2)
+    const pixelToNormalized = normalizedSpace && looksLikePixels && video.width && video.height
+      ? gondolas.map((item) => ({
+          ...item,
+          x: item.x / video.width,
+          z: item.z / video.height,
+          width: item.width / video.width,
+          depth: item.depth / video.height,
+        }))
+      : gondolas
+    return pixelToNormalized.map((item) => ({
       ...item,
-      x: item.x / video.width,
-      z: item.z / video.height,
-      width: item.width / video.width,
-      depth: item.depth / video.height,
-      height: Math.min(item.height || 1.45, 0.35),
-      tier_heights: (item.tier_heights || [0.08, 0.18, 0.28]).map((height) => Math.min(height / video.height, 0.35)),
+      x: item.x * scale,
+      z: item.z * scale,
+      width: item.width * scale,
+      depth: item.depth * scale,
+      height: (item.height ?? defaultHeight) * scale,
+      tier_heights: (item.tier_heights || defaultTiers).map((height) => height * scale),
     }))
-  }, [result.gondolas, result.video, floor.width, floor.depth])
+  }, [result.gondolas, result.video, normalizedSpace, scale, defaultHeight, defaultTiers, fallbackGondolas, fallbackFloor])
   const maxValue = Math.max(...sceneGondolas.map((item) => item[metricField[mode]] || 0), 1)
   const trajectories = result.trajectories.slice(0, 80)
   const urls = useMemo(
@@ -516,20 +548,20 @@ function Store({ result, mode, selectedId, onSelect, heatmapUrl, sliceEntries, s
       <HeatmapFloor floor={floor} textures={textures} sliceIndex={sliceIndex} />
       <Grid args={[floor.width, floor.depth]} cellSize={1} cellColor="#29463d" sectionSize={4} sectionColor="#527065" fadeDistance={22} position={[0, 0.035, 0]} />
       {/* Zone overlays */}
-      {zones.map((zone) => <ZoneOverlay key={zone.id} zone={zone} floor={floor} />)}
+      {zones.map((zone) => <ZoneOverlay key={zone.id} zone={{ ...zone, polygon: (zone.polygon || []).map(([x, z]) => [x * scale, z * scale]) }} floor={floor} />)}
       {/* Floor outline */}
       {floor.outline?.length >= 3 && (
         // Blue on purpose — everything else glowing on this floor (shelves, the acid accent,
         // interaction rings) lives in the green/orange family; blue reads unambiguously as
         // "this is the real wall," not another gondola.
         <Line
-          points={[...floor.outline, floor.outline[0]].map(([x, z]) => [x - floor.width / 2, 0.04, z - floor.depth / 2])}
+          points={[...floor.outline, floor.outline[0]].map(([x, z]) => [x * scale - floor.width / 2, 0.04, z * scale - floor.depth / 2])}
           color="#5b9dff" lineWidth={1.8} dashed dashScale={5} transparent opacity={0.7}
         />
       )}
       {sceneGondolas.map((item) => <Shelf key={item.id} item={item} floor={floor} selected={selectedId === item.id} mode={mode} maxValue={maxValue} onSelect={onSelect} />)}
-      {mode === 'dwell' && trajectories.map((trajectory) => <Line key={trajectory.track_id} points={trajectory.points.map(([x, z]) => [x - floor.width / 2, 0.07, z - floor.depth / 2])} color="#70efd0" lineWidth={1.3} transparent opacity={0.75} />)}
-      <PeopleLayer samples={peopleSamples} floor={floor} timeWindow={timeWindow} poolSize={result.metrics?.peak_presence || 6} />
+      {mode === 'dwell' && trajectories.map((trajectory) => <Line key={trajectory.track_id} points={trajectory.points.map(([x, z]) => [x * scale - floor.width / 2, 0.07, z * scale - floor.depth / 2])} color="#70efd0" lineWidth={1.3} transparent opacity={0.75} />)}
+      <PeopleLayer samples={peopleSamples} floor={floor} timeWindow={timeWindow} poolSize={result.metrics?.peak_presence || 6} scale={scale} />
       <OrbitControls makeDefault minDistance={5} maxDistance={20} maxPolarAngle={Math.PI / 2.08} target={[0, 0.3, 0]} />
     </>
   )
@@ -546,7 +578,7 @@ function TimeScrubber({ entries, mode, index, onChange }) {
   )
 }
 
-export default function StoreScene({ result, mode, selectedId, onSelect, heatmapUrl, slices, analysisId }) {
+export default function StoreScene({ result, mode, selectedId, onSelect, heatmapUrl, slices, analysisId, fallbackGondolas, fallbackFloor }) {
   const floor = result?.site?.configuration?.floor
   const sliceEntries = useMemo(
     () => (slices || []).filter((entry) => entry[mode]),
@@ -554,7 +586,23 @@ export default function StoreScene({ result, mode, selectedId, onSelect, heatmap
   )
   const [sliceIndex, setSliceIndex] = useState(0)
   useEffect(() => setSliceIndex(0), [mode, heatmapUrl, analysisId, sliceEntries.length])
-  if (!floor?.width || !floor?.depth) {
+  // El backend reporta "normalized" (modo rápido/sin calibrar) o "meters" (calibrado). En el
+  // modo rápido todo viene en 0..1 sobre un piso 1x1, que renderizado a tamaño real queda
+  // diminuto con avatares gigantes; se escala toda la presentación de forma uniforme para que
+  // estantes y personas tengan proporciones reales (la escala deriva de la altura de góndola
+  // normalizada apuntando a ~1.45m de estante).
+  const coordinateSystem = result?.coordinate_system || result?.quality?.coordinate_system
+  const isNormalized = coordinateSystem === 'normalized' || (!coordinateSystem && floor?.width <= 1.5 && floor?.depth <= 1.5)
+  const firstGondolaHeight = result?.gondolas?.[0]?.height
+  const presentationScale = isNormalized
+    ? Math.min(14, Math.max(6, 1.45 / Math.max(firstGondolaHeight || 0.22, 0.12)))
+    : 1
+  const sceneFloor = useMemo(
+    () => ({ ...floor, width: floor.width * presentationScale, depth: floor.depth * presentationScale }),
+    [floor, presentationScale],
+  )
+  const sceneReady = floor?.width && floor?.depth
+  if (!sceneReady) {
     return (
       <div className="grid h-full min-h-[520px] place-items-center px-6 text-center text-sm font-semibold leading-6 text-[#90a69d]">
         No hay plano 3D disponible para este analisis. Revisa la configuracion de la sede y vuelve a procesar el video.
@@ -563,8 +611,8 @@ export default function StoreScene({ result, mode, selectedId, onSelect, heatmap
   }
   return (
     <div className="absolute inset-0 [&_canvas]:touch-none">
-      <Canvas shadows camera={{ position: [floor.width * 0.7, 9, floor.depth * 0.8], fov: 43 }} dpr={[1, 1.5]}>
-        <Store result={result} mode={mode} selectedId={selectedId} onSelect={onSelect} heatmapUrl={heatmapUrl} sliceEntries={sliceEntries} sliceIndex={sliceIndex} analysisId={analysisId} />
+      <Canvas shadows camera={{ position: [sceneFloor.width * 0.7, 9, sceneFloor.depth * 0.8], fov: 43 }} dpr={[1, 1.5]}>
+        <Store result={result} mode={mode} selectedId={selectedId} onSelect={onSelect} heatmapUrl={heatmapUrl} sliceEntries={sliceEntries} sliceIndex={sliceIndex} analysisId={analysisId} sceneFloor={sceneFloor} scale={presentationScale} fallbackGondolas={fallbackGondolas} fallbackFloor={fallbackFloor} />
       </Canvas>
       {sliceEntries.length > 1 && <TimeScrubber entries={sliceEntries} mode={mode} index={sliceIndex} onChange={setSliceIndex} />}
       <span className="pointer-events-none absolute bottom-5 left-[22px] text-[8px] font-medium font-[ui-monospace,monospace] tracking-[.1em] text-[#6c837a] max-[760px]:bottom-[14px] max-[760px]:left-[14px]">ARRASTRA · PELLIZCA · TOCA UNA GÓNDOLA</span>

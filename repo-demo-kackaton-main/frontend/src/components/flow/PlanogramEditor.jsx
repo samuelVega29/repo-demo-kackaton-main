@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import LiveAlignment from './LiveAlignment'
 import { ROWS as rows, COLUMNS as columns, emptyProducts } from '../../utils/constants'
 import { pointInPolygon, nearestPointInPolygon, drawFloorOutline } from '../../utils/floorOutline'
-import { gondolaCorners, inverseHomography, projectFloor } from '../../utils/homography'
+import { gondolaCorners, inverseHomography, projectFloor, projectFloorAtHeight, GONDOLA_TOP_HEIGHT_M } from '../../utils/homography'
 import { hexToRgba } from '../../utils/format'
 
 const GRID_SNAP = 0.25
@@ -62,17 +62,62 @@ function PlanPreview({ frameCapture, configuration, selectedId, zone, onPreviewC
       if (outline && outline.length > 1) drawFloorOutline(ctx, outline, toPx, 'ZONA')
       ;(configuration.gondolas || []).forEach((gondola) => {
         const color = gondola.color || '#61dec0'
-        const pixels = gondolaCorners(gondola).map(([x, z]) => toPx(x, z)).filter(Boolean)
-        if (pixels.length < 4) return
+        const shelfHeight = gondola.height || GONDOLA_TOP_HEIGHT_M
+        const corners = gondolaCorners(gondola)
+        const base = corners.map(([x, z]) => toPx(x, z))
+        const top = corners.map(([x, z]) => {
+          const raised = projectFloorAtHeight(inverse, W, H, x, z, shelfHeight)
+          return raised ? [raised[0] * W, raised[1] * H] : null
+        })
+        if (base.length < 4 || base.some((point) => !point)) return
+        const standing = top.every(Boolean)
         ctx.beginPath()
-        ctx.moveTo(...pixels[0])
-        pixels.slice(1).forEach((point) => ctx.lineTo(...point))
+        ctx.moveTo(...base[0])
+        base.slice(1).forEach((point) => ctx.lineTo(...point))
         ctx.closePath()
         ctx.fillStyle = hexToRgba(color, .18)
         ctx.fill()
+        if (standing) {
+          ctx.beginPath()
+          ctx.moveTo(...top[0])
+          top.slice(1).forEach((point) => ctx.lineTo(...point))
+          ctx.closePath()
+          ctx.fillStyle = hexToRgba(color, .24)
+          ctx.fill()
+          ctx.strokeStyle = hexToRgba(color, .7)
+          ctx.lineWidth = 1
+          ctx.stroke()
+          ctx.beginPath()
+          base.forEach((point, index) => {
+            if (index === 0) ctx.moveTo(...point)
+            else ctx.lineTo(...point)
+            ctx.lineTo(...top[index])
+            ctx.moveTo(...top[index])
+          })
+          ctx.stroke()
+        }
         ctx.strokeStyle = selectedId === gondola.id ? '#ff876a' : color
-        ctx.lineWidth = selectedId === gondola.id ? 3 : 1.2
+        ctx.lineWidth = selectedId === gondola.id ? 2 : 1.2
+        ctx.beginPath()
+        ctx.moveTo(...base[0])
+        base.slice(1).forEach((point) => ctx.lineTo(...point))
+        ctx.closePath()
         ctx.stroke()
+        const xs = base.map(([x]) => x)
+        const ys = base.map(([, y]) => y)
+        const boxW = Math.max(...xs) - Math.min(...xs)
+        const boxH = Math.max(...ys) - Math.min(...ys)
+        if (boxW < 8 || boxH < 8) {
+          const cx = (Math.min(...xs) + Math.max(...xs)) / 2
+          const cy = (Math.min(...ys) + Math.max(...ys)) / 2
+          ctx.beginPath()
+          ctx.arc(cx, cy, 5, 0, Math.PI * 2)
+          ctx.fillStyle = hexToRgba(color, .85)
+          ctx.fill()
+          ctx.strokeStyle = selectedId === gondola.id ? '#ff876a' : '#d4ff70'
+          ctx.lineWidth = 1.4
+          ctx.stroke()
+        }
       })
     }
     image.src = frameCapture.dataUrl
@@ -259,8 +304,8 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture, zone }
         newW = snapToGrid(newW)
         newD = snapToGrid(newD)
       }
-      newW = Math.round(Math.min(view.maxX - original.x, Math.max(0.5, newW)) * 100) / 100
-      newD = Math.round(Math.min(view.maxZ - original.z, Math.max(0.4, newD)) * 100) / 100
+      newW = Math.round(Math.min(view.maxX - original.x, Math.max(0.1, newW)) * 100) / 100
+      newD = Math.round(Math.min(view.maxZ - original.z, Math.max(0.1, newD)) * 100) / 100
       updateGondola(original.id, { width: newW, depth: newD })
       setDragInfo({ mode: 'resize', x: original.x, z: original.z, w: newW, d: newD })
     }
@@ -284,9 +329,9 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture, zone }
       return
     }
     if (field === 'width') {
-      value = Math.min(view.maxX - selected.x, Math.max(0.5, value))
+      value = Math.min(view.maxX - selected.x, Math.max(0.1, value))
     } else if (field === 'depth') {
-      value = Math.min(view.maxZ - selected.z, Math.max(0.4, value))
+      value = Math.min(view.maxZ - selected.z, Math.max(0.1, value))
     } else if (field === 'x') {
       value = Math.min(view.maxX - selected.width, Math.max(view.minX, value))
     } else if (field === 'z') {
@@ -436,13 +481,13 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture, zone }
                 const outOfZone = zoneLevel === 'out' || zoneLevel === 'partial'
                 return (
                   <div
-                    className={`absolute grid min-w-[25px] min-h-[20px] touch-none place-items-center border bg-[#264c41] p-0 text-[#dcebe5] shadow-[0_4px_15px_rgba(0,0,0,.25)] transition-shadow duration-150 hover:z-[2] hover:border-[#d4ff70] hover:bg-[#355e50] hover:shadow-[0_4px_20px_rgba(212,255,112,.15)] ${isSelected ? 'z-[2] border-[#ff876a] bg-[#355e50] shadow-[0_4px_22px_rgba(255,135,106,.45)]' : outOfZone ? 'border-[#ff876a]' : 'border-[#5c8878]'}`}
+                    className={`absolute grid touch-none place-items-center border bg-[#264c41] p-0 text-[#dcebe5] shadow-[0_4px_15px_rgba(0,0,0,.25)] transition-shadow duration-150 hover:z-[2] hover:border-[#d4ff70] hover:bg-[#355e50] hover:shadow-[0_4px_20px_rgba(212,255,112,.15)] ${isSelected ? 'z-[2] border-[#ff876a] bg-[#355e50] shadow-[0_4px_22px_rgba(255,135,106,.45)]' : outOfZone ? 'border-[#ff876a]' : 'border-[#5c8878]'}`}
                     key={item.id}
                     style={{
                       left: `${(item.x - view.minX) / view.width * 100}%`,
                       top: `${(item.z - view.minZ) / view.depth * 100}%`,
-                      width: `${item.width / view.width * 100}%`,
-                      height: `${item.depth / view.depth * 100}%`,
+                      width: `max(${item.width / view.width * 100}%, 18px)`,
+                      height: `max(${item.depth / view.depth * 100}%, 16px)`,
                       transform: `rotate(${item.rotation || 0}deg)`,
                     }}
                     onPointerDown={(event) => startPointer(event, item, 'move')}
@@ -461,8 +506,8 @@ function PlanogramEditor({ configuration, onChange, onSave, frameCapture, zone }
               <div className="mt-[14px] grid grid-cols-2 gap-[7px]">
                 <label className="relative grid gap-[5px] uppercase text-[8px] text-[#71877e]">X (m)<input className="min-w-0 w-full border border-[rgba(206,236,221,.14)] bg-[#101e1a] p-[9px] text-[#eaf3ee] outline-none" type="number" step="0.01" value={selected.x} onChange={(event) => commitNumeric('x', event.target.value)} /></label>
                 <label className="relative grid gap-[5px] uppercase text-[8px] text-[#71877e]">Y (m)<input className="min-w-0 w-full border border-[rgba(206,236,221,.14)] bg-[#101e1a] p-[9px] text-[#eaf3ee] outline-none" type="number" step="0.01" value={selected.z} onChange={(event) => commitNumeric('z', event.target.value)} /></label>
-                <label className="relative grid gap-[5px] uppercase text-[8px] text-[#71877e]">Ancho (m)<input className="min-w-0 w-full border border-[rgba(206,236,221,.14)] bg-[#101e1a] p-[9px] text-[#eaf3ee] outline-none" type="number" min="0.5" step="0.1" value={selected.width} onChange={(event) => commitNumeric('width', event.target.value)} /></label>
-                <label className="relative grid gap-[5px] uppercase text-[8px] text-[#71877e]">Fondo (m)<input className="min-w-0 w-full border border-[rgba(206,236,221,.14)] bg-[#101e1a] p-[9px] text-[#eaf3ee] outline-none" type="number" min="0.4" step="0.1" value={selected.depth} onChange={(event) => commitNumeric('depth', event.target.value)} /></label>
+                <label className="relative grid gap-[5px] uppercase text-[8px] text-[#71877e]">Ancho (m)<input className="min-w-0 w-full border border-[rgba(206,236,221,.14)] bg-[#101e1a] p-[9px] text-[#eaf3ee] outline-none" type="number" min="0.1" step="0.1" value={selected.width} onChange={(event) => commitNumeric('width', event.target.value)} /></label>
+                <label className="relative grid gap-[5px] uppercase text-[8px] text-[#71877e]">Fondo (m)<input className="min-w-0 w-full border border-[rgba(206,236,221,.14)] bg-[#101e1a] p-[9px] text-[#eaf3ee] outline-none" type="number" min="0.1" step="0.1" value={selected.depth} onChange={(event) => commitNumeric('depth', event.target.value)} /></label>
                 <label className="relative grid gap-[5px] uppercase text-[8px] text-[#71877e]">Rotación (°)<input className="min-w-0 w-full border border-[rgba(206,236,221,.14)] bg-[#101e1a] p-[9px] text-[#eaf3ee] outline-none" type="number" min="0" max="360" step="1" value={selected.rotation} onChange={(event) => commitNumeric('rotation', event.target.value)} /></label>
               </div>
               <span className="mt-3 mb-4 block text-[10px] font-semibold font-[ui-monospace,monospace]" style={{ color: ZONE_STATUS[selectedStatus.level].color }}>{selected.width.toFixed(2)}×{selected.depth.toFixed(2)}m · {ZONE_STATUS[selectedStatus.level].label} {ZONE_STATUS[selectedStatus.level].dot}</span>
