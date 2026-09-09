@@ -1,9 +1,35 @@
 import { createRef, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { Billboard, Grid, Line, OrbitControls, Text, useTexture } from '@react-three/drei'
+import { Billboard, Grid, Line, OrbitControls, Text } from '@react-three/drei'
 import { artifactUrl } from '../services/analyses'
 import { ROWS as productRows, COLUMNS as productColumns } from '../utils/constants'
+
+function useResilientTextures(urls, fallbackUrl) {
+  const [textures, setTextures] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    const loader = new THREE.TextureLoader()
+    Promise.all(
+      urls.map((url) =>
+        loader
+          .loadAsync(url)
+          .catch(() => (fallbackUrl ? loader.loadAsync(fallbackUrl) : Promise.reject())),
+      ),
+    )
+      .then((loaded) => {
+        if (!cancelled) setTextures(loaded.filter(Boolean))
+      })
+      .catch(() => {
+        if (!cancelled) setTextures([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [urls, fallbackUrl])
+  useEffect(() => () => textures.forEach((texture) => texture.dispose()), [textures])
+  return textures
+}
 
 const metricField = { traffic: 'traffic', dwell: 'dwell_seconds', interaction: 'interactions', pickup: 'pickups' }
 
@@ -109,8 +135,10 @@ function buildFacadeTexture(products, flip) {
 }
 
 function Shelf({ item, floor, selected, mode, maxValue, onSelect }) {
-  const x = item.x + item.width / 2 - floor.width / 2
-  const z = item.z + item.depth / 2 - floor.depth / 2
+  const shelfWidth = item.width ?? 1.5
+  const shelfDepth = item.depth ?? 0.6
+  const x = (item.x ?? 0) + shelfWidth / 2 - floor.width / 2
+  const z = (item.z ?? 0) + shelfDepth / 2 - floor.depth / 2
   const intensity = (item[metricField[mode]] || 0) / maxValue
   const accent = selected ? '#d9ff6b' : intensity > 0.45 ? '#ff6a3d' : '#3c665c'
   const facade = useMemo(() => {
@@ -130,24 +158,24 @@ function Shelf({ item, floor, selected, mode, maxValue, onSelect }) {
     <group position={[x, 0, z]} rotation={[0, rotationY, 0]} onClick={(event) => { event.stopPropagation(); onSelect(item.id) }}>
       {/* Main shelf body */}
       <mesh position={[0, bodyCenterY, 0]} castShadow receiveShadow>
-        <boxGeometry args={[item.width, shelfHeight, item.depth]} />
+        <boxGeometry args={[shelfWidth, shelfHeight, shelfDepth]} />
         <meshStandardMaterial color="#18312b" emissive={accent} emissiveIntensity={0.15 + intensity * 0.7} roughness={0.6} metalness={0.1} />
       </mesh>
       {/* Edge highlight — thin bright frame around the shelf body */}
       <lineSegments position={[0, bodyCenterY, 0]}>
-        <edgesGeometry args={[new THREE.BoxGeometry(item.width + 0.02, shelfHeight + 0.02, item.depth + 0.02)]} />
+        <edgesGeometry args={[new THREE.BoxGeometry(shelfWidth + 0.02, shelfHeight + 0.02, shelfDepth + 0.02)]} />
         <lineBasicMaterial color={edgeColor} transparent opacity={selected ? 0.9 : 0.4} />
       </lineSegments>
       {/* Shelf bars — horizontal tiers with subtle glow */}
       {tierHeights.map((tierHeight) => (
         <group key={tierHeight}>
           <mesh position={[0, tierHeight, 0]}>
-            <boxGeometry args={[item.width + 0.08, 0.05, item.depth + 0.1]} />
+            <boxGeometry args={[shelfWidth + 0.08, 0.05, shelfDepth + 0.1]} />
             <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={0.3} roughness={0.3} metalness={0.4} />
           </mesh>
           {/* Shelf bar edge glow */}
           <mesh position={[0, tierHeight, 0]}>
-            <boxGeometry args={[item.width + 0.1, 0.06, item.depth + 0.12]} />
+            <boxGeometry args={[shelfWidth + 0.1, 0.06, shelfDepth + 0.12]} />
             <meshBasicMaterial color={accent} transparent opacity={0.08 + intensity * 0.06} depthWrite={false} />
           </mesh>
         </group>
@@ -155,7 +183,7 @@ function Shelf({ item, floor, selected, mode, maxValue, onSelect }) {
       {/* Dimension label below gondola */}
       <Billboard position={[0, -0.15, 0]}>
         <Text fontSize={0.1} color="#5a8a7a" anchorY="top" outlineWidth={0.005} outlineColor="#07100e">
-          {`${item.width.toFixed(1)}×${item.depth.toFixed(1)}×${shelfHeight.toFixed(1)}m`}
+          {`${shelfWidth.toFixed(1)}×${shelfDepth.toFixed(1)}×${shelfHeight.toFixed(1)}m`}
         </Text>
       </Billboard>
       {/* Gondola name label above */}
@@ -170,12 +198,12 @@ function Shelf({ item, floor, selected, mode, maxValue, onSelect }) {
       {/* Product facade when selected */}
       {facade && (
         <>
-          <mesh position={[0, bodyCenterY, item.depth / 2 + 0.06]}>
-            <planeGeometry args={[item.width, shelfHeight * 0.65]} />
+          <mesh position={[0, bodyCenterY, shelfDepth / 2 + 0.06]}>
+            <planeGeometry args={[shelfWidth, shelfHeight * 0.65]} />
             <meshBasicMaterial map={facade.front} transparent />
           </mesh>
-          <mesh position={[0, bodyCenterY, -item.depth / 2 - 0.06]} rotation={[0, Math.PI, 0]}>
-            <planeGeometry args={[item.width, shelfHeight * 0.65]} />
+          <mesh position={[0, bodyCenterY, -shelfDepth / 2 - 0.06]} rotation={[0, Math.PI, 0]}>
+            <planeGeometry args={[shelfWidth, shelfHeight * 0.65]} />
             <meshBasicMaterial map={facade.back} transparent />
           </mesh>
         </>
@@ -368,7 +396,7 @@ function PeopleLayer({ samples, floor, timeWindow, poolSize }) {
         slotIndex = freeSlots.current.pop()
         if (slotIndex === undefined) return
         slotByTrack.current.set(trackId, slotIndex)
-        slot.state = undefined
+        pool[slotIndex].state = undefined
         labelsChanged = true
       }
       const slot = pool[slotIndex]
@@ -486,7 +514,7 @@ function Store({ result, mode, selectedId, onSelect, heatmapUrl, sliceEntries, s
     () => (sliceEntries.length ? sliceEntries.map((entry) => artifactUrl(analysisId, entry[mode])) : [heatmapUrl]),
     [sliceEntries, analysisId, heatmapUrl, mode],
   )
-  const textures = useTexture(urls)
+  const textures = useResilientTextures(urls, heatmapUrl)
 
   // The window the scrubber currently points at (falls back to the whole video when there's
   // no per-mode slicing yet) — people animate on a loop inside it, in sync with the heatmap.

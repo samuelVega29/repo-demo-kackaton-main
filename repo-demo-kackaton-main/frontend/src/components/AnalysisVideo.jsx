@@ -4,6 +4,7 @@ import { artifactUrl, getAnalysisHeatmap, getAnalysisTrajectories, getAnalysisZo
 import { inverseHomography, projectFloor } from '../utils/homography'
 import { pointInPolygon } from '../utils/floorOutline'
 import { formatTime } from '../utils/format'
+import { HEATMAP_CONFIG, accumulateSample, createGrid, normalizeGrid, projectFeetThroughHomography, renderHeatmap } from '../utils/heatmap'
 
 const findingDotColor = { evidence: '#ff6b3d', recommendation: '#22c55e', quality: '#151323' }
 
@@ -44,6 +45,21 @@ function renderedVideoBox(video) {
 function centroid(points) {
   const sum = points.reduce((acc, point) => [acc[0] + point[0], acc[1] + point[1]], [0, 0])
   return [sum[0] / points.length, sum[1] / points.length]
+}
+
+// roundRect no existe en navegadores antiguos; ruta manual equivalente.
+function roundedRectPath(ctx, x, y, w, h, r) {
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, r)
+    return
+  }
+  const radius = Math.min(r, w / 2, h / 2)
+  ctx.moveTo(x + radius, y)
+  ctx.arcTo(x + w, y, x + w, y + h, radius)
+  ctx.arcTo(x + w, y + h, x, y + h, radius)
+  ctx.arcTo(x, y + h, x, y, radius)
+  ctx.arcTo(x, y, x + w, y, radius)
+  ctx.closePath()
 }
 
 export default function AnalysisVideo({ analysis }) {
@@ -173,11 +189,10 @@ export default function AnalysisVideo({ analysis }) {
           seenCount++
         }
         lastSeen[id] = sample.timestamp
-        // Misma clasificacion que dibuja los circulos calientes del mapa: interaccion,
-        // engagement o aproximacion a una gondola.
+        // Misma clasificacion que dibuja los circulos calientes del mapa: solo
+        // interacciones reales (mano tocando el producto), no aproximaciones.
         const state = detection.state || 'PASS'
-        const isNearGondola = !!detection.gondola_id
-        if (detection.floor_point && (state === 'INTERACTION' || state === 'ENGAGED' || (isNearGondola && state === 'APPROACH'))) {
+        if (detection.floor_point && state === 'INTERACTION') {
           hotPoints.push(detection.floor_point)
         }
       }
@@ -224,68 +239,85 @@ export default function AnalysisVideo({ analysis }) {
   const visibleEvents = eventFilter === 'pickup' ? pickupEvents : eventFilter === 'interaction' ? interactionEvents : [...pickupEvents, ...interactionEvents].sort((a, b) => (a.t || 0) - (b.t || 0))
   const projectionMatrix = useMemo(() => flat(camera.homography_inv) || invert3x3(camera.homography) || inverseHomography(camera), [camera])
 
-  // Acumulador en vivo del mapa de calor: mientras el video corre se van sumando
-  // los puntos de contacto ya vistos (calientes = interacción/engagement, fríos =
-  // tránsito de paso). Al hacer seek hacia atrás se rellena desde t=0 hasta el
-  // tiempo actual para que el resultado sea siempre la densidad acumulada real.
-  const heatAccum = useRef({
-    calibrated: false,
-    hot: { size: 0, filled: 0, points: [], events: [] },
-    cold: { size: 0, filled: 0, points: [], events: [] },
-  })
+  // Acumulador en vivo del mapa de calor:
+  // - Capa fría (tráfico): rejilla por kernel, un voto por track por frame en el
+  //   punto de los pies de la caja. Al hacer seek hacia atrás se rellena desde 0
+  //   hasta el tiempo actual para que el resultado sea siempre la densidad real.
+  // - Capa caliente: solo activaciones confirmadas de góndola (interacción real
+  //   o pick-up), dibujadas en la zona exacta donde ocurren.
+  const trafficGridRef = useRef(null)
+  const trafficToTimeRef = useRef(-1)
+  const trafficFromIndexRef = useRef(0)
+  const heatAccum = useRef({ events: [] })
 
   const buildLiveHeatmap = (until) => {
-    const acc = heatAccum.current
-    if (!acc.calibrated) {
-      const frameSamples = result.frame_detections || []
-      acc.hot.size = frameSamples.length
-      acc.cold.size = frameSamples.length
-      acc.hot.points = new Array(frameSamples.length)
-      acc.cold.points = new Array(frameSamples.length)
-      acc.calibrated = true
-    }
-    acc.hot.filled = 0
-    acc.cold.filled = 0
     const samples = result.frame_detections || []
-    for (let index = 0; index < samples.length && samples[index].timestamp <= until; index++) {
+    const videoW = result.video?.width || 1
+    const videoH = result.video?.height || 1
+    // La homografía proyecta al plano del piso en METROS: la rejilla se indexa
+    // normalizada contra el piso real del sitio (mismo criterio que el backend,
+    // backend/app/cv/heatmaps.py -> x/floor.width, z/floor.depth).
+    const siteFloor = result.site?.configuration?.floor || {}
+    const floorW = Number(siteFloor.width) || HEATMAP_CONFIG.FLOOR_WIDTH
+    const floorD = Number(siteFloor.depth) || HEATMAP_CONFIG.FLOOR_DEPTH
+    const gridConfig = { ...HEATMAP_CONFIG, FLOOR_WIDTH: floorW, FLOOR_DEPTH: floorD }
+    if (!trafficGridRef.current) trafficGridRef.current = createGrid(gridConfig)
+    // Scrubber hacia atrás: reinicia la rejilla para ser fiel al instante actual.
+    if (until < trafficToTimeRef.current) {
+      trafficGridRef.current.fill(0)
+      trafficFromIndexRef.current = 0
+      trafficToTimeRef.current = -1
+    }
+    let index = trafficFromIndexRef.current
+    while (index < samples.length && samples[index].timestamp <= until) {
       const sample = samples[index]
-      const hot = []
-      const cold = []
       for (const detection of sample.detections || []) {
         const state = detection.state || 'PASS'
-        if (!detection.floor_point) continue
-        const isNearGondola = !!detection.gondola_id
-        if (state === 'INTERACTION' || state === 'ENGAGED' || (isNearGondola && state === 'APPROACH')) hot.push(detection.floor_point)
-        else cold.push(detection.floor_point)
+        // Las interacciones reales no van a la rejilla de tráfico: van a la
+        // capa caliente dibujada como punto rojo en la zona activada.
+        if (state === 'INTERACTION') continue
+        let point = null
+        const bbox = detection.bbox
+        // Acepta bbox tanto como array [x1,y1,x2,y2] como objeto
+        // {x1/y1/x2/y2}, según cómo lo devuelva el backend de cada modo.
+        const box =
+          bbox && Array.isArray(bbox)
+            ? bbox
+            : bbox && [bbox.x1 ?? bbox.left ?? bbox[0], bbox.y1 ?? bbox.top ?? bbox[1], bbox.x2 ?? bbox.right ?? bbox[2], bbox.y2 ?? bbox.bottom ?? bbox[3]]
+        if (box && box[3] != null) {
+          // Punto de los pies: extremo inferior-central de la caja (spec §2).
+          // Con homografía real se proyecta al plano del piso (spec §4);
+          // si no, se acumula en coordenadas de imagen normalizadas.
+          const hasRealHomography = camera?.homography && coordinateSystem !== 'normalized'
+          point = hasRealHomography
+            ? projectFeetThroughHomography(box, videoW, videoH, camera.homography, gridConfig)
+            : [((box[0] + box[2]) / 2) / videoW, box[3] / videoH]
+        } else if (detection.floor_point) {
+          point = coordinateSystem === 'normalized'
+            ? detection.floor_point
+            : [detection.floor_point[0] / floorW, detection.floor_point[1] / floorD]
+        }
+        accumulateSample(trafficGridRef.current, point, gridConfig)
       }
-      acc.hot.points[index] = hot
-      acc.cold.points[index] = cold
-      acc.hot.filled = index + 1
-      acc.cold.filled = index + 1
+      index++
     }
-    // Picos calientes de interacción/pick-up ya ocurridos hasta el instante actual:
-    // son la señal mas fuerte de que hubo contacto con una gondola o producto.
+    trafficFromIndexRef.current = index
+    trafficToTimeRef.current = until
+
+    // Puntos calientes (activaciones de góndola) ocurridos hasta el instante
+    // actual: interacción/pick-up real, señal de contacto con la góndola.
     const hotEvents = []
     const eventSources = [...(result.pickup_events_log || []), ...(result.interaction_events_log || [])]
     for (const event of eventSources) {
       if (typeof event.t !== 'number' || event.t > until) continue
       if (typeof event.x === 'number' && typeof event.z === 'number') hotEvents.push(toExposed(event.x, event.z))
     }
-    acc.hot.events = hotEvents
-    // Agregar posiciones de pickups e interacciones como puntos calientes
-    // en la capa principal para que se vean como zonas de calor (no solo picos).
-    if (hotEvents.length) {
-      for (let index = 0; index < acc.hot.filled; index++) {
-        if (!acc.hot.points[index]) acc.hot.points[index] = []
-        acc.hot.points[index] = acc.hot.points[index].concat(hotEvents)
-      }
-    }
+    heatAccum.current.events = hotEvents
   }
 
   const collectLiveHeat = (until) => {
-    const acc = heatAccum.current
     buildLiveHeatmap(until)
-    return acc
+    return heatAccum.current
   }
 
   useEffect(() => {
@@ -320,43 +352,37 @@ export default function AnalysisVideo({ analysis }) {
       const live = frameSamples.length > 0
       if (live) {
         const acc = collectLiveHeat(time)
-        // Calientes primero (arriba) y frías debajo: cada punto acumula peso por
-        // cada paso, asi las zonas donde hubo interacciones se ven mas intensas.
-        const paint = (points, colorCenter, colorMid, radius, maxWeight, baseAlpha, colorEdge = 'rgba(255, 107, 61, 0)') => {
-          for (const chunk of points) {
-            if (!chunk) continue
-            for (const point of chunk) {
-              const px = projectPoint(point)
-              if (!px) continue
-              const r = radius
-              const gradient = ctx.createRadialGradient(px[0], px[1], 0, px[0], px[1], r)
-              gradient.addColorStop(0, colorCenter)
-              gradient.addColorStop(0.55, colorMid)
-              gradient.addColorStop(1, colorEdge)
-              ctx.globalAlpha = Math.max(baseAlpha, opacity)
-              ctx.fillStyle = gradient
-              ctx.beginPath()
-              ctx.arc(px[0], px[1], r, 0, Math.PI * 2)
-              ctx.fill()
-            }
-          }
-          ctx.globalAlpha = 1
-        }
+        // Capa fria (toggle "Tráfico"): densidad de trafico por rejilla. Un voto
+        // por track por frame en el punto de los pies, kernel 1.0/0.45, escala
+        // pintada con percentil 99 + gamma y rampa azul->rojo (ver utils/heatmap).
         if (showColdZones) {
-          // Zonas frias: transito y aproximacion (cian/azul), menos calor.
-          // Al finalizar el video se intensifican las zonas que no recibieron
-          // interacciones/pick-ups para resaltar el transito limpio.
-          const coldCenter = coldIntense ? opacity * 0.6 : opacity * 0.38
-          const coldMid = coldIntense ? opacity * 0.34 : opacity * 0.20
-          const coldBase = coldIntense ? opacity * 0.22 : opacity * 0.12
-          paint(acc.cold.points.slice(0, acc.cold.filled), `rgba(97, 222, 192, ${coldCenter})`, `rgba(64, 170, 210, ${coldMid})`, 40, coldBase)
+          const grid = normalizeGrid(trafficGridRef.current, HEATMAP_CONFIG)
+          // El slider de opacidad del video y el realce al terminar el clip
+          // siguen siendo visibles sin tocar la acumulacion.
+          const alphaScale = (0.4 + opacity) * (coldIntense ? 1.15 : 1)
+          renderHeatmap(ctx, grid, { x: 0, y: 0, width: rect.width, height: rect.height }, HEATMAP_CONFIG, alphaScale)
         }
-        if (showHotZones) {
-          // Zonas calientes: interacciones y pick-ups (naranja/rojo), mas calor y radio mayor.
-          paint(acc.hot.points.slice(0, acc.hot.filled), `rgba(255, 45, 35, ${Math.min(0.30, opacity + 0.04)})`, `rgba(255, 209, 102, ${(opacity) * 0.12})`, 34, opacity * 0.08, 'rgba(41, 98, 255, 0)')
-          // Picos calientes: un anillo mas amplio y brillante en cada contacto real
-          // con gondola/producto, para que se lea claramente como zona caliente.
-          paint([acc.hot.events || []], `rgba(255, 24, 20, ${Math.min(0.35, opacity + 0.12)})`, 'rgba(255, 168, 77, 0.16)', 45, opacity * 0.40, 'rgba(41, 98, 255, 0)')
+        // Capa caliente (toggle "Activación"): SOLO cuando una gondola se activa
+        // (interaccion o pick-up real, t <= instante actual). La zona exacta del
+        // contacto se marca con un anillo rojo brillante; fuera de esos momen·,
+        // no se dibuja nada aqui.
+        if (showHotZones && acc.events.length) {
+          for (const point of acc.events) {
+            const px = projectPoint(point)
+            if (!px) continue
+            const radius = 17
+            const glow = ctx.createRadialGradient(px[0], px[1], 0, px[0], px[1], radius + 14)
+            glow.addColorStop(0, `rgba(255, 24, 20, ${Math.min(0.9, opacity + 0.45)})`)
+            glow.addColorStop(1, 'rgba(255, 24, 20, 0)')
+            ctx.fillStyle = glow
+            ctx.beginPath()
+            ctx.arc(px[0], px[1], radius + 14, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.beginPath()
+            ctx.arc(px[0], px[1], 6, 0, Math.PI * 2)
+            ctx.fillStyle = 'rgba(255,255,255,.95)'
+            ctx.fill()
+          }
         }
       } else if (!heatmapSrc) {
         trajectories.forEach((trajectory) => {
@@ -393,7 +419,7 @@ export default function AnalysisVideo({ analysis }) {
           const width = ctx.measureText(label).width + 18
           ctx.fillStyle = 'rgba(16,23,34,.88)'
           ctx.beginPath()
-          ctx.roundRect(px[0] - width / 2, px[1] - 42, width, 26, 8)
+          roundedRectPath(ctx, px[0] - width / 2, px[1] - 42, width, 26, 8)
           ctx.fill()
           ctx.fillStyle = '#fff'
           ctx.fillText(label, px[0] - width / 2 + 9, px[1] - 25)
@@ -433,7 +459,7 @@ export default function AnalysisVideo({ analysis }) {
           const width = ctx.measureText(label).width + 18
           ctx.fillStyle = 'rgba(255, 255, 255, .92)'
           ctx.beginPath()
-          ctx.roundRect(x - width / 2, y - 14, width, 28, 8)
+          roundedRectPath(ctx, x - width / 2, y - 14, width, 28, 8)
           ctx.fill()
           ctx.fillStyle = '#141b24'
           ctx.fillText(label, x - width / 2 + 9, y + 4)

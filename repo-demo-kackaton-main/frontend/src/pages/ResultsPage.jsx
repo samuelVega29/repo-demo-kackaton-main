@@ -12,17 +12,34 @@ export default function ResultsPage() {
   const { job, site, mode, setMode, selectedId, setSelectedId, loadAnalysis } = useApp()
   const { analysisId } = useParams()
   const [loading, setLoading] = useState(Boolean(analysisId && !job?.result))
+  const [loadError, setLoadError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     if (job?.result || !analysisId) {
       setLoading(false)
       return
     }
+    let active = true
     setLoading(true)
-    loadAnalysis(analysisId).catch(() => {}).finally(() => setLoading(false))
-  }, [analysisId, job?.result, loadAnalysis])
+    setLoadError('')
+    loadAnalysis(analysisId)
+      .catch((error) => { if (active) setLoadError(error?.message || 'No fue posible cargar el analisis.') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [analysisId, job?.result, loadAnalysis, reloadKey])
 
   if (loading) return <section className="grid min-h-[calc(100vh-72px)] place-items-center font-[ui-monospace,monospace] text-sm font-bold tracking-[.18em] text-[#7d8392]">CARGANDO RESULTADOS</section>
+  if (!job?.result && loadError) return (
+    <section className="grid min-h-[calc(100vh-72px)] place-items-center bg-[#f6f6f4] p-6">
+      <div className="w-full max-w-lg rounded-lg border border-[#ffd2c2] bg-white p-6 text-center shadow-sm">
+        <span className="text-[10px] font-black uppercase tracking-[.17em] text-[#ff5b12]">Error de carga</span>
+        <h1 className="mt-2 text-xl font-black text-[#151323]">No se pudo cargar el analisis</h1>
+        <p className="mt-2 text-sm text-[#7d8392]">{loadError}</p>
+        <button className="mt-4 rounded-md bg-[#111827] px-4 py-2 text-[13px] font-black text-white" onClick={() => setReloadKey((key) => key + 1)}>Reintentar</button>
+      </div>
+    </section>
+  )
   if (!job?.result) return <Navigate to={site ? `/sedes/${site.id}` : '/empresas'} replace />
 
   const analysis = job
