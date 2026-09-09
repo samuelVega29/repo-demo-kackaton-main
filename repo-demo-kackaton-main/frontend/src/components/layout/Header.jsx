@@ -57,14 +57,7 @@ const instructionsBySection = {
     badge: 'Frame base',
     intro: 'El frame es una foto tomada del video. Esa imagen se usa para marcar el piso.',
     now: 'Pausa el video donde se vea bien el piso y presiona "Capturar frame".',
-    steps: ['Elegir momento claro', 'Capturar frame', 'Continuar a calibracion'],
-  },
-  calibration: {
-    title: 'Calibracion de camara',
-    badge: 'Camara por sede',
-    intro: 'Aqui le dices al sistema como convertir el video en medidas del plano.',
-    now: 'Ubica P1, P2, P3 y P4 en las esquinas visibles del piso y guarda.',
-    steps: ['Mover puntos P1-P4', 'Guardar calibracion', 'Revisar alineacion'],
+    steps: ['Elegir momento claro', 'Capturar frame', 'Continuar a gondolas'],
   },
   planogram: {
     title: 'Plano y gondolas',
@@ -110,7 +103,6 @@ const getInstructionKey = (pathname) => {
   if (pathname.includes('/analisis/nuevo/area')) return 'area'
   if (pathname.includes('/analisis/nuevo') || pathname.includes('/video')) return 'upload'
   if (pathname.includes('/captura')) return 'capture'
-  if (pathname.includes('/calibracion')) return 'calibration'
   if (pathname.includes('/planograma')) return 'planogram'
   if (pathname.includes('/historial')) return 'history'
   if (pathname.includes('/recomendaciones')) return 'insights'

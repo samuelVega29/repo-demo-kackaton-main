@@ -204,6 +204,35 @@ def test_visualization_3d_fast_not_available(client, state):
     assert "configuration" not in body and "camera" not in body
 
 
+def test_video_endpoint_prefers_anonymized_video(client, state, tmp_path):
+    from app.routers import analyses as analyses_router
+    from app.security import create_token
+
+    original = tmp_path / "original.mp4"
+    original.write_bytes(b"original-video")
+    anon_dir = analyses_router.RESULT_DIR / "aaa010"
+    anon_dir.mkdir(parents=True, exist_ok=True)
+    anonymized = anon_dir / "anonymized.mp4"
+    anonymized.write_bytes(b"pixelated-video")
+
+    analysis = make_analysis(state, "aaa010", site_id=1, status="completed", result=fast_result("aaa010"))
+    analysis.video_path = str(original)
+    state.session.commit()
+    set_user(state, 1)
+    token = create_token(state.user)
+
+    try:
+        response = client.get(f"/api/analyses/aaa010/video?token={token}")
+        assert response.status_code == 200
+        assert response.content == b"pixelated-video"
+    finally:
+        anonymized.unlink(missing_ok=True)
+        try:
+            anon_dir.rmdir()
+        except OSError:
+            pass
+
+
 def test_visualization_3d_advanced_available(client, state):
     make_analysis(state, "aaa009", site_id=1, status="completed", result=advanced_result("aaa009"))
     set_user(state, 1)

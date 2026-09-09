@@ -1,0 +1,35 @@
+appId: com.scapder.desktop
+productName: Scapder
+extraMetadata:
+  main: electron/main.cjs
+directories:
+  output: ../desktop-release
+files:
+  - "package.json"
+  - from: dist
+    to: frontend/dist
+  - from: ../electron
+    to: electron
+extraResources:
+  - from: ../backend
+    to: backend
+    filter:
+      - "**/*"
+      - "!.venv/**"
+      - "!build/**"
+      - "!__pycache__/**"
+      - "!**/*.pyc"
+      - "!data/scapder.db"
+      - "!storage/**"
+win:
+  icon: ../electron/assets/scapder.ico
+  target:
+    - nsis
+    - portable
+nsis:
+  artifactName: "${productName}-${version}-${arch}-Setup.${ext}"
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+portable:
+  artifactName: "${productName}-${version}-${arch}-Portable.${ext}"

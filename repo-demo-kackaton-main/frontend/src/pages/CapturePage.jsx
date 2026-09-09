@@ -21,10 +21,10 @@ export default function CapturePage() {
       <FlowNav
         back={`/sites/${siteId}/video`}
         backLabel="Subir video"
-        next={`/sites/${siteId}/calibracion`}
-        nextLabel="Calibrar camara"
+        next={`/sites/${siteId}/planograma`}
+        nextLabel="Dibujar gondolas"
         nextDisabled={!frameCapture}
-        nextHint={!frameCapture ? 'Captura un frame para avanzar.' : 'Listo para cuadrar P1-P4.'}
+        nextHint={!frameCapture ? 'Captura un frame para avanzar.' : 'Listo para dibujar las gondolas.'}
       />
     </SiteFlowPage>
   )

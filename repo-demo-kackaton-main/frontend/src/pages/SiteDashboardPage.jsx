@@ -127,8 +127,8 @@ export default function SiteDashboardPage() {
                 </p>
               </div>
             </div>
-            <Link className="relative inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-md border border-[#8fc7ff] bg-white px-5 text-[13px] font-black text-[#151323] no-underline shadow-[0_16px_34px_-26px_rgba(31,111,235,.9)] transition hover:-translate-y-px hover:border-[#ff5b12] sm:w-auto" to={configured ? `/sites/${site.id}/planograma` : `/sites/${site.id}/video`}>
-              {configured ? 'Revisar configuracion' : 'Configurar sede'} <ArrowRight size={15} />
+            <Link className="relative inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-md border border-[#8fc7ff] bg-white px-5 text-[13px] font-black text-[#151323] no-underline shadow-[0_16px_34px_-26px_rgba(31,111,235,.9)] transition hover:-translate-y-px hover:border-[#ff5b12] sm:w-auto" to={configured ? `/sites/${site.id}/planograma#vista-plano-guardado` : `/sites/${site.id}/video`}>
+              {configured ? 'Ver plano guardado' : 'Configurar sede'} <ArrowRight size={15} />
             </Link>
           </div>
         </section>
@@ -189,7 +189,6 @@ export default function SiteDashboardPage() {
               <Trace icon={<Settings2 size={18} />} label="Estado" value={calibrationLabel} />
               <Trace icon={<Store size={18} />} label="Gondolas" value={`${gondolas.length} guardadas`} />
             </div>
-            <Link className="mt-4 inline-flex min-h-[38px] w-full items-center justify-center gap-2 rounded-md border border-[#8fc7ff] bg-[linear-gradient(90deg,#ffffff,#fff7f2)] px-4 text-[12px] font-black text-[#151323] no-underline shadow-[0_12px_30px_-24px_rgba(31,111,235,.75)] transition hover:-translate-y-px hover:border-[#ff5b12]" to={`/sites/${site.id}/planograma`}>Mirar plano actual <ArrowRight size={15} /></Link>
             <div className="relative mt-3 min-h-[94px] overflow-hidden rounded-md bg-[#041321] p-3 pr-[160px] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.12),0_18px_40px_-28px_rgba(4,19,33,.9)]">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_82%_20%,rgba(255,91,18,.4),transparent_25%),linear-gradient(90deg,rgba(4,19,33,1),rgba(4,19,33,.82))]" />
               <div className="relative z-10">

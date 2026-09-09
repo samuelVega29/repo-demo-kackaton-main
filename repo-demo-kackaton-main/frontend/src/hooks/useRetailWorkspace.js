@@ -93,7 +93,7 @@ export default function useRetailWorkspace(user, logout) {
 
   const suggestGondolas = async (capture) => {
     if (!capture?.dataUrl || !capture.width || !capture.height) {
-      throw new Error('Captura primero un frame en Calibrar camara')
+      throw new Error('Captura primero un frame antes de dibujar gondolas')
     }
     const response = await retailApi.suggestGondolas(siteRef.current.id, {
       configuration: siteRef.current.configuration,

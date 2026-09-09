@@ -1,13 +1,26 @@
-import { Clock, Flame, MessageCircle, Users } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { artifactUrl, getAnalysisHeatmap, getAnalysisTrajectories, getAnalysisZones, videoUrl } from '../services/analyses'
 import { inverseHomography, projectFloor } from '../utils/homography'
 import { pointInPolygon } from '../utils/floorOutline'
 import { formatTime } from '../utils/format'
+import usersIcon from '../assets/images/icono_usuarios_3d.png'
+import clockIcon from '../assets/images/icon4.png'
+import hotIcon from '../assets/images/icono_bombillo_3d.png'
+import interactionIcon from '../assets/images/icono_carrito_3d.png'
+import cameraIcon from '../assets/images/icono_camara_3d.png'
+import robotAnalyst from '../assets/images/analista_robot.png'
+import { HEATMAP_CONFIG, accumulateSample, createGrid, normalizeGrid, projectFeetThroughHomography, renderHeatmap } from '../utils/heatmap'
 
 const findingDotColor = { evidence: '#ff7a1a', recommendation: '#22c55e', quality: '#151323' }
 
 const VIEW_MODES = [['original', 'Original'], ['heatmap', 'Mapa de calor'], ['pickup', 'Pick-ups'], ['zones', 'Zonas'], ['trajectories', 'Trayectorias']]
+const VIEW_MODE_ICONS = {
+  original: 'Video',
+  heatmap: 'Calor',
+  pickup: 'Pick',
+  zones: 'Zonas',
+  trajectories: 'Rutas',
+}
 const zoneStyles = {
   hot: ['rgba(255, 107, 61, .28)', 'rgba(255, 107, 61, .86)'],
   normal: ['rgba(31, 111, 235, .18)', 'rgba(31, 111, 235, .72)'],
@@ -46,11 +59,27 @@ function centroid(points) {
   return [sum[0] / points.length, sum[1] / points.length]
 }
 
+// roundRect no existe en navegadores antiguos; ruta manual equivalente.
+function roundedRectPath(ctx, x, y, w, h, r) {
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, r)
+    return
+  }
+  const radius = Math.min(r, w / 2, h / 2)
+  ctx.moveTo(x + radius, y)
+  ctx.arcTo(x + w, y, x + w, y + h, radius)
+  ctx.arcTo(x + w, y + h, x, y + h, radius)
+  ctx.arcTo(x, y + h, x, y, radius)
+  ctx.arcTo(x, y, x + w, y, radius)
+  ctx.closePath()
+}
+
 export default function AnalysisVideo({ analysis }) {
   const result = analysis.result || {}
   const configuration = result.site?.configuration || {}
   const camera = configuration.camera || {}
   const duration = result.video?.duration_seconds || 0
+  const anonymized = Boolean(result.video?.anonymized)
   const coordinateSystem = result.coordinate_system || result.quality?.coordinate_system
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
@@ -173,11 +202,10 @@ export default function AnalysisVideo({ analysis }) {
           seenCount++
         }
         lastSeen[id] = sample.timestamp
-        // Misma clasificacion que dibuja los circulos calientes del mapa: interaccion,
-        // engagement o aproximacion a una gondola.
+        // Misma clasificacion que dibuja los circulos calientes del mapa: solo
+        // interacciones reales (mano tocando el producto), no aproximaciones.
         const state = detection.state || 'PASS'
-        const isNearGondola = !!detection.gondola_id
-        if (detection.floor_point && (state === 'INTERACTION' || state === 'ENGAGED' || (isNearGondola && state === 'APPROACH'))) {
+        if (detection.floor_point && state === 'INTERACTION') {
           hotPoints.push(detection.floor_point)
         }
       }
@@ -224,68 +252,85 @@ export default function AnalysisVideo({ analysis }) {
   const visibleEvents = eventFilter === 'pickup' ? pickupEvents : eventFilter === 'interaction' ? interactionEvents : [...pickupEvents, ...interactionEvents].sort((a, b) => (a.t || 0) - (b.t || 0))
   const projectionMatrix = useMemo(() => flat(camera.homography_inv) || invert3x3(camera.homography) || inverseHomography(camera), [camera])
 
-  // Acumulador en vivo del mapa de calor: mientras el video corre se van sumando
-  // los puntos de contacto ya vistos (calientes = interacción/engagement, fríos =
-  // tránsito de paso). Al hacer seek hacia atrás se rellena desde t=0 hasta el
-  // tiempo actual para que el resultado sea siempre la densidad acumulada real.
-  const heatAccum = useRef({
-    calibrated: false,
-    hot: { size: 0, filled: 0, points: [], events: [] },
-    cold: { size: 0, filled: 0, points: [], events: [] },
-  })
+  // Acumulador en vivo del mapa de calor:
+  // - Capa fría (tráfico): rejilla por kernel, un voto por track por frame en el
+  //   punto de los pies de la caja. Al hacer seek hacia atrás se rellena desde 0
+  //   hasta el tiempo actual para que el resultado sea siempre la densidad real.
+  // - Capa caliente: solo activaciones confirmadas de góndola (interacción real
+  //   o pick-up), dibujadas en la zona exacta donde ocurren.
+  const trafficGridRef = useRef(null)
+  const trafficToTimeRef = useRef(-1)
+  const trafficFromIndexRef = useRef(0)
+  const heatAccum = useRef({ events: [] })
 
   const buildLiveHeatmap = (until) => {
-    const acc = heatAccum.current
-    if (!acc.calibrated) {
-      const frameSamples = result.frame_detections || []
-      acc.hot.size = frameSamples.length
-      acc.cold.size = frameSamples.length
-      acc.hot.points = new Array(frameSamples.length)
-      acc.cold.points = new Array(frameSamples.length)
-      acc.calibrated = true
-    }
-    acc.hot.filled = 0
-    acc.cold.filled = 0
     const samples = result.frame_detections || []
-    for (let index = 0; index < samples.length && samples[index].timestamp <= until; index++) {
+    const videoW = result.video?.width || 1
+    const videoH = result.video?.height || 1
+    // La homografía proyecta al plano del piso en METROS: la rejilla se indexa
+    // normalizada contra el piso real del sitio (mismo criterio que el backend,
+    // backend/app/cv/heatmaps.py -> x/floor.width, z/floor.depth).
+    const siteFloor = result.site?.configuration?.floor || {}
+    const floorW = Number(siteFloor.width) || HEATMAP_CONFIG.FLOOR_WIDTH
+    const floorD = Number(siteFloor.depth) || HEATMAP_CONFIG.FLOOR_DEPTH
+    const gridConfig = { ...HEATMAP_CONFIG, FLOOR_WIDTH: floorW, FLOOR_DEPTH: floorD }
+    if (!trafficGridRef.current) trafficGridRef.current = createGrid(gridConfig)
+    // Scrubber hacia atrás: reinicia la rejilla para ser fiel al instante actual.
+    if (until < trafficToTimeRef.current) {
+      trafficGridRef.current.fill(0)
+      trafficFromIndexRef.current = 0
+      trafficToTimeRef.current = -1
+    }
+    let index = trafficFromIndexRef.current
+    while (index < samples.length && samples[index].timestamp <= until) {
       const sample = samples[index]
-      const hot = []
-      const cold = []
       for (const detection of sample.detections || []) {
         const state = detection.state || 'PASS'
-        if (!detection.floor_point) continue
-        const isNearGondola = !!detection.gondola_id
-        if (state === 'INTERACTION' || state === 'ENGAGED' || (isNearGondola && state === 'APPROACH')) hot.push(detection.floor_point)
-        else cold.push(detection.floor_point)
+        // Las interacciones reales no van a la rejilla de tráfico: van a la
+        // capa caliente dibujada como punto rojo en la zona activada.
+        if (state === 'INTERACTION') continue
+        let point = null
+        const bbox = detection.bbox
+        // Acepta bbox tanto como array [x1,y1,x2,y2] como objeto
+        // {x1/y1/x2/y2}, según cómo lo devuelva el backend de cada modo.
+        const box =
+          bbox && Array.isArray(bbox)
+            ? bbox
+            : bbox && [bbox.x1 ?? bbox.left ?? bbox[0], bbox.y1 ?? bbox.top ?? bbox[1], bbox.x2 ?? bbox.right ?? bbox[2], bbox.y2 ?? bbox.bottom ?? bbox[3]]
+        if (box && box[3] != null) {
+          // Punto de los pies: extremo inferior-central de la caja (spec §2).
+          // Con homografía real se proyecta al plano del piso (spec §4);
+          // si no, se acumula en coordenadas de imagen normalizadas.
+          const hasRealHomography = camera?.homography && coordinateSystem !== 'normalized'
+          point = hasRealHomography
+            ? projectFeetThroughHomography(box, videoW, videoH, camera.homography, gridConfig)
+            : [((box[0] + box[2]) / 2) / videoW, box[3] / videoH]
+        } else if (detection.floor_point) {
+          point = coordinateSystem === 'normalized'
+            ? detection.floor_point
+            : [detection.floor_point[0] / floorW, detection.floor_point[1] / floorD]
+        }
+        accumulateSample(trafficGridRef.current, point, gridConfig)
       }
-      acc.hot.points[index] = hot
-      acc.cold.points[index] = cold
-      acc.hot.filled = index + 1
-      acc.cold.filled = index + 1
+      index++
     }
-    // Picos calientes de interacción/pick-up ya ocurridos hasta el instante actual:
-    // son la señal mas fuerte de que hubo contacto con una gondola o producto.
+    trafficFromIndexRef.current = index
+    trafficToTimeRef.current = until
+
+    // Puntos calientes (activaciones de góndola) ocurridos hasta el instante
+    // actual: interacción/pick-up real, señal de contacto con la góndola.
     const hotEvents = []
     const eventSources = [...(result.pickup_events_log || []), ...(result.interaction_events_log || [])]
     for (const event of eventSources) {
       if (typeof event.t !== 'number' || event.t > until) continue
       if (typeof event.x === 'number' && typeof event.z === 'number') hotEvents.push(toExposed(event.x, event.z))
     }
-    acc.hot.events = hotEvents
-    // Agregar posiciones de pickups e interacciones como puntos calientes
-    // en la capa principal para que se vean como zonas de calor (no solo picos).
-    if (hotEvents.length) {
-      for (let index = 0; index < acc.hot.filled; index++) {
-        if (!acc.hot.points[index]) acc.hot.points[index] = []
-        acc.hot.points[index] = acc.hot.points[index].concat(hotEvents)
-      }
-    }
+    heatAccum.current.events = hotEvents
   }
 
   const collectLiveHeat = (until) => {
-    const acc = heatAccum.current
     buildLiveHeatmap(until)
-    return acc
+    return heatAccum.current
   }
 
   useEffect(() => {
@@ -320,43 +365,37 @@ export default function AnalysisVideo({ analysis }) {
       const live = frameSamples.length > 0
       if (live) {
         const acc = collectLiveHeat(time)
-        // Calientes primero (arriba) y frías debajo: cada punto acumula peso por
-        // cada paso, asi las zonas donde hubo interacciones se ven mas intensas.
-        const paint = (points, colorCenter, colorMid, radius, maxWeight, baseAlpha, colorEdge = 'rgba(255, 107, 61, 0)') => {
-          for (const chunk of points) {
-            if (!chunk) continue
-            for (const point of chunk) {
-              const px = projectPoint(point)
-              if (!px) continue
-              const r = radius
-              const gradient = ctx.createRadialGradient(px[0], px[1], 0, px[0], px[1], r)
-              gradient.addColorStop(0, colorCenter)
-              gradient.addColorStop(0.55, colorMid)
-              gradient.addColorStop(1, colorEdge)
-              ctx.globalAlpha = Math.max(baseAlpha, opacity)
-              ctx.fillStyle = gradient
-              ctx.beginPath()
-              ctx.arc(px[0], px[1], r, 0, Math.PI * 2)
-              ctx.fill()
-            }
-          }
-          ctx.globalAlpha = 1
-        }
+        // Capa fria (toggle "Tráfico"): densidad de trafico por rejilla. Un voto
+        // por track por frame en el punto de los pies, kernel 1.0/0.45, escala
+        // pintada con percentil 99 + gamma y rampa azul->rojo (ver utils/heatmap).
         if (showColdZones) {
-          // Zonas frias: transito y aproximacion (cian/azul), menos calor.
-          // Al finalizar el video se intensifican las zonas que no recibieron
-          // interacciones/pick-ups para resaltar el transito limpio.
-          const coldCenter = coldIntense ? opacity * 0.6 : opacity * 0.38
-          const coldMid = coldIntense ? opacity * 0.34 : opacity * 0.20
-          const coldBase = coldIntense ? opacity * 0.22 : opacity * 0.12
-          paint(acc.cold.points.slice(0, acc.cold.filled), `rgba(97, 222, 192, ${coldCenter})`, `rgba(64, 170, 210, ${coldMid})`, 40, coldBase)
+          const grid = normalizeGrid(trafficGridRef.current, HEATMAP_CONFIG)
+          // El slider de opacidad del video y el realce al terminar el clip
+          // siguen siendo visibles sin tocar la acumulacion.
+          const alphaScale = (0.4 + opacity) * (coldIntense ? 1.15 : 1)
+          renderHeatmap(ctx, grid, { x: 0, y: 0, width: rect.width, height: rect.height }, HEATMAP_CONFIG, alphaScale)
         }
-        if (showHotZones) {
-          // Zonas calientes: interacciones y pick-ups (naranja/rojo), mas calor y radio mayor.
-          paint(acc.hot.points.slice(0, acc.hot.filled), `rgba(255, 45, 35, ${Math.min(0.30, opacity + 0.04)})`, `rgba(255, 209, 102, ${(opacity) * 0.12})`, 34, opacity * 0.08, 'rgba(41, 98, 255, 0)')
-          // Picos calientes: un anillo mas amplio y brillante en cada contacto real
-          // con gondola/producto, para que se lea claramente como zona caliente.
-          paint([acc.hot.events || []], `rgba(255, 24, 20, ${Math.min(0.35, opacity + 0.12)})`, 'rgba(255, 168, 77, 0.16)', 45, opacity * 0.40, 'rgba(41, 98, 255, 0)')
+        // Capa caliente (toggle "Activación"): SOLO cuando una gondola se activa
+        // (interaccion o pick-up real, t <= instante actual). La zona exacta del
+        // contacto se marca con un anillo rojo brillante; fuera de esos momen·,
+        // no se dibuja nada aqui.
+        if (showHotZones && acc.events.length) {
+          for (const point of acc.events) {
+            const px = projectPoint(point)
+            if (!px) continue
+            const radius = 17
+            const glow = ctx.createRadialGradient(px[0], px[1], 0, px[0], px[1], radius + 14)
+            glow.addColorStop(0, `rgba(255, 24, 20, ${Math.min(0.9, opacity + 0.45)})`)
+            glow.addColorStop(1, 'rgba(255, 24, 20, 0)')
+            ctx.fillStyle = glow
+            ctx.beginPath()
+            ctx.arc(px[0], px[1], radius + 14, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.beginPath()
+            ctx.arc(px[0], px[1], 6, 0, Math.PI * 2)
+            ctx.fillStyle = 'rgba(255,255,255,.95)'
+            ctx.fill()
+          }
         }
       } else if (!heatmapSrc) {
         trajectories.forEach((trajectory) => {
@@ -393,7 +432,7 @@ export default function AnalysisVideo({ analysis }) {
           const width = ctx.measureText(label).width + 18
           ctx.fillStyle = 'rgba(16,23,34,.88)'
           ctx.beginPath()
-          ctx.roundRect(px[0] - width / 2, px[1] - 42, width, 26, 8)
+          roundedRectPath(ctx, px[0] - width / 2, px[1] - 42, width, 26, 8)
           ctx.fill()
           ctx.fillStyle = '#fff'
           ctx.fillText(label, px[0] - width / 2 + 9, px[1] - 25)
@@ -433,7 +472,7 @@ export default function AnalysisVideo({ analysis }) {
           const width = ctx.measureText(label).width + 18
           ctx.fillStyle = 'rgba(255, 255, 255, .92)'
           ctx.beginPath()
-          ctx.roundRect(x - width / 2, y - 14, width, 28, 8)
+          roundedRectPath(ctx, x - width / 2, y - 14, width, 28, 8)
           ctx.fill()
           ctx.fillStyle = '#141b24'
           ctx.fillText(label, x - width / 2 + 9, y + 4)
@@ -469,20 +508,24 @@ export default function AnalysisVideo({ analysis }) {
   }
 
   return (
-    <section id="video-analisis" className="scroll-mt-24 rounded-3xl border border-[#e5e7ee] bg-[#f7f8fa] p-4 sm:p-6">
+    <section id="video-analisis" className="scroll-mt-24 rounded-3xl border border-[#dbe7f3] bg-[linear-gradient(135deg,#ffffff_0%,#f8fbff_52%,#fff4ec_100%)] p-4 shadow-[0_28px_80px_-60px_rgba(21,19,35,.65)] sm:p-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <span className="text-[10px] font-medium tracking-[.17em] text-[#ff7a1a]">VIDEO INTERACTIVO</span>
-          <h2 className="mt-[9px] text-2xl font-bold tracking-[-.045em] text-[#151323]">Explora el video</h2><p className="mt-2 text-sm text-slate-500">Reproduce la grabación y elige una capa para entender lo que ocurre en cada zona.</p>
+          <div className="mt-[9px] flex flex-wrap items-center gap-3">
+            <h2 className="text-2xl font-bold tracking-[-.045em] text-[#151323]">Explora el video</h2>
+            {anonymized && <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-black text-emerald-700">Rostros censurados</span>}
+          </div>
+          <p className="mt-2 text-sm text-slate-500">Reproduce la grabación y elige una capa para entender lo que ocurre en cada zona.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2" role="tablist">
           {VIEW_MODES.map(([value, label]) => (
-            <button key={value} role="tab" aria-selected={viewMode === value} className={`rounded-full border px-4 py-2 text-[11px] font-medium transition ${viewMode === value ? 'border-[#ff7a1a] bg-[#ff7a1a] text-white' : 'border-[#e5e7ee] bg-white text-slate-600 hover:border-[#ff7a1a]'}`} onClick={() => setViewMode(value)}>{label}</button>
+            <button key={value} role="tab" aria-selected={viewMode === value} className={`group inline-flex min-h-[42px] items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-black transition hover:-translate-y-0.5 ${viewMode === value ? 'border-[#ff7a1a] bg-[#ff7a1a] text-white shadow-[0_16px_34px_-22px_rgba(255,122,26,.95)]' : 'border-[#e5e7ee] bg-white text-slate-600 hover:border-[#ff7a1a]/50 hover:bg-[#fff4ec] hover:text-[#cf4921]'}`} onClick={() => setViewMode(value)}><span className={`grid h-6 min-w-8 place-items-center rounded-md px-1.5 text-[8px] ${viewMode === value ? 'bg-white/18 text-white' : 'bg-slate-100 text-slate-500 group-hover:bg-white group-hover:text-[#cf4921]'}`}>{VIEW_MODE_ICONS[value]}</span>{label}</button>
           ))}
         </div>
       </div>
 
-      <div className="grid overflow-hidden rounded-2xl border border-[#e5e7ee] bg-[#05070a] shadow-sm xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid overflow-hidden rounded-2xl border border-[#dbe5f0] bg-[#05070a] shadow-[0_24px_72px_-54px_rgba(4,12,22,.9)] xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0">
         <div className="relative mx-auto bg-black" style={{ height: `min(${box ? `${box.width / videoRatio}px` : '100%'}, 72vh)` }}>
           <video ref={videoRef} src={videoUrl(analysis.id)} playsInline className="block h-full w-full bg-black object-contain" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
@@ -531,14 +574,26 @@ export default function AnalysisVideo({ analysis }) {
         )}
         </div>
 
-        <aside className="max-h-[85vh] overflow-y-auto border-t border-[#e5e7ee] bg-white p-4 xl:border-l xl:border-t-0">
+        <aside className="max-h-[85vh] overflow-y-auto border-t border-[#d9e6f2] bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_48%,#fff7ef_100%)] p-4 xl:border-l xl:border-t-0">
+          <div className="mb-5 overflow-hidden rounded-2xl border border-[#dbe7f3] bg-[#111827] text-white shadow-[0_22px_55px_-42px_rgba(17,24,39,.95)]">
+            <div className="relative min-h-[126px] p-4">
+              <img src={robotAnalyst} alt="" aria-hidden="true" className="pointer-events-none absolute -bottom-4 right-0 h-36 w-36 object-contain opacity-95" />
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[.16em] text-[#ffd7a8]">
+                <img src={cameraIcon} alt="" aria-hidden="true" className="h-5 w-5 object-contain" />
+                lectura visual
+              </span>
+              <h3 className="relative z-10 mt-4 max-w-[190px] text-xl font-black leading-tight">Interacciones sobre el video</h3>
+              <p className="relative z-10 mt-2 max-w-[190px] text-xs leading-5 text-white/72">Filtra eventos y salta al segundo donde ocurrio cada contacto.</p>
+            </div>
+          </div>
+
           <div className="mb-5">
-            <h3 className="mb-3 text-[11px] font-medium uppercase tracking-wide text-slate-500">Métricas del video</h3>
+            <h3 className="mb-3 text-[11px] font-black uppercase tracking-wide text-slate-500">Métricas del video</h3>
             <div className="grid grid-cols-2 gap-2">
-              <Metric icon={<Users size={18} />} label="Personas detectadas" value={liveMetrics.people} />
-              <Metric icon={<Clock size={18} />} label="Permanencia promedio" value={`${liveMetrics.avgDwell.toFixed(1)} s`} />
-              <Metric icon={<Flame size={18} />} label="Zonas calientes" value={liveMetrics.hotZones} />
-              <Metric icon={<MessageCircle size={18} />} label="Interacciones" value={liveMetrics.interactions} />
+              <Metric tone="green" icon={usersIcon} label="Personas detectadas" value={liveMetrics.people} />
+              <Metric tone="orange" icon={clockIcon} label="Permanencia promedio" value={`${liveMetrics.avgDwell.toFixed(1)} s`} />
+              <Metric tone="amber" icon={hotIcon} label="Zonas calientes" value={liveMetrics.hotZones} />
+              <Metric tone="blue" icon={interactionIcon} label="Interacciones" value={liveMetrics.interactions} />
             </div>
           </div>
 
@@ -559,25 +614,29 @@ export default function AnalysisVideo({ analysis }) {
 
           <div className="mb-4 flex items-start justify-between gap-3 border-t border-[#e5e7ee] pt-4">
             <div>
-              <h3 className="text-lg font-semibold text-[#151323]">Eventos del video</h3>
-              <p className="mt-1 text-xs text-slate-500">Salta al segundo exacto detectado por el analisis.</p>
+              <h3 className="text-lg font-black text-[#151323]">Eventos detectados</h3>
+              <p className="mt-1 text-xs text-slate-500">Cada tarjeta abre el momento exacto en el video.</p>
             </div>
             <b className="rounded-full bg-[#fff1eb] px-3 py-1 text-[11px] text-[#ff7a1a]">{pickupEvents.length} pick-ups</b>
           </div>
-          <div className="mb-4 grid grid-cols-3 gap-1">
-            {['all', 'pickup', 'interaction'].map((value) => <button key={value} className={`rounded-md px-2 py-2 text-[10px] font-medium ${eventFilter === value ? 'bg-[#ff7a1a] text-white' : 'bg-slate-100 text-slate-500'}`} onClick={() => setEventFilter(value)}>{value === 'all' ? 'Todos' : value === 'pickup' ? 'Pick-ups' : 'Interacciones'}</button>)}
+          <div className="mb-4 grid grid-cols-3 gap-1 rounded-xl border border-[#e5e7ee] bg-white p-1 shadow-[0_14px_34px_-30px_rgba(21,19,35,.7)]">
+            {['all', 'pickup', 'interaction'].map((value) => <button key={value} className={`rounded-lg px-2 py-2 text-[10px] font-black transition ${eventFilter === value ? 'bg-[#ff7a1a] text-white shadow-[0_12px_26px_-18px_rgba(255,122,26,.9)]' : 'bg-transparent text-slate-500 hover:bg-[#fff4ec] hover:text-[#cf4921]'}`} onClick={() => setEventFilter(value)}>{value === 'all' ? 'Todos' : value === 'pickup' ? 'Pick-ups' : 'Interacciones'}</button>)}
           </div>
           {visibleEvents.length ? (
-            <div className="grid gap-2 pr-1">
+            <div className="relative grid gap-3 pr-1 before:absolute before:bottom-4 before:left-[18px] before:top-4 before:w-px before:bg-[#ffd4bd]">
               {visibleEvents.map((event, index) => {
                 const isPickup = pickupEvents.includes(event)
                 return (
-                  <button key={`${event.t}-${event.track_id}-${index}`} className="rounded-xl border border-[#e5e7ee] bg-white p-3 text-left transition hover:border-[#ff7a1a]" onClick={() => jumpToEvent(event)}>
+                  <button key={`${event.t}-${event.track_id}-${index}`} className={`group relative ml-9 rounded-2xl border bg-white p-3 text-left shadow-[0_18px_44px_-36px_rgba(21,19,35,.8)] transition hover:-translate-y-0.5 ${isPickup ? 'border-[#ffd1bb] hover:border-[#ff7a1a]' : 'border-[#cfe4ff] hover:border-[#1f6feb]'}`} onClick={() => jumpToEvent(event)}>
+                    <span className={`absolute -left-[31px] top-4 grid h-5 w-5 place-items-center rounded-full border-2 border-white shadow-md ${isPickup ? 'bg-[#ff7a1a]' : 'bg-[#1f6feb]'}`}>
+                      <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                    </span>
                     <div className="flex items-center justify-between gap-2">
-                      <b className={`text-sm ${isPickup ? 'text-[#ff7a1a]' : 'text-[#1f6feb]'}`}>{formatTime(event.t || 0)}</b>
-                      <span className={`rounded-full px-2 py-1 text-[10px] font-medium ${isPickup ? 'bg-[#fff1eb] text-[#ff7a1a]' : 'bg-[#eef5ff] text-[#1f6feb]'}`}>{isPickup ? 'Pick-up' : 'Interaccion'}</span>
+                      <b className={`rounded-lg px-2.5 py-1 text-sm ${isPickup ? 'bg-[#fff1eb] text-[#ff7a1a]' : 'bg-[#eef5ff] text-[#1f6feb]'}`}>{formatTime(event.t || 0)}</b>
+                      <span className={`rounded-full px-2 py-1 text-[10px] font-black ${isPickup ? 'bg-[#ff7a1a] text-white' : 'bg-[#1f6feb] text-white'}`}>{isPickup ? 'Pick-up' : 'Interaccion'}</span>
                     </div>
-                    <p className="mt-2 text-xs text-[#151323]">{event.product || event.gondola_name || `Track ${event.track_id}`}</p>
+                    <p className="mt-3 text-sm font-black leading-snug text-[#151323]">{event.product || event.gondola_name || `Track ${event.track_id}`}</p>
+                    <span className={`mt-3 inline-flex items-center rounded-lg px-2.5 py-1 text-[10px] font-black transition group-hover:translate-x-1 ${isPickup ? 'bg-[#fff7ed] text-[#cf4921]' : 'bg-[#eff6ff] text-[#1f6feb]'}`}>Ver momento</span>
                     {typeof event.row !== 'undefined' && typeof event.column !== 'undefined' && <p className="mt-1 text-[11px] text-slate-500">Nivel {event.row + 1} · Seccion {event.column + 1}</p>}
                   </button>
                 )
@@ -590,13 +649,23 @@ export default function AnalysisVideo({ analysis }) {
   )
 }
 
-function Metric({ icon, label, value }) {
+function Metric({ icon, label, value, tone }) {
+  const tones = {
+    green: 'border-[#bfe8d1] bg-[#f4fff8] text-[#12824c]',
+    orange: 'border-[#fed7aa] bg-[#fff7ed] text-[#cf4921]',
+    amber: 'border-[#fde68a] bg-[#fffbeb] text-[#b45309]',
+    blue: 'border-[#bfdbfe] bg-[#eff6ff] text-[#1f6feb]',
+  }
+
   return (
-    <article className="flex items-center gap-2 rounded-xl border border-[#e5e7ee] bg-white p-3">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#fff1eb] text-[#ff5b12]">{icon}</span>
-      <span className="min-w-0">
-        <b className="block truncate text-lg font-semibold text-[#151323]">{value}</b>
-        <span className="block text-xs font-medium leading-relaxed text-slate-500">{label}</span>
+    <article className={`group relative flex min-h-[108px] items-center gap-3 overflow-hidden rounded-xl border p-3 shadow-[0_14px_34px_-30px_rgba(21,19,35,.65)] transition hover:-translate-y-0.5 ${tones[tone] || tones.orange}`}>
+      <span className="pointer-events-none absolute -right-5 -top-5 h-16 w-16 rounded-full bg-white/70" />
+      <span className="relative grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white shadow-[0_14px_28px_-22px_rgba(21,19,35,.5)]">
+        <img className="h-10 w-10 object-contain transition group-hover:scale-110" src={icon} alt="" aria-hidden="true" />
+      </span>
+      <span className="relative min-w-0">
+        <b className="block truncate text-xl font-black tabular-nums text-[#151323]">{value}</b>
+        <span className="block text-xs font-bold leading-snug text-slate-600">{label}</span>
       </span>
     </article>
   )

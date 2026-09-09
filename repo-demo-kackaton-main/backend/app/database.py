@@ -1,10 +1,13 @@
+import os
 from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 
-DATABASE_PATH = Path(__file__).resolve().parents[1] / "data" / "scapder.db"
+BACKEND_ROOT = Path(os.environ.get("SCAPDER_BACKEND_ROOT", Path(__file__).resolve().parents[1]))
+DATABASE_PATH = BACKEND_ROOT / "data" / "scapder.db"
+DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 engine = create_engine(
     f"sqlite:///{DATABASE_PATH}",
     connect_args={"check_same_thread": False},

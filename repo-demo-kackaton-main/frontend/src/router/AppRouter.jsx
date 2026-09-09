@@ -10,7 +10,6 @@ import UploadPage from '../pages/UploadPage'
 import AnalysisAreaPage from '../pages/AnalysisAreaPage'
 import ProcessingPage from '../pages/ProcessingPage'
 import CapturePage from '../pages/CapturePage'
-import CalibrationPage from '../pages/CalibrationPage'
 import PlanogramPage from '../pages/PlanogramPage'
 import ResultsPage from '../pages/ResultsPage'
 import InsightsPage from '../pages/InsightsPage'
@@ -60,7 +59,7 @@ export default function AppRouter() {
           <Route path="/sedes/:siteId/analisis/nuevo/area" element={<AnalysisAreaPage />} />
           <Route path="/sedes/:siteId/historial" element={<HistoryPage />} />
           <Route path="/sites/:siteId/captura" element={<CapturePage />} />
-          <Route path="/sites/:siteId/calibracion" element={<CalibrationPage />} />
+          <Route path="/sites/:siteId/calibracion" element={<SiteRouteGate resolve={(site, siteId) => `/sites/${siteId}/planograma`} />} />
           <Route path="/sites/:siteId/planograma" element={<PlanogramPage />} />
           <Route path="/sites/:siteId/analizar" element={<SiteRouteGate resolve={legacyAnalyzeRoute} />} />
           <Route path="/historial" element={<HistoryPage />} />

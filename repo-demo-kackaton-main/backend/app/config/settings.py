@@ -11,7 +11,7 @@ from pathlib import Path
 
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(os.environ.get("SCAPDER_ROOT", Path(__file__).resolve().parents[3]))
 
 
 def _load_env_file(path: Path) -> None:
@@ -39,6 +39,8 @@ DATASET_ROOT = Path(os.environ.get("SCAPDER_DATASET", REPO_ROOT / "training" / "
 ANNOTATIONS_ROOT = Path(os.environ.get("SCAPDER_ANNOTATIONS", REPO_ROOT / "training" / "annotations"))
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
+# Modelos alternativos para el chat: si el configurado está saturado (503) o
+# sin cuota (429), el backend prueba estos en orden antes de rendirse.
 GEMINI_FALLBACK_MODELS = [
     item.strip()
     for item in os.environ.get(
@@ -47,6 +49,21 @@ GEMINI_FALLBACK_MODELS = [
     ).split(",")
     if item.strip()
 ]
+# Anonymize faces in every artifact (frames, overlays, served video). Set to
+# "0" to disable. On by default: matches the privacy-by-design requirement.
+BLUR_FACES = os.environ.get("SCAPDER_BLUR_FACES", "1") != "0"
+
+
+def _privacy_intensity() -> float:
+    try:
+        value = float(os.environ.get("SCAPDER_FACE_BLUR_INTENSITY", "0.65"))
+    except ValueError:
+        value = 0.65
+    return max(0.25, min(1.0, value))
+
+
+# 0.25 = soft pixelation, 1.0 = maximum privacy mosaic.
+FACE_BLUR_INTENSITY = _privacy_intensity()
 MODELS_ROOT = Path(os.environ.get("SCAPDER_MODELS", REPO_ROOT / "models"))
 EXPORTED_MODELS = MODELS_ROOT / "exported"
 BEHAVIOR_CONFIG = REPO_ROOT / "training" / "configs" / "behavior.yaml"

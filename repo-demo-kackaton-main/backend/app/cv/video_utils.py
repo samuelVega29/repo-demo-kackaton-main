@@ -5,6 +5,9 @@ to ensure accurate calibration and projection.
 """
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
+
 import cv2
 import numpy as np
 
@@ -202,3 +205,80 @@ def get_crop_transform_matrix(bars: dict, original_width: int, original_height: 
         [1, 0, tx],
         [0, 1, ty],
     ], dtype=np.float64)
+
+
+class AnonymizedVideoWriter:
+    """Writes a browser-playable H.264 MP4 from raw BGR frames.
+
+    OpenCV's bundled MPEG-4/H.264 encoders are broken on several Windows builds
+    (``write()`` returns False silently), so this delegates to the static ffmpeg
+    binary shipped with ``imageio-ffmpeg`` (libx264). Each frame is piped as
+    raw ``bgr24`` and encoded as ``yuv420p``, the codec/pixfmt every modern
+    browser plays in a <video> tag.
+    """
+
+    def __init__(self, path, fps: float, width: int, height: int) -> None:
+        try:
+            import imageio_ffmpeg
+        except ImportError:
+            raise RuntimeError("imageio-ffmpeg requerido para anonimizar el video")
+
+        self.path = Path(path)
+        self.proc: subprocess.Popen | None = subprocess.Popen(
+            [
+                imageio_ffmpeg.get_ffmpeg_exe(),
+                "-y",
+                "-loglevel", "error",
+                "-f", "rawvideo",
+                "-vcodec", "rawvideo",
+                "-pix_fmt", "bgr24",
+                "-s", f"{width}x{height}",
+                "-r", f"{fps}",
+                "-i", "-",
+                "-an",
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-preset", "veryfast",
+                "-crf", "23",
+                "-movflags", "+faststart",
+                str(path),
+            ],
+            stdin=subprocess.PIPE,
+        )
+
+    def __enter__(self) -> AnonymizedVideoWriter:
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        self.release()
+
+    def write(self, frame: np.ndarray) -> None:
+        if self.proc is None or self.proc.stdin is None:
+            raise RuntimeError("El escritor de video anonimizado no esta disponible")
+        if self.proc.poll() is not None:
+            raise RuntimeError("ffmpeg termino antes de completar la anonimizacion del video")
+        try:
+            self.proc.stdin.write(frame.tobytes())
+        except (BrokenPipeError, OSError) as exc:
+            raise RuntimeError("ffmpeg cerró el pipe durante la anonimización del video") from exc
+
+    def release(self) -> None:
+        if self.proc is None:
+            return
+        proc = self.proc
+        try:
+            if proc.stdin is not None and not proc.stdin.closed:
+                proc.stdin.close()
+            proc.wait(timeout=120)
+        except Exception:
+            proc.kill()
+            raise
+        finally:
+            self.proc = None
+
+        if proc.returncode != 0:
+            self.path.unlink(missing_ok=True)
+            raise RuntimeError("ffmpeg no pudo generar el video anonimizado")
+
+        if not self.path.exists() or self.path.stat().st_size == 0:
+            raise RuntimeError("El video anonimizado quedo vacio")

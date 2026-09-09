@@ -12,3 +12,7 @@ backend_out.log
 backend_err.log
 frontend_out.log
 frontend_err.log
+backend/build/
+backend/dist/
+frontend/release/
+desktop-release*/
