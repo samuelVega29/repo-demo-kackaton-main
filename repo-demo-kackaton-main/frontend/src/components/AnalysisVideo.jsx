@@ -1,13 +1,23 @@
-import { Clock, Flame, MessageCircle, Users } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { artifactUrl, getAnalysisHeatmap, getAnalysisTrajectories, getAnalysisZones, videoUrl } from '../services/analyses'
 import { inverseHomography, projectFloor } from '../utils/homography'
 import { pointInPolygon } from '../utils/floorOutline'
 import { formatTime } from '../utils/format'
+import usersIcon from '../assets/images/icono_usuarios_3d.png'
+import clockIcon from '../assets/images/icon4.png'
+import hotIcon from '../assets/images/icono_bombillo_3d.png'
+import interactionIcon from '../assets/images/icono_carrito_3d.png'
 
 const findingDotColor = { evidence: '#ff7a1a', recommendation: '#22c55e', quality: '#151323' }
 
 const VIEW_MODES = [['original', 'Original'], ['heatmap', 'Mapa de calor'], ['pickup', 'Pick-ups'], ['zones', 'Zonas'], ['trajectories', 'Trayectorias']]
+const VIEW_MODE_ICONS = {
+  original: 'Video',
+  heatmap: 'Calor',
+  pickup: 'Pick',
+  zones: 'Zonas',
+  trajectories: 'Rutas',
+}
 const zoneStyles = {
   hot: ['rgba(255, 107, 61, .28)', 'rgba(255, 107, 61, .86)'],
   normal: ['rgba(31, 111, 235, .18)', 'rgba(31, 111, 235, .72)'],
@@ -469,7 +479,7 @@ export default function AnalysisVideo({ analysis }) {
   }
 
   return (
-    <section id="video-analisis" className="scroll-mt-24 rounded-3xl border border-[#e5e7ee] bg-[#f7f8fa] p-4 sm:p-6">
+    <section id="video-analisis" className="scroll-mt-24 rounded-3xl border border-[#dbe7f3] bg-[linear-gradient(135deg,#ffffff_0%,#f8fbff_52%,#fff4ec_100%)] p-4 shadow-[0_28px_80px_-60px_rgba(21,19,35,.65)] sm:p-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <span className="text-[10px] font-medium tracking-[.17em] text-[#ff7a1a]">VIDEO INTERACTIVO</span>
@@ -477,12 +487,12 @@ export default function AnalysisVideo({ analysis }) {
         </div>
         <div className="flex flex-wrap items-center gap-2" role="tablist">
           {VIEW_MODES.map(([value, label]) => (
-            <button key={value} role="tab" aria-selected={viewMode === value} className={`rounded-full border px-4 py-2 text-[11px] font-medium transition ${viewMode === value ? 'border-[#ff7a1a] bg-[#ff7a1a] text-white' : 'border-[#e5e7ee] bg-white text-slate-600 hover:border-[#ff7a1a]'}`} onClick={() => setViewMode(value)}>{label}</button>
+            <button key={value} role="tab" aria-selected={viewMode === value} className={`group inline-flex min-h-[42px] items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-black transition hover:-translate-y-0.5 ${viewMode === value ? 'border-[#ff7a1a] bg-[#ff7a1a] text-white shadow-[0_16px_34px_-22px_rgba(255,122,26,.95)]' : 'border-[#e5e7ee] bg-white text-slate-600 hover:border-[#ff7a1a]/50 hover:bg-[#fff4ec] hover:text-[#cf4921]'}`} onClick={() => setViewMode(value)}><span className={`grid h-6 min-w-8 place-items-center rounded-md px-1.5 text-[8px] ${viewMode === value ? 'bg-white/18 text-white' : 'bg-slate-100 text-slate-500 group-hover:bg-white group-hover:text-[#cf4921]'}`}>{VIEW_MODE_ICONS[value]}</span>{label}</button>
           ))}
         </div>
       </div>
 
-      <div className="grid overflow-hidden rounded-2xl border border-[#e5e7ee] bg-[#05070a] shadow-sm xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid overflow-hidden rounded-2xl border border-[#dbe5f0] bg-[#05070a] shadow-[0_24px_72px_-54px_rgba(4,12,22,.9)] xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0">
         <div className="relative mx-auto bg-black" style={{ height: `min(${box ? `${box.width / videoRatio}px` : '100%'}, 72vh)` }}>
           <video ref={videoRef} src={videoUrl(analysis.id)} playsInline className="block h-full w-full bg-black object-contain" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
@@ -535,10 +545,10 @@ export default function AnalysisVideo({ analysis }) {
           <div className="mb-5">
             <h3 className="mb-3 text-[11px] font-medium uppercase tracking-wide text-slate-500">Métricas del video</h3>
             <div className="grid grid-cols-2 gap-2">
-              <Metric icon={<Users size={18} />} label="Personas detectadas" value={liveMetrics.people} />
-              <Metric icon={<Clock size={18} />} label="Permanencia promedio" value={`${liveMetrics.avgDwell.toFixed(1)} s`} />
-              <Metric icon={<Flame size={18} />} label="Zonas calientes" value={liveMetrics.hotZones} />
-              <Metric icon={<MessageCircle size={18} />} label="Interacciones" value={liveMetrics.interactions} />
+              <Metric tone="green" icon={usersIcon} label="Personas detectadas" value={liveMetrics.people} />
+              <Metric tone="orange" icon={clockIcon} label="Permanencia promedio" value={`${liveMetrics.avgDwell.toFixed(1)} s`} />
+              <Metric tone="amber" icon={hotIcon} label="Zonas calientes" value={liveMetrics.hotZones} />
+              <Metric tone="blue" icon={interactionIcon} label="Interacciones" value={liveMetrics.interactions} />
             </div>
           </div>
 
@@ -590,13 +600,22 @@ export default function AnalysisVideo({ analysis }) {
   )
 }
 
-function Metric({ icon, label, value }) {
+function Metric({ icon, label, value, tone }) {
+  const tones = {
+    green: 'border-[#bfe8d1] bg-[#f4fff8] text-[#12824c]',
+    orange: 'border-[#fed7aa] bg-[#fff7ed] text-[#cf4921]',
+    amber: 'border-[#fde68a] bg-[#fffbeb] text-[#b45309]',
+    blue: 'border-[#bfdbfe] bg-[#eff6ff] text-[#1f6feb]',
+  }
+
   return (
-    <article className="flex items-center gap-2 rounded-xl border border-[#e5e7ee] bg-white p-3">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#fff1eb] text-[#ff5b12]">{icon}</span>
+    <article className={`group flex min-h-[104px] items-center gap-3 rounded-lg border p-3 shadow-[0_14px_34px_-30px_rgba(21,19,35,.65)] transition hover:-translate-y-0.5 ${tones[tone] || tones.orange}`}>
+      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white shadow-[0_14px_28px_-22px_rgba(21,19,35,.5)]">
+        <img className="h-10 w-10 object-contain transition group-hover:scale-110" src={icon} alt="" aria-hidden="true" />
+      </span>
       <span className="min-w-0">
-        <b className="block truncate text-lg font-semibold text-[#151323]">{value}</b>
-        <span className="block text-xs font-medium leading-relaxed text-slate-500">{label}</span>
+        <b className="block truncate text-xl font-black tabular-nums text-[#151323]">{value}</b>
+        <span className="block text-xs font-bold leading-snug text-slate-600">{label}</span>
       </span>
     </article>
   )

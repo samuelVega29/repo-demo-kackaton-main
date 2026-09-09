@@ -756,8 +756,17 @@ def analysis_video(
             detail="Análisis no encontrado",
         )
 
-    path = Path(
-        analysis.video_path
+    # Preferir la versión anonimizada (caras borrosas) cuando exista, para
+    # garantizar que el video servido nunca exponga la identidad de las personas.
+    anonymized = (
+        RESULT_DIR
+        / analysis.id
+        / "anonymized.mp4"
+    )
+    path = (
+        anonymized
+        if anonymized.exists()
+        else Path(analysis.video_path)
     )
 
     if not path.exists():

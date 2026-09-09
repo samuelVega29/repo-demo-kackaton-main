@@ -207,6 +207,13 @@ class ConfigurationBody(BaseModel):
     configuration: dict
 
 
+class SuggestGondolasBody(BaseModel):
+    configuration: dict
+    image: str = Field(min_length=1)
+    image_width: int = Field(gt=0)
+    image_height: int = Field(gt=0)
+
+
 @router.put("/sites/{site_id}/configuration")
 def update_configuration(
     site_id: int,
