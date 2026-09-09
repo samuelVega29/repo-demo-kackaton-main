@@ -107,6 +107,7 @@ export function AppProvider({ children }) {
     setFile(candidate)
     setPreview(URL.createObjectURL(candidate))
     setJob(null)
+    setFrameCapture(null)
     setAnalysisArea(null)
   }
 
