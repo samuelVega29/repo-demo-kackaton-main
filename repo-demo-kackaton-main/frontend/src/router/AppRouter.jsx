@@ -13,6 +13,7 @@ import CapturePage from '../pages/CapturePage'
 import CalibrationPage from '../pages/CalibrationPage'
 import PlanogramPage from '../pages/PlanogramPage'
 import ResultsPage from '../pages/ResultsPage'
+import InsightsPage from '../pages/InsightsPage'
 import HistoryPage from '../pages/HistoryPage'
 import { useApp } from '../context/AppProvider'
 
@@ -65,6 +66,7 @@ export default function AppRouter() {
           <Route path="/historial" element={<HistoryPage />} />
           <Route path="/analyses/:analysisId/procesando" element={<ProcessingPage />} />
           <Route path="/analyses/:analysisId" element={<ResultsPage />} />
+          <Route path="/analyses/:analysisId/recomendaciones" element={<InsightsPage />} />
         </Route>
       </Route>
       <Route path="/usuarios" element={<Navigate to="/empresas" replace />} />

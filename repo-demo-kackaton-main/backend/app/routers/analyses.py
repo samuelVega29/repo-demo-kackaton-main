@@ -6,6 +6,7 @@ import shutil
 import threading
 import uuid
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 
 import cv2
@@ -17,10 +18,11 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..ai.insights import generate_insights
 from ..cv.pipeline import run_analysis
 from ..database import get_db
 from ..models import Analysis, Site, User
@@ -188,6 +190,7 @@ def payload(
             else None
         ),
         "result": analysis.result,
+        "insights": analysis.insights,
     }
 
 
@@ -580,6 +583,39 @@ def analysis_detail(
         )
 
     return payload(analysis)
+
+
+# =========================================================
+# INSIGHTS (IA — Claude)
+# =========================================================
+
+
+@router.post("/{analysis_id}/insights")
+def create_insights(
+    analysis_id: str,
+    regenerate: bool = False,
+    user: User = Depends(current_user),
+    database: Session = Depends(get_db),
+) -> dict:
+    analysis = database.get(Analysis, analysis_id)
+    site = database.get(Site, analysis.site_id) if analysis else None
+    if not analysis or not can_access(user, site):
+        raise HTTPException(status_code=404, detail="Análisis no encontrado")
+    if analysis.status != "completed" or not analysis.result:
+        raise HTTPException(status_code=409, detail="El análisis todavía no tiene resultados para interpretar")
+    if analysis.insights and not regenerate:
+        return analysis.insights
+
+    try:
+        frame_dir = RESULT_DIR / analysis_id
+        frame_paths = sorted(frame_dir.glob("frame_*.jpg"))
+        insights = generate_insights(analysis.result, frame_paths=frame_paths)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    analysis.insights = insights
+    database.commit()
+    return insights
 
 
 # =========================================================
@@ -1180,3 +1216,154 @@ def analysis_visualization_3d(
             [],
         ),
     }
+
+
+# =========================================================
+# EXPORTAR INSIGHTS COMO WORD (.docx)
+# =========================================================
+
+
+@router.get("/{analysis_id}/insights/export")
+def export_insights_docx(
+    analysis_id: str,
+    user: User = Depends(user_from_query_token),
+    database: Session = Depends(get_db),
+):
+    """Descarga las recomendaciones de Claude como archivo Word (.docx).
+    Si aún no se han generado los insights, devuelve 409.
+    """
+    analysis = database.get(Analysis, analysis_id)
+    site = database.get(Site, analysis.site_id) if analysis else None
+    if not analysis or not can_access(user, site):
+        raise HTTPException(status_code=404, detail="Análisis no encontrado")
+    if not analysis.insights:
+        raise HTTPException(
+            status_code=409,
+            detail="Genera las recomendaciones primero antes de exportar",
+        )
+
+    try:
+        from docx import Document
+        from docx.shared import Inches, Pt
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="python-docx no está instalado. Agrega 'python-docx' a requirements.txt y reinicia el servidor.",
+        )
+
+    insights = analysis.insights
+    frame_dir = RESULT_DIR / analysis_id
+    site_name = site.name if site else "Tienda"
+
+    doc = Document()
+
+    # Título principal
+    title = doc.add_heading(f"Recomendaciones de Space Management — {site_name}", level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    doc.add_paragraph(
+        f"Análisis ID: {analysis_id}  |  Generado por Scapder · Góndola Inteligente"
+    ).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph()  # espacio
+
+    # Hallazgo principal
+    doc.add_heading("Hallazgo principal", level=1)
+    doc.add_paragraph(insights.get("hallazgo_principal", ""))
+
+    # Resumen ejecutivo
+    doc.add_heading("Resumen ejecutivo", level=1)
+    doc.add_paragraph(insights.get("resumen_ejecutivo", ""))
+
+    # Recomendaciones
+    doc.add_heading("Recomendaciones accionables", level=1)
+    for i, rec in enumerate(insights.get("recomendaciones", []), start=1):
+        doc.add_heading(f"{i}. {rec.get('titulo', '')}", level=2)
+
+        p_just = doc.add_paragraph()
+        p_just.add_run("Justificación: ").bold = True
+        p_just.add_run(rec.get("justificacion", ""))
+
+        p_impact = doc.add_paragraph()
+        p_impact.add_run("Impacto estimado: ").bold = True
+        p_impact.add_run(rec.get("impacto_estimado", ""))
+
+        evidencia = rec.get("evidencia_visual")
+        if evidencia and evidencia != "null":
+            p_ev = doc.add_paragraph()
+            p_ev.add_run("📷 Evidencia visual: ").bold = True
+            p_ev.add_run(evidencia)
+
+            # Extraer nombre de frame de la cadena (ej. "frame_2: cliente...")
+            frame_name = evidencia.split(":")[0].strip()  # "frame_2"
+            frame_path = frame_dir / f"{frame_name}.jpg"
+            if frame_path.exists():
+                try:
+                    doc.add_picture(str(frame_path), width=Inches(4.5))
+                    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                except Exception:
+                    pass  # Si la imagen falla, seguimos sin ella
+
+        doc.add_paragraph()  # separador entre recomendaciones
+
+    # ── Sección de gráficas / heatmaps ──────────────────────────────────────
+    heatmap_labels = [
+        ("traffic.png", "Mapa de tráfico (densidad de visitas por góndola)"),
+        ("dwell.png", "Mapa de permanencia (segundos acumulados por zona)"),
+        ("interaction.png", "Mapa de interacciones (eventos pick-up / put-back)"),
+        ("pickup.png", "Mapa de recogidas (pickup) por zona"),
+    ]
+    any_heatmap = any((frame_dir / fn).exists() for fn, _ in heatmap_labels)
+    if any_heatmap:
+        doc.add_heading("Gráficas de métricas espaciales", level=1)
+        doc.add_paragraph(
+            "Los siguientes mapas de calor son generados automáticamente por el sistema de visión "
+            "computacional (YOLO + ByteTrack). Reflejan datos reales del video analizado."
+        )
+        for fname, caption in heatmap_labels:
+            hmap_path = frame_dir / fname
+            if hmap_path.exists():
+                try:
+                    doc.add_paragraph(caption).runs[0].bold = True
+                    doc.add_picture(str(hmap_path), width=Inches(5.5))
+                    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    doc.add_paragraph()
+                except Exception:
+                    pass
+
+    # ── Tabla de métricas por góndola ────────────────────────────────────────
+    gondolas_data = analysis.result.get("gondolas", []) if analysis.result else []
+    if gondolas_data:
+        doc.add_heading("Métricas por góndola", level=1)
+        table = doc.add_table(rows=1, cols=4)
+        table.style = "Table Grid"
+        hdr = table.rows[0].cells
+        for cell, text in zip(hdr, ["Góndola", "Tráfico (visitas)", "Permanencia (seg)", "Interacciones"]):
+            cell.text = text
+            cell.paragraphs[0].runs[0].bold = True
+        for g in gondolas_data:
+            row = table.add_row().cells
+            row[0].text = str(g.get("name", ""))
+            row[1].text = str(g.get("traffic", g.get("visitors", 0)))
+            row[2].text = str(round(float(g.get("dwell_seconds", 0)), 1))
+            row[3].text = str(g.get("interactions", 0))
+        doc.add_paragraph()
+
+    # Pie de página de privacidad
+    doc.add_paragraph()
+    footer_para = doc.add_paragraph(
+        "Privacidad por diseño: sin biometría, sin reconocimiento facial, sin atributos personales. "
+        "Cumple Ley 1581 de 2012 (Colombia). IDs de rastreo son temporales y no se persisten."
+    )
+    footer_para.runs[0].font.size = Pt(8)
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+
+    safe_filename = f"recomendaciones_{analysis_id[:8]}.docx"
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'},
+    )
