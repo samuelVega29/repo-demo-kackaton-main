@@ -57,6 +57,7 @@ class Analysis(Base):
     progress: Mapped[int] = mapped_column(Integer, default=0)
     message: Mapped[str] = mapped_column(String(300), default="Video recibido")
     result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    insights: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     model_name: Mapped[str] = mapped_column(String(100), default="yolo11n")
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)

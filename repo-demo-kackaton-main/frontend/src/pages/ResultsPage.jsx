@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate, useParams } from 'react-router-dom'
+import { Navigate, Link, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppProvider'
 import { artifactUrl } from '../services/analyses'
 import StoreScene from '../components/StoreScene'
@@ -7,6 +7,12 @@ import ShelfMatrix from '../components/ShelfMatrix'
 import AnalysisVideo from '../components/AnalysisVideo'
 
 const modes = [['traffic', 'Trafico'], ['dwell', 'Permanencia'], ['interaction', 'Interaccion'], ['pickup', 'Pick-up']]
+
+const QUICK_NAV_ANCHORS = [
+  ['mapa-operativo', 'Mapa operativo'],
+  ['evidencia-visual', 'Evidencia visual'],
+  ['hallazgos', 'Hallazgos'],
+]
 
 export default function ResultsPage() {
   const { job, site, mode, setMode, selectedId, setSelectedId, loadAnalysis } = useApp()
@@ -57,6 +63,24 @@ export default function ResultsPage() {
         </div>
       </div>
 
+      <nav className="sticky top-[66px] z-10 -mx-[1px] mb-10 flex flex-wrap items-center gap-2 border-y border-[#e5e7ee] bg-white/90 py-3 backdrop-blur">
+        {QUICK_NAV_ANCHORS.map(([id, label]) => (
+          <a
+            key={id}
+            href={`#${id}`}
+            className="rounded-full border border-[#e5e7ee] px-4 py-2 text-[10px] font-black uppercase tracking-wide text-[#7d8392] transition hover:border-[#151323] hover:text-[#151323]"
+          >
+            {label}
+          </a>
+        ))}
+        <Link
+          to={`/analyses/${analysis.id}/recomendaciones`}
+          className="ml-auto rounded-full border border-[#ff6b3d] bg-[#ff6b3d] px-4 py-2 text-[10px] font-black uppercase tracking-wide text-white transition hover:bg-[#e85a2c]"
+        >
+          05 · Recomendaciones e Informe →
+        </Link>
+      </nav>
+
       <AnalysisVideo analysis={analysis} />
 
       <div className="mt-[90px]">
@@ -86,7 +110,7 @@ export default function ResultsPage() {
       </div>
 
       <div className="mt-[90px] grid grid-cols-[minmax(0,1.4fr)_minmax(340px,.6fr)] gap-[45px] max-[1120px]:grid-cols-1 max-[760px]:mt-[75px] max-[760px]:gap-[45px]">
-        <section>
+        <section id="evidencia-visual">
           <div className="mb-7"><span className="font-[ui-monospace,monospace] text-[10px] font-semibold tracking-[.17em] text-[#1f6feb]">EVIDENCIA VISUAL</span><h2 className="mt-[9px] text-[clamp(33px,4vw,52px)] tracking-[-.045em] text-[#151323]">Frames y detecciones</h2></div>
           <div className="grid grid-cols-3 gap-[7px] max-[980px]:grid-cols-3 max-[760px]:grid-cols-2 max-[390px]:grid-cols-1">{(result.annotated_frames || []).map((filename, index) => <figure key={filename} className="relative m-0 aspect-video overflow-hidden rounded-lg bg-[#0e1916]"><img className="h-full w-full object-cover" src={artifactUrl(analysis.id, filename)} alt={`Frame procesado ${index + 1}`} /><figcaption className="absolute bottom-[7px] left-[7px] bg-[rgba(5,10,8,.83)] px-[7px] p-[5px] font-[ui-monospace,monospace] text-[7px] font-medium text-[#aac0b7]">FRAME {index + 1}</figcaption></figure>)}</div>
         </section>
@@ -121,6 +145,7 @@ export default function ResultsPage() {
           {(result.findings || []).map((finding, index) => <article key={`${finding.title}-${index}`} className="grid grid-cols-[34px_1fr] gap-[14px] border-t border-[#e5e7ee] py-[19px]"><span className="font-[ui-monospace,monospace] text-[9px] font-semibold text-[#ff6b3d]">{String(index + 1).padStart(2, '0')}</span><div><h3 className="m-0 mb-[7px] text-[14px] text-[#151323]">{finding.title}</h3><p className="m-0 text-[10px] leading-[1.6] text-[#7d8392]">{finding.detail}</p></div></article>)}
         </section>
       </div>
+
     </section>
   )
 }

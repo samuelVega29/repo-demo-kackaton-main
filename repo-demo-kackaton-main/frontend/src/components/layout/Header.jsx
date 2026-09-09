@@ -10,7 +10,8 @@ const navItems = [
   ['02', 'Sedes', 'site'],
   ['03', 'Analisis', 'analysis'],
   ['04', 'Resultados', 'results'],
-  ['05', 'Historial general', '/historial'],
+  ['05', 'Recomendaciones', 'insights'],
+  ['06', 'Historial general', '/historial'],
 ]
 
 const matchesPathGroup = (pathname, ...groups) => groups.some((group) => pathname === group || pathname.startsWith(`${group}/`))
@@ -86,6 +87,13 @@ const instructionsBySection = {
     now: 'Cambia de metrica y selecciona una gondola para ver detalle.',
     steps: ['Ver video con overlay', 'Cambiar metrica', 'Revisar 3D y pick-ups'],
   },
+  insights: {
+    title: 'Recomendaciones e Informe',
+    badge: 'Paso 5',
+    intro: 'Claude interpreta las metricas y los frames ya calculados para darte hallazgos accionables, con evidencia visual citada.',
+    now: 'Genera las recomendaciones con IA y descarga el informe en Word para compartirlo.',
+    steps: ['Generar recomendaciones con IA', 'Revisar evidencia por frame', 'Exportar el informe en Word'],
+  },
   default: {
     title: 'Guia de uso',
     badge: 'Ruta recomendada',
@@ -105,6 +113,7 @@ const getInstructionKey = (pathname) => {
   if (pathname.includes('/calibracion')) return 'calibration'
   if (pathname.includes('/planograma')) return 'planogram'
   if (pathname.includes('/historial')) return 'history'
+  if (pathname.includes('/recomendaciones')) return 'insights'
   if (pathname.includes('/analyses')) return 'results'
   return 'default'
 }
@@ -144,6 +153,14 @@ export default function Header({ user, logout, retailer, site, job, goHome }) {
       navigate(site ? `/sedes/${site.id}` : '/empresas')
       return
     }
+    if (target === 'insights') {
+      if (job?.result && job?.id) {
+        navigate(`/analyses/${job.id}/recomendaciones`)
+        return
+      }
+      navigate(site ? `/sedes/${site.id}` : '/empresas')
+      return
+    }
     navigate(target)
   }
 
@@ -157,7 +174,10 @@ export default function Header({ user, logout, retailer, site, job, goHome }) {
       )
     }
     if (target === 'results') {
-      return matchesPathGroup(pathname, '/analyses')
+      return matchesPathGroup(pathname, '/analyses') && !pathname.includes('/recomendaciones')
+    }
+    if (target === 'insights') {
+      return matchesPathGroup(pathname, '/analyses') && pathname.includes('/recomendaciones')
     }
     return pathname === target
   }
