@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { gondolaCorners } from '../utils/homography'
+import { gondolaCorners, projectFloorAtHeight, GONDOLA_TOP_HEIGHT_M } from '../utils/homography'
 import { hexToRgba } from '../utils/format'
 
 const project = (configuration, x, z) => {
@@ -21,7 +21,6 @@ export default function VideoOverlay({ preview, configuration, onClose }) {
     const canvas = canvasRef.current
     const video = videoRef.current
     if (!canvas || !video) return
-    let frame = 0
 
     const draw = () => {
       if (!video.videoWidth) return
@@ -35,6 +34,12 @@ export default function VideoOverlay({ preview, configuration, onClose }) {
 
       const pointPx = (x, z) => {
         const normalized = project(config, x, z)
+        if (!normalized) return null
+        return [normalized[0] * width, normalized[1] * height]
+      }
+      const flatMatrix = config.camera?.homography_inv ? config.camera.homography_inv.flat() : null
+      const raisedPointPx = (x, z, heightM) => {
+        const normalized = projectFloorAtHeight(flatMatrix, width, height, x, z, heightM)
         if (!normalized) return null
         return [normalized[0] * width, normalized[1] * height]
       }
@@ -57,24 +62,69 @@ export default function VideoOverlay({ preview, configuration, onClose }) {
 
       ;(config.gondolas || []).forEach((gondola) => {
         const color = gondola.color || '#d4ff70'
+        const shelfHeight = gondola.height || GONDOLA_TOP_HEIGHT_M
         const corners = gondolaCorners(gondola)
-        const pixels = corners.map(([x, z]) => pointPx(x, z)).filter(Boolean)
-        if (pixels.length < 4) return
+        const base = corners.map(([x, z]) => pointPx(x, z))
+        const top = corners.map(([x, z]) => raisedPointPx(x, z, shelfHeight))
+        if (base.length < 4 || base.some((point) => !point)) return
+        const standing = flatMatrix && top.every(Boolean)
+        const order = [0, 1, 2, 3].sort((i, j) => base[j][1] - base[i][1])
         ctx.beginPath()
-        ctx.moveTo(...pixels[0])
-        pixels.slice(1).forEach((point) => ctx.lineTo(...point))
+        ctx.moveTo(...base[0])
+        base.slice(1).forEach((point) => ctx.lineTo(...point))
         ctx.closePath()
         ctx.fillStyle = hexToRgba(color, .16)
         ctx.fill()
+        if (standing) {
+          ctx.beginPath()
+          ctx.moveTo(...top[0])
+          top.slice(1).forEach((point) => ctx.lineTo(...point))
+          ctx.closePath()
+          ctx.fillStyle = hexToRgba(color, .24)
+          ctx.fill()
+          const [f0, f1] = order
+          ctx.beginPath()
+          ctx.moveTo(...base[f0])
+          ctx.lineTo(...base[f1])
+          ctx.lineTo(...top[f1])
+          ctx.lineTo(...top[f0])
+          ctx.closePath()
+          ctx.fillStyle = hexToRgba(color, .18)
+          ctx.fill()
+          ctx.strokeStyle = hexToRgba(color, .55)
+          ctx.lineWidth = 1.5
+          ctx.stroke()
+          ctx.save()
+          ctx.strokeStyle = color
+          ctx.lineWidth = 2
+          base.forEach((point, index) => {
+            ctx.beginPath(); ctx.moveTo(...point); ctx.lineTo(...top[index]); ctx.stroke()
+          })
+          ctx.restore()
+        }
         ctx.strokeStyle = color
-        ctx.lineWidth = 4
+        ctx.lineWidth = standing ? 2 : 4
+        ctx.beginPath()
+        ctx.moveTo(...base[0])
+        base.slice(1).forEach((point) => ctx.lineTo(...point))
+        ctx.closePath()
         ctx.stroke()
+        if (standing) {
+          ctx.strokeStyle = hexToRgba(color, .7)
+          ctx.lineWidth = 1.5
+          ctx.beginPath()
+          ctx.moveTo(...top[0])
+          top.slice(1).forEach((point) => ctx.lineTo(...point))
+          ctx.closePath()
+          ctx.stroke()
+        }
+        const anchor = standing ? top[order[0]] : base[0]
         ctx.fillStyle = 'rgba(6, 14, 12, .82)'
         const labelWidth = ctx.measureText(gondola.name).width + 18
-        ctx.fillRect(pixels[0][0], pixels[0][1] - 20, labelWidth, 20)
+        ctx.fillRect(anchor[0], anchor[1] - 20, labelWidth, 20)
         ctx.fillStyle = '#e8f2ed'
         ctx.font = '12px ui-monospace, monospace'
-        ctx.fillText(gondola.name, pixels[0][0] + 9, pixels[0][1] - 5)
+        ctx.fillText(gondola.name, anchor[0] + 9, anchor[1] - 5)
       })
 
       ;(config.zones || []).forEach((zone) => {
@@ -102,6 +152,8 @@ export default function VideoOverlay({ preview, configuration, onClose }) {
         ctx.fillText('CÁMARA SIN CALIBRAR — los contornos se calcularán al calibrar los 4 puntos', 14, 26)
       }
     }
+
+    let frame = 0
 
     const loop = () => {
       draw()

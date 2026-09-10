@@ -1,5 +1,5 @@
 import { AlertCircle, LogOut, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import logo from '../../assets/images/logo.png'
@@ -10,7 +10,8 @@ const navItems = [
   ['02', 'Sedes', 'site'],
   ['03', 'Analisis', 'analysis'],
   ['04', 'Resultados', 'results'],
-  ['05', 'Historial general', '/historial'],
+  ['05', 'Recomendaciones', 'insights'],
+  ['06', 'Historial general', '/historial'],
 ]
 
 const matchesPathGroup = (pathname, ...groups) => groups.some((group) => pathname === group || pathname.startsWith(`${group}/`))
@@ -86,6 +87,13 @@ const instructionsBySection = {
     now: 'Cambia de metrica y selecciona una gondola para ver detalle.',
     steps: ['Ver video con overlay', 'Cambiar metrica', 'Revisar 3D y pick-ups'],
   },
+  insights: {
+    title: 'Recomendaciones e Informe',
+    badge: 'Paso 5',
+    intro: 'Claude interpreta las metricas y los frames ya calculados para darte hallazgos accionables, con evidencia visual citada.',
+    now: 'Genera las recomendaciones con IA y descarga el informe en Word para compartirlo.',
+    steps: ['Generar recomendaciones con IA', 'Revisar evidencia por frame', 'Exportar el informe en Word'],
+  },
   default: {
     title: 'Guia de uso',
     badge: 'Ruta recomendada',
@@ -105,6 +113,7 @@ const getInstructionKey = (pathname) => {
   if (pathname.includes('/calibracion')) return 'calibration'
   if (pathname.includes('/planograma')) return 'planogram'
   if (pathname.includes('/historial')) return 'history'
+  if (pathname.includes('/recomendaciones')) return 'insights'
   if (pathname.includes('/analyses')) return 'results'
   return 'default'
 }
@@ -121,7 +130,17 @@ export default function Header({ user, logout, retailer, site, job, goHome }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [instructionsOpen, setInstructionsOpen] = useState(false)
+  const [tourHintVisible, setTourHintVisible] = useState(false)
   const instructions = instructionBySection(pathname, site)
+
+  useEffect(() => {
+    const showTimer = window.setTimeout(() => setTourHintVisible(true), 900)
+    const hideTimer = window.setTimeout(() => setTourHintVisible(false), 10900)
+    return () => {
+      window.clearTimeout(showTimer)
+      window.clearTimeout(hideTimer)
+    }
+  }, [])
 
   const goTo = (target) => {
     if (target === 'site') {
@@ -144,6 +163,14 @@ export default function Header({ user, logout, retailer, site, job, goHome }) {
       navigate(site ? `/sedes/${site.id}` : '/empresas')
       return
     }
+    if (target === 'insights') {
+      if (job?.result && job?.id) {
+        navigate(`/analyses/${job.id}/recomendaciones`)
+        return
+      }
+      navigate(site ? `/sedes/${site.id}` : '/empresas')
+      return
+    }
     navigate(target)
   }
 
@@ -157,18 +184,27 @@ export default function Header({ user, logout, retailer, site, job, goHome }) {
       )
     }
     if (target === 'results') {
-      return matchesPathGroup(pathname, '/analyses')
+      return matchesPathGroup(pathname, '/analyses') && !pathname.includes('/recomendaciones')
+    }
+    if (target === 'insights') {
+      return matchesPathGroup(pathname, '/analyses') && pathname.includes('/recomendaciones')
     }
     return pathname === target
   }
 
+  const startTour = () => {
+    setInstructionsOpen(false)
+    setTourHintVisible(false)
+    window.dispatchEvent(new Event('scapder:start-tour'))
+  }
+
   return (
     <header className="sticky top-0 z-30 flex h-[76px] items-center justify-between border-b bg-[#202021] px-[clamp(16px,3vw,38px)] shadow-[0_14px_38px_-34px_rgba(18,22,33,.65)] backdrop-blur max-[760px]:h-[64px]">
-      <button className="flex items-center border-0 bg-transparent p-0" onClick={goHome} type="button">
+      <button className="flex items-center border-0 bg-transparent p-0" onClick={goHome} type="button" data-tour="brand">
         <img src={logo} alt="Scapder" className="h-auto w-[112px] object-contain max-[760px]:w-[96px]" />
       </button>
 
-      <nav className="hidden items-center gap-1 rounded-2xl border border-white/10 bg-[#111827] p-1.5 md:flex">
+      <nav className="hidden items-center gap-1 rounded-2xl border border-white/10 bg-[#111827] p-1.5 md:flex" data-tour="navigation">
         {navItems.map(([step, label, target]) => (
           <button
             aria-current={active(target) ? 'page' : undefined}
@@ -183,12 +219,30 @@ export default function Header({ user, logout, retailer, site, job, goHome }) {
         ))}
       </nav>
 
-      <div className="flex items-center gap-3">
-        <div className="hidden text-right sm:block">
+      <div className="relative flex items-center gap-3">
+        <div className="hidden text-right sm:block" data-tour="workspace">
           <b className="block text-[12px] leading-none text-white">{user?.name || 'Admin'}</b>
           <span className="mt-1 block text-[10px] font-bold text-[#ff7a1a]">{site?.name || retailer?.name || 'SCAPDER'}</span>
         </div>
-        <button className="grid h-10 w-10 place-items-center rounded-full border-2 border-white bg-[#ff5b12] text-white shadow-[0_0_24px_rgba(255,91,18,.35)] transition hover:-translate-y-px hover:bg-[#e94d08]" onClick={() => setInstructionsOpen(true)} type="button" aria-label="Ver instrucciones de esta seccion" title="Instrucciones">
+        {tourHintVisible && (
+          <button
+            className="absolute right-[88px] top-[52px] z-50 hidden w-[430px] animate-[tour-bounce-in_.8s_cubic-bezier(.2,1.45,.4,1)_both] items-center gap-4 rounded-[24px] border-2 border-[#ff7a1a] bg-white p-4 text-left text-[#071d25] shadow-[0_28px_78px_-34px_rgba(255,91,18,.9)] transition hover:-translate-y-1 hover:scale-[1.01] md:flex"
+            onClick={startTour}
+            type="button"
+            aria-label="Iniciar recorrido guiado"
+          >
+            <span className="relative grid h-20 w-20 shrink-0 animate-[tour-avatar-pulse_1.35s_ease-in-out_infinite] place-items-center overflow-hidden rounded-full bg-[#fff1eb] ring-4 ring-[#ff7a1a]">
+              <span className="absolute inset-[-8px] rounded-full border-2 border-[#ff7a1a]/30" />
+              <img src={robotGuide} alt="" className="h-full w-full object-cover object-top" />
+            </span>
+            <span className="min-w-0">
+              <b className="block text-[18px] font-black leading-5">Si eres nuevo, puedo guiarte</b>
+              <span className="mt-2 block text-[13px] font-bold leading-5 text-[#667085]">Haz clic aqui o en el boton naranja para iniciar el recorrido de la app.</span>
+              <span className="mt-3 inline-flex rounded-full bg-[#ff7a1a] px-3 py-1.5 text-[11px] font-black uppercase text-white">Iniciar tour</span>
+            </span>
+          </button>
+        )}
+        <button className="grid h-10 w-10 place-items-center rounded-full border-2 border-white bg-[#ff5b12] text-white shadow-[0_0_24px_rgba(255,91,18,.35)] transition hover:-translate-y-px hover:bg-[#e94d08]" onClick={() => setInstructionsOpen(true)} type="button" aria-label="Ver instrucciones de esta seccion" title="Instrucciones" data-tour="help">
           <AlertCircle size={19} strokeWidth={2.5} />
         </button>
         <button className="grid h-9 w-9 place-items-center rounded-full border border-[#eceef3] bg-white text-[#ff5b12] transition hover:border-[#ff5b12]" onClick={logout} type="button" aria-label="Cerrar sesion">
@@ -196,14 +250,14 @@ export default function Header({ user, logout, retailer, site, job, goHome }) {
         </button>
       </div>
       {instructionsOpen && createPortal(
-        <InstructionModal instructions={instructions} onClose={() => setInstructionsOpen(false)} />,
+        <InstructionModal instructions={instructions} onClose={() => setInstructionsOpen(false)} onStartTour={startTour} />,
         document.body,
       )}
     </header>
   )
 }
 
-function InstructionModal({ instructions, onClose }) {
+function InstructionModal({ instructions, onClose, onStartTour }) {
   return (
     <div className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-[#071d25]/60 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="section-instructions-title">
       <section className="relative grid max-h-[calc(100dvh-32px)] w-full max-w-[1060px] overflow-hidden rounded-[24px] bg-white text-[#151323] shadow-[0_34px_90px_-42px_rgba(7,29,37,.95)] md:grid-cols-[380px_1fr]">
@@ -247,6 +301,9 @@ function InstructionModal({ instructions, onClose }) {
               </div>
             ))}
           </div>
+          <button className="mt-6 inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-[#ff5b12] px-5 text-sm font-black text-white shadow-[0_18px_42px_-24px_rgba(255,91,18,.95)] transition hover:-translate-y-px hover:bg-[#e94d08]" onClick={onStartTour} type="button">
+            Iniciar recorrido guiado <AlertCircle size={16} />
+          </button>
         </div>
       </section>
     </div>

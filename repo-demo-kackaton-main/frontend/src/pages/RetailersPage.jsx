@@ -96,7 +96,7 @@ export default function RetailersPage() {
   return (
     <section className=" bg-[linear-gradient(135deg,#f7fbff_0%,#eef6ff_48%,#ffffff_100%)]  ">
       <div className="mx-auto ">
-        <div className="relative isolate overflow-hidden bg-[#202021] px-4 pb-8 pt-5 text-white shadow-[0_22px_60px_-44px_rgba(18,22,33,.75)] sm:px-8 lg:h-[500px] lg:px-0 lg:py-0">
+        <div className="relative isolate overflow-hidden bg-[#202021] px-4 pb-8 pt-5 text-white shadow-[0_22px_60px_-44px_rgba(18,22,33,.75)] sm:px-8 lg:h-[500px] lg:px-0 lg:py-0" data-tour="companies-hero">
           <img src={flujoPuntos} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-40 mix-blend-screen" />
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(17,24,39,.96)_0%,rgba(17,24,39,.84)_40%,rgba(17,24,39,.34)_100%)]" />
           <div className="pointer-events-none absolute -left-24 top-20 h-72 w-72 rounded-full bg-[#1683ff]/18 blur-3xl" />
@@ -119,7 +119,7 @@ export default function RetailersPage() {
                 Gestiona tus empresas <span className="text-[#ff7a1a]">con Scapder</span>
               </h1>
               <p className="mt-4 max-w-[370px] text-[13px] font-semibold leading-6 text-white/85 drop-shadow-[0_3px_12px_rgba(0,0,0,.35)]">Centraliza, analiza y haz crecer todas tus empresas desde una sola plataforma.</p>
-              <button className="mt-5 inline-flex min-h-[44px] items-center justify-center gap-4 rounded-lg bg-[#ff7a1a] px-5 text-[13px] font-bold text-white shadow-[0_16px_34px_-22px_rgba(255,122,26,.95)] transition hover:-translate-y-px hover:bg-[#ff5b12]" onClick={() => setShowCreate((value) => !value)} type="button">
+              <button className="mt-5 inline-flex min-h-[44px] items-center justify-center gap-4 rounded-lg bg-[#ff7a1a] px-5 text-[13px] font-bold text-white shadow-[0_16px_34px_-22px_rgba(255,122,26,.95)] transition hover:-translate-y-px hover:bg-[#ff5b12]" onClick={() => setShowCreate((value) => !value)} type="button" data-tour="companies-create">
                 <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-[#ff7a1a]">{showCreate ? '-' : '+'}</span>
                 {showCreate ? 'Cancelar' : 'Crear empresa'}
                 <ArrowRight size={17} />
@@ -154,7 +154,7 @@ export default function RetailersPage() {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-[minmax(260px,430px)_auto_auto]">
+            <div className="grid gap-3 md:grid-cols-[minmax(260px,430px)_auto_auto]" data-tour="companies-filters">
               <label className="flex min-h-[48px] items-center gap-3 rounded-lg border border-[#d6e3f2] bg-white px-4 shadow-[0_16px_42px_-36px_rgba(18,22,33,.65)]">
                 <Search size={20} className="text-[#4d6b90]" />
                 <input className="min-w-0 flex-1 border-0 bg-transparent text-[13px] font-medium text-[#142033] outline-none placeholder:text-[#7c8ea6]" placeholder="Buscar empresas por nombre, sector o ubicacion..." value={query} onChange={(event) => setQuery(event.target.value)} />
@@ -173,7 +173,7 @@ export default function RetailersPage() {
           </div>
         </div>
 
-        <div className="mx-5 flex snap-x gap-5 overflow-x-auto pb-5 sm:mx-8 lg:mx-10">
+        <div className="mx-5 flex snap-x gap-5 overflow-x-auto pb-5 sm:mx-8 lg:mx-10" data-tour="companies-list">
           {featuredRetailers.map((item, index) => {
             const status = getStatus(item)
             return (

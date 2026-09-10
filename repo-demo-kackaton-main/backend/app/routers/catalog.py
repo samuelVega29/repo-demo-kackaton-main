@@ -58,6 +58,7 @@ def empty_site_configuration(width: float, depth: float, camera_name: str) -> di
             "pickup_reach_m": 0.5,
             "pickup_min_seconds": 0.6,
             "pickup_cooldown_s": None,
+            "pickup_min_amplitude_m": 0.10,
         },
     }
 
@@ -206,6 +207,13 @@ class ConfigurationBody(BaseModel):
     configuration: dict
 
 
+class SuggestGondolasBody(BaseModel):
+    configuration: dict
+    image: str = Field(min_length=1)
+    image_width: int = Field(gt=0)
+    image_height: int = Field(gt=0)
+
+
 @router.put("/sites/{site_id}/configuration")
 def update_configuration(
     site_id: int,
@@ -214,16 +222,10 @@ def update_configuration(
     database: Session = Depends(get_db),
 ) -> dict:
     site = get_site_or_403(user, site_id, database)
-    site.configuration = body.configuration
+    configuration = body.configuration
+    site.configuration = configuration
     database.commit()
     return site_payload(site)
-
-
-class SuggestGondolasBody(BaseModel):
-    configuration: dict
-    image: str
-    image_width: int = Field(ge=16, le=8192)
-    image_height: int = Field(ge=16, le=8192)
 
 
 @router.post("/sites/{site_id}/suggest-gondolas")

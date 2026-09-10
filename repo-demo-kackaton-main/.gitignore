@@ -1,5 +1,6 @@
 .DS_Store
 .venv
+.env
 training/dataset/*
 !training/dataset/.gitkeep
 training/annotations/*
@@ -12,3 +13,8 @@ backend_out.log
 backend_err.log
 frontend_out.log
 frontend_err.log
+desktop-release-logo/
+desktop-release-ok/
+backend/build/
+backend/dist/
+frontend/release/

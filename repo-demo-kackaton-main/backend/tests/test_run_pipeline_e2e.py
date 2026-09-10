@@ -150,6 +150,12 @@ def _assert_fast_contracts(result, expected_roi):
     for zone in result["zones"]:
         for px, pz in zone["polygon"]:
             assert 0.0 <= px <= 1.0 and 0.0 <= pz <= 1.0
+    for event in result.get("pickup_events_log", []):
+        # Fast pickup events share the raw internal (pixel) coordinate space with
+        # interaction_events_log; the frontend normalizes them by the frame dims.
+        # A regression that stored normalized 0..1 coords here would collapse the
+        # pick-up markers to the frame corner (double normalization).
+        assert event["x"] > 1.0 or event["z"] > 1.0
 
 
 def _assert_advanced_contracts(result):

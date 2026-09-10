@@ -34,3 +34,70 @@ body,
 *::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, #ffb066, #e94d08);
 }
+
+@keyframes chat-blink {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes tour-bounce-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.82);
+  }
+  58% {
+    opacity: 1;
+    transform: translateY(8px) scale(1.06);
+  }
+  78% {
+    transform: translateY(-3px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes tour-avatar-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(255, 122, 26, 0.3);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 0 10px rgba(255, 122, 26, 0);
+  }
+}
+
+.chat-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: #7d8392;
+  animation: chat-blink 1.2s infinite;
+}
+
+.chat-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.chat-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+.chat-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 12px;
+  margin-left: 2px;
+  vertical-align: middle;
+  background: #ff6b3d;
+  animation: chat-blink 0.8s infinite;
+}

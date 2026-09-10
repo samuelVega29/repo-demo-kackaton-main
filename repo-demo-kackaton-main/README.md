@@ -4,7 +4,7 @@ Aplicación que une la **configuración física de una tienda** (planograma) con
 
 > *La configuración crea el espacio. El video crea la inteligencia. SCAPDER une ambos.*
 
-Está pensada como demostración de retail analytics: no hace reconocimiento facial, de identidad, emociones, edad, género ni biometría.
+Está pensada como demostración de retail analytics: no hace reconocimiento facial, de identidad, emociones, edad, género ni biometría. Toda identidad queda protegida de forma automática: durante el análisis se **difuminan las caras** en cada artefacto (fotogramas de evidencia, overlays) y en el **video anonimizado** (`anonymized.mp4`) que sirve el endpoint `/video` al frontend.
 
 ---
 
@@ -112,9 +112,12 @@ Copia `.env.example` a `.env` en la raíz del proyecto si quieres definir una cl
 
 ```
 SCAPDER_SECRET_KEY=una-clave-larga-y-aleatoria
+SCAPDER_BLUR_FACES=1
 ```
 
-Si no la defines, el backend usa una por defecto (solo válida para desarrollo local).
+`SCAPDER_BLUR_FACES` (activa por defecto) difumina las caras de las personas en todos los outputs. Cuando está activa, el análisis genera una copia del video con los rostros borrosos y `/api/analyses/<id>/video` la sirve en lugar del archivo original. Usa el ffmpeg incluido en `imageio-ffmpeg` (dependencia ya presente en `backend/requirements.txt`).
+
+Si no defines la clave secreta, el backend usa una por defecto (solo válida para desarrollo local).
 
 ### 4.3. Arrancar el servidor
 
@@ -288,7 +291,7 @@ models/exported/         # Modelos aprobados para inferencia
 - **Interacción inferida**: proximidad, baja velocidad y tiempo mínimo configurado. No confirma contacto.
 - **Segmento vertical**: proxy de baja confianza basado en geometría corporal hasta disponer del modelo propio.
 
-> El sistema **no** realiza reconocimiento facial, identidad, emociones, edad, género ni biometría.
+> El sistema **no** realiza reconocimiento facial, identidad, emociones, edad, género ni biometría. Además, por diseño, no expone rostros: difumina las caras en fotogramas de evidencia, overlays y en el video que reproduce el frontend. Desactívalo con `SCAPDER_BLUR_FACES=0` solo para depuración interna.
 
 ---
 

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import GondolaStep from '../components/GondolaStep'
 import FlowNav from '../components/flow/FlowNav'
 import PlanogramPreview3D from '../components/flow/PlanogramPreview3D'
@@ -9,6 +9,7 @@ import { useApp } from '../context/AppProvider'
 
 export default function PlanogramPage() {
   const { site, loadSite, frameCapture, updateConfiguration, saveConfiguration } = useApp()
+  const location = useLocation()
   const { siteId } = useParams()
   const step = sessionSteps[3]
 
@@ -17,6 +18,19 @@ export default function PlanogramPage() {
       if (loadSite) loadSite(siteId)
     }
   }, [siteId, site, loadSite])
+
+  useEffect(() => {
+    if (location.hash !== '#vista-plano-guardado') return
+
+    const timeout = window.setTimeout(() => {
+      document.getElementById('vista-plano-guardado')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }, 120)
+
+    return () => window.clearTimeout(timeout)
+  }, [location.hash, site?.id])
 
   if (!site || !site.configuration) {
     return <div className="flex h-[50vh] items-center justify-center text-sm font-bold text-gray-400">Cargando datos del espacio...</div>
@@ -29,7 +43,7 @@ export default function PlanogramPage() {
       <div className="flex flex-col gap-4">
         <GondolaStep configuration={site.configuration} frameCapture={frameCapture} onChange={updateConfiguration} onSave={saveConfiguration} />
       </div>
-      <div className="rounded-lg border border-[#e5e7ee] bg-white shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)] mt-5 p-5">
+      <div id="vista-plano-guardado" className="scroll-mt-24 rounded-lg border border-[#e5e7ee] bg-white shadow-[0_22px_70px_-48px_rgba(18,22,33,.55)] mt-5 p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h3 className="text-xl font-black text-[#151323]">Vista 3D del plano</h3>

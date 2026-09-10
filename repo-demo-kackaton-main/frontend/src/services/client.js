@@ -1,7 +1,7 @@
 const TOKEN_KEY = 'scapder_token'
 const DEFAULT_API_ORIGIN = 'http://127.0.0.1:8000'
 
-function resolveApiUrl(path) {
+export function resolveApiUrl(path) {
   if (/^https?:\/\//i.test(path)) return path
   const configuredOrigin = import.meta.env.VITE_API_BASE_URL
   if (configuredOrigin) return `${configuredOrigin.replace(/\/$/, '')}${path}`
