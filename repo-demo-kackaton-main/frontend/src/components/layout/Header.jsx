@@ -2,6 +2,7 @@ import { AlertCircle, LogOut, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
+import introMascot from '../../assets/images/download.gif'
 import logo from '../../assets/images/logo.png'
 import robotGuide from '../../assets/images/robot-chistoso.png'
 
@@ -134,13 +135,13 @@ export default function Header({ user, logout, retailer, site, job, goHome }) {
   const instructions = instructionBySection(pathname, site)
 
   useEffect(() => {
-    const showTimer = window.setTimeout(() => setTourHintVisible(true), 900)
-    const hideTimer = window.setTimeout(() => setTourHintVisible(false), 10900)
+    const showTimer = window.setTimeout(() => setTourHintVisible(true), retailer ? 900 : 12400)
+    const hideTimer = window.setTimeout(() => setTourHintVisible(false), retailer ? 10900 : 22400)
     return () => {
       window.clearTimeout(showTimer)
       window.clearTimeout(hideTimer)
     }
-  }, [])
+  }, [retailer])
 
   const goTo = (target) => {
     if (target === 'site') {
@@ -204,20 +205,35 @@ export default function Header({ user, logout, retailer, site, job, goHome }) {
         <img src={logo} alt="Scapder" className="h-auto w-[112px] object-contain max-[760px]:w-[96px]" />
       </button>
 
-      <nav className="hidden items-center gap-1 rounded-2xl border border-white/10 bg-[#111827] p-1.5 md:flex" data-tour="navigation">
-        {navItems.map(([step, label, target]) => (
-          <button
-            aria-current={active(target) ? 'page' : undefined}
-            className={`flex min-h-[46px] items-center gap-2 rounded-xl px-3 py-2 text-left transition lg:px-4 ${active(target) ? 'bg-[#ff7a1a] text-white shadow-[0_14px_34px_-24px_rgba(255,122,26,.85)]' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}
-            key={label}
-            onClick={() => goTo(target)}
-            type="button"
-          >
-            <span className={`text-[18px] font-black leading-none ${active(target) ? 'text-[#071d25]' : 'text-[#ff7a1a]'}`}>{step}</span>
-            <span className="text-[12px] font-black leading-none">{label}</span>
-          </button>
-        ))}
-      </nav>
+      {retailer && (
+        <nav className="hidden items-center gap-1 rounded-2xl border border-white/10 bg-[#111827] p-1.5 md:flex" data-tour="navigation">
+          {navItems.map(([step, label, target]) => (
+            <button
+              aria-current={active(target) ? 'page' : undefined}
+              className={`flex min-h-[46px] items-center gap-2 rounded-xl px-3 py-2 text-left transition lg:px-4 ${active(target) ? 'bg-[#ff7a1a] text-white shadow-[0_14px_34px_-24px_rgba(255,122,26,.85)]' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}
+              key={label}
+              onClick={() => goTo(target)}
+              type="button"
+            >
+              <span className={`text-[18px] font-black leading-none ${active(target) ? 'text-[#071d25]' : 'text-[#ff7a1a]'}`}>{step}</span>
+              <span className="text-[12px] font-black leading-none">{label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
+
+      {!retailer && (
+        <div className="pointer-events-none absolute left-[118px] top-1/2 z-20 hidden -translate-y-1/2 md:block" aria-hidden="true">
+          <div className="relative h-[92px] w-[118px] overflow-visible">
+            <span className="header-intro-glow absolute left-1/2 top-1/2 h-20 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#ff7a1a]/20 blur-2xl" />
+            <img
+              src={introMascot}
+              alt=""
+              className="header-intro-mascot relative h-[92px] w-auto object-contain drop-shadow-[0_14px_24px_rgba(0,0,0,.35)]"
+            />
+          </div>
+        </div>
+      )}
 
       <div className="relative flex items-center gap-3">
         <div className="hidden text-right sm:block" data-tour="workspace">
