@@ -53,13 +53,14 @@ export default function SiteDashboardPage() {
   const video = latest?.result?.video || {}
   const hotZones = (latest?.result?.zones || []).filter((zone) => zone.classification === 'hot')
   const frame = latest?.result?.annotated_frames?.[0]
+  const reviewConfigurationPath = `/sedes/${site?.id || siteId}/analisis/nuevo`
 
   if (loadingSite) return <section className="grid min-h-[calc(100vh-72px)] place-items-center bg-[#f6f6f4] p-6 text-sm font-black text-[#7d8392]">Cargando sede</section>
   if (!site) return <Navigate to="/empresas" replace />
 
   return (
     <section className="min-h-[calc(100vh-72px)] bg-[linear-gradient(180deg,#f8fbff_0%,#fff8f4_54%,#f8fbff_100%)] px-0 py-0">
-      <header className="relative isolate left-1/2 mb-5 min-h-[430px] w-screen -translate-x-1/2 overflow-hidden border-b border-[#12314b] bg-[#111923] px-4 py-6 text-white shadow-[0_32px_92px_-52px_rgba(4,19,33,.95)] sm:min-h-[500px] sm:px-6 sm:py-9 lg:min-h-[420px] lg:px-10">
+      <header className="relative isolate left-1/2 mb-5 min-h-[430px] w-screen -translate-x-1/2 overflow-hidden border-b border-[#12314b] bg-[#111923] px-4 py-6 text-white shadow-[0_32px_92px_-52px_rgba(4,19,33,.95)] sm:min-h-[500px] sm:px-6 sm:py-9 lg:min-h-[420px] lg:px-10" data-tour="dashboard-hero">
         <img src={flujoPuntos} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-35 mix-blend-screen" />
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(17,24,39,.97)_0%,rgba(17,24,39,.9)_42%,rgba(17,24,39,.42)_100%)]" />
         <div className="pointer-events-none absolute -left-24 top-16 h-72 w-72 rounded-full bg-[#1683ff]/18 blur-3xl" />
@@ -103,7 +104,7 @@ export default function SiteDashboardPage() {
 
         {error && <p className="mb-5 rounded-md border border-[#ffd2c2] bg-[#fff1eb] px-4 py-3 text-sm font-bold text-[#b43b1d]">{error}</p>}
 
-        <section className={`relative mb-4 overflow-hidden rounded-lg border p-3 shadow-[0_18px_55px_-44px_rgba(18,22,33,.6)] sm:p-4 ${configured ? 'border-[#bfe8d1] bg-[#effdf6]' : 'border-[#ffd7c4] bg-[#fff7f2]'}`}>
+        <section className={`relative mb-4 overflow-hidden rounded-lg border p-3 shadow-[0_18px_55px_-44px_rgba(18,22,33,.6)] sm:p-4 ${configured ? 'border-[#bfe8d1] bg-[#effdf6]' : 'border-[#ffd7c4] bg-[#fff7f2]'}`} data-tour="dashboard-config">
           <div className="pointer-events-none absolute right-[-42px] top-[-46px] h-28 w-28 rounded-full bg-[#17a964]/10" />
           <div className="pointer-events-none absolute left-[44%] bottom-[-54px] h-28 w-28 rounded-full bg-[#39d98a]/10" />
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -127,13 +128,13 @@ export default function SiteDashboardPage() {
                 </p>
               </div>
             </div>
-            <Link className="relative inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-md border border-[#8fc7ff] bg-white px-5 text-[13px] font-black text-[#151323] no-underline shadow-[0_16px_34px_-26px_rgba(31,111,235,.9)] transition hover:-translate-y-px hover:border-[#ff5b12] sm:w-auto" to={configured ? `/sites/${site.id}/planograma` : `/sites/${site.id}/video`}>
+            <Link className="relative inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-md border border-[#8fc7ff] bg-white px-5 text-[13px] font-black text-[#151323] no-underline shadow-[0_16px_34px_-26px_rgba(31,111,235,.9)] transition hover:-translate-y-px hover:border-[#ff5b12] sm:w-auto" to={configured ? reviewConfigurationPath : `/sites/${site.id}/video`}>
               {configured ? 'Revisar configuracion' : 'Configurar sede'} <ArrowRight size={15} />
             </Link>
           </div>
         </section>
 
-        <section className="mb-3 grid gap-3 md:grid-cols-4">
+        <section className="mb-3 grid gap-3 md:grid-cols-4" data-tour="dashboard-metrics">
           <Metric accent="orange" icon={metricVideoIcon} label="Analisis de la sede" value={analyses.length} />
           <Metric accent="warm" icon={metricFlameIcon} label="Zonas calientes" value={hotZones.length} />
           <Metric accent="blue" icon={metricStoreIcon} label="Gondolas guardadas" value={gondolas.length} />
@@ -189,7 +190,7 @@ export default function SiteDashboardPage() {
               <Trace icon={<Settings2 size={18} />} label="Estado" value={calibrationLabel} />
               <Trace icon={<Store size={18} />} label="Gondolas" value={`${gondolas.length} guardadas`} />
             </div>
-            <Link className="mt-4 inline-flex min-h-[38px] w-full items-center justify-center gap-2 rounded-md border border-[#8fc7ff] bg-[linear-gradient(90deg,#ffffff,#fff7f2)] px-4 text-[12px] font-black text-[#151323] no-underline shadow-[0_12px_30px_-24px_rgba(31,111,235,.75)] transition hover:-translate-y-px hover:border-[#ff5b12]" to={`/sites/${site.id}/planograma`}>Mirar plano actual <ArrowRight size={15} /></Link>
+            <Link className="mt-4 inline-flex min-h-[38px] w-full items-center justify-center gap-2 rounded-md border border-[#8fc7ff] bg-[linear-gradient(90deg,#ffffff,#fff7f2)] px-4 text-[12px] font-black text-[#151323] no-underline shadow-[0_12px_30px_-24px_rgba(31,111,235,.75)] transition hover:-translate-y-px hover:border-[#ff5b12]" to={reviewConfigurationPath}>Ver plano guardado <ArrowRight size={15} /></Link>
             <div className="relative mt-3 min-h-[94px] overflow-hidden rounded-md bg-[#041321] p-3 pr-[160px] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.12),0_18px_40px_-28px_rgba(4,19,33,.9)]">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_82%_20%,rgba(255,91,18,.4),transparent_25%),linear-gradient(90deg,rgba(4,19,33,1),rgba(4,19,33,.82))]" />
               <div className="relative z-10">
@@ -201,7 +202,7 @@ export default function SiteDashboardPage() {
           </article>
         </section>
 
-        <section className="relative mt-4 overflow-hidden rounded-lg border border-[#ffc6aa] bg-[linear-gradient(135deg,#fff7f2,#ffffff_48%,#eef6ff)] p-5 shadow-[0_24px_74px_-48px_rgba(255,91,18,.7)]">
+        <section className="relative mt-4 overflow-hidden rounded-lg border border-[#ffc6aa] bg-[linear-gradient(135deg,#fff7f2,#ffffff_48%,#eef6ff)] p-5 shadow-[0_24px_74px_-48px_rgba(255,91,18,.7)]" data-tour="dashboard-history">
           <div className="pointer-events-none absolute right-[-44px] top-[-62px] h-36 w-36 rounded-full bg-[#ff5b12]/12" />
           <div className="pointer-events-none absolute left-[44%] bottom-[-70px] h-36 w-36 rounded-full bg-[#1f6feb]/10" />
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

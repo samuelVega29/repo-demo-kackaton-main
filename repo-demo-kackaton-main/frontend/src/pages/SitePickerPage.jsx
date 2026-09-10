@@ -821,6 +821,7 @@ export default function SitePickerPage() {
 
   return (
     <section
+      data-tour="sites-hero"
       className="
         relative
         min-h-[calc(100vh-72px)]
@@ -1375,6 +1376,7 @@ export default function SitePickerPage() {
         {/* BUSCADOR */}
 
         <div
+          data-tour="sites-search"
           className="
             relative
             z-30
@@ -1436,6 +1438,7 @@ export default function SitePickerPage() {
             onClick={
               toggleCreate
             }
+            data-tour="sites-create"
             className="inline-flex h-[42px] items-center justify-center gap-2 rounded-[14px] bg-[linear-gradient(90deg,#ff5510,#ff7022)] text-[11px] font-black text-white shadow-[0_10px_24px_-15px_rgba(255,91,18,.85)] transition hover:brightness-110 sm:h-[52px] sm:text-[12px] lg:w-[205px] lg:rounded-[22px]"
           >
             <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-[#ff5b12] sm:h-7 sm:w-7">
@@ -1541,7 +1544,7 @@ export default function SitePickerPage() {
 
         {/* TARJETAS */}
 
-        <div className="relative z-20 mt-2 sm:mt-5">
+        <div className="relative z-20 mt-2 sm:mt-5" data-tour="sites-list">
           {filteredSites.length ? (
             <>
               {/* MÓVIL */}

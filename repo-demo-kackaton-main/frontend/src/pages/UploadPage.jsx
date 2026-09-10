@@ -13,6 +13,7 @@ import {
 
 import {
   useEffect,
+  useRef,
   useState,
 } from 'react'
 
@@ -37,6 +38,14 @@ import {
   isMetricCalibrated,
   isSiteConfigured,
 } from '../utils/siteConfiguration'
+import {
+  GONDOLA_TOP_HEIGHT_M,
+  gondolaCorners,
+  inverseHomography,
+  projectFloor,
+  projectFloorAtHeight,
+} from '../utils/homography'
+import { hexToRgba } from '../utils/format'
 
 const MAX_VIDEO_DURATION_SECONDS = 120
 
@@ -97,6 +106,7 @@ export default function UploadPage() {
     chooseFile,
     clearFile,
     inputRef,
+    loadSite,
     site,
   } = useApp()
 
@@ -132,6 +142,32 @@ export default function UploadPage() {
     historyError,
     setHistoryError,
   ] = useState('')
+
+  const [
+    loadingSite,
+    setLoadingSite,
+  ] = useState(Boolean(siteId && (!site || String(site.id) !== String(siteId))))
+
+  useEffect(() => {
+    if (!siteId) {
+      setLoadingSite(false)
+      return
+    }
+
+    if (site && String(site.id) === String(siteId)) {
+      setLoadingSite(false)
+      return
+    }
+
+    setLoadingSite(true)
+    loadSite(siteId)
+      .catch(() => {})
+      .finally(() => setLoadingSite(false))
+  }, [
+    loadSite,
+    site,
+    siteId,
+  ])
 
   /* =========================================================
      CONFIGURACIÓN DE LA SEDE
@@ -345,6 +381,14 @@ export default function UploadPage() {
      RENDER
   ========================================================= */
 
+  if (loadingSite) {
+    return (
+      <section className="grid min-h-[calc(100vh-72px)] place-items-center bg-[#f8fbff] p-6 text-sm font-black text-[#667991]">
+        Cargando configuracion guardada...
+      </section>
+    )
+  }
+
   return (
     <main
       className="
@@ -470,6 +514,7 @@ export default function UploadPage() {
         ================================================= */}
 
         <div
+          data-tour="upload-stepper"
           className="
             mx-auto
             mb-4
@@ -675,6 +720,7 @@ export default function UploadPage() {
             ================================================= */}
 
             <div
+              data-tour="upload-panel"
               className="
                 min-w-0
               "
@@ -685,6 +731,7 @@ export default function UploadPage() {
                 ================================================= */
 
                 <section
+                  data-tour="upload-config"
                   className="
                     h-full
                     min-h-[500px]
@@ -740,6 +787,7 @@ export default function UploadPage() {
 
                   <figure
                     className="
+                      relative
                       mt-4
                       overflow-hidden
                       rounded-[14px]
@@ -748,6 +796,12 @@ export default function UploadPage() {
                       bg-[#071d25]
                     "
                   >
+                    {previewFrameSrc && (
+                      <SavedConfigurationOverlay
+                        src={previewFrameSrc}
+                        configuration={site.configuration}
+                      />
+                    )}
                     {previewFrameSrc ? (
                       <img
                         src={
@@ -1264,6 +1318,7 @@ export default function UploadPage() {
             ================================================= */}
 
             <aside
+              data-tour="upload-history"
               className="
                 flex
                 h-full
@@ -2112,6 +2167,389 @@ function PipelineItem({
         </small>
       </span>
     </div>
+  )
+}
+
+function SavedConfigurationOverlay({
+  src,
+  configuration,
+}) {
+  const canvasRef =
+    useRef(null)
+
+  useEffect(() => {
+    const canvas =
+      canvasRef.current
+
+    if (
+      !canvas ||
+      !src
+    ) {
+      return undefined
+    }
+
+    let cancelled =
+      false
+
+    const image =
+      new Image()
+
+    image.crossOrigin =
+      'anonymous'
+
+    image.onload =
+      () => {
+        if (
+          cancelled
+        ) {
+          return
+        }
+
+        const width =
+          image.naturalWidth ||
+          image.width
+
+        const height =
+          image.naturalHeight ||
+          image.height
+
+        canvas.width =
+          width
+
+        canvas.height =
+          height
+
+        const ctx =
+          canvas.getContext(
+            '2d'
+          )
+
+        ctx.clearRect(
+          0,
+          0,
+          width,
+          height
+        )
+
+        const matrix =
+          inverseHomography(
+            configuration?.camera
+          )
+
+        const gondolas =
+          configuration?.gondolas || []
+
+        if (
+          !matrix ||
+          !gondolas.length
+        ) {
+          return
+        }
+
+        ctx.fillStyle =
+          'rgba(3, 16, 24, .12)'
+
+        ctx.fillRect(
+          0,
+          0,
+          width,
+          height
+        )
+
+        const toPx =
+          (
+            x,
+            z
+          ) => {
+            const projected =
+              projectFloor(
+                matrix,
+                x,
+                z
+              )
+
+            if (
+              !projected
+            ) {
+              return null
+            }
+
+            return [
+              projected[0] * width,
+              projected[1] * height,
+            ]
+          }
+
+        gondolas.forEach(
+          (
+            gondola,
+            index
+          ) => {
+            const color =
+              gondola.color ||
+              '#ff5b12'
+
+            const corners =
+              gondolaCorners(
+                gondola
+              )
+
+            const base =
+              corners.map(
+                (
+                  [
+                    x,
+                    z,
+                  ]
+                ) =>
+                  toPx(
+                    x,
+                    z
+                  )
+              )
+
+            if (
+              base.some(
+                (
+                  point
+                ) => !point
+              )
+            ) {
+              return
+            }
+
+            const shelfHeight =
+              gondola.height ||
+              GONDOLA_TOP_HEIGHT_M
+
+            const top =
+              corners.map(
+                (
+                  [
+                    x,
+                    z,
+                  ]
+                ) => {
+                  const raised =
+                    projectFloorAtHeight(
+                      matrix,
+                      width,
+                      height,
+                      x,
+                      z,
+                      shelfHeight
+                    )
+
+                  return raised
+                    ? [
+                        raised[0] * width,
+                        raised[1] * height,
+                      ]
+                    : null
+                }
+              )
+
+            const standing =
+              top.every(Boolean)
+
+            ctx.beginPath()
+            ctx.moveTo(
+              ...base[0]
+            )
+            base
+              .slice(1)
+              .forEach(
+                (
+                  point
+                ) =>
+                  ctx.lineTo(
+                    ...point
+                  )
+              )
+            ctx.closePath()
+            ctx.fillStyle =
+              hexToRgba(
+                color,
+                .26
+              )
+            ctx.fill()
+            ctx.strokeStyle =
+              color
+            ctx.lineWidth =
+              Math.max(
+                5,
+                width * 0.004
+              )
+            ctx.stroke()
+
+            if (
+              standing
+            ) {
+              ctx.beginPath()
+              ctx.moveTo(
+                ...top[0]
+              )
+              top
+                .slice(1)
+                .forEach(
+                  (
+                    point
+                  ) =>
+                    ctx.lineTo(
+                      ...point
+                    )
+                )
+              ctx.closePath()
+              ctx.fillStyle =
+                hexToRgba(
+                  color,
+                  .18
+                )
+              ctx.fill()
+              ctx.strokeStyle =
+                hexToRgba(
+                  color,
+                  .9
+                )
+              ctx.lineWidth =
+                Math.max(
+                  3,
+                  width * 0.0025
+                )
+              ctx.stroke()
+
+              base.forEach(
+                (
+                  point,
+                  pointIndex
+                ) => {
+                  ctx.beginPath()
+                  ctx.moveTo(
+                    ...point
+                  )
+                  ctx.lineTo(
+                    ...top[pointIndex]
+                  )
+                  ctx.stroke()
+                }
+              )
+            }
+
+            base.forEach(
+              (
+                point
+              ) => {
+                ctx.beginPath()
+                ctx.arc(
+                  point[0],
+                  point[1],
+                  Math.max(
+                    8,
+                    width * 0.008
+                  ),
+                  0,
+                  Math.PI * 2
+                )
+                ctx.fillStyle =
+                  '#ffffff'
+                ctx.fill()
+                ctx.strokeStyle =
+                  color
+                ctx.lineWidth =
+                  Math.max(
+                    4,
+                    width * 0.003
+                  )
+                ctx.stroke()
+              }
+            )
+
+            const labelPoint =
+              standing
+                ? top
+                    .filter(Boolean)
+                    .sort(
+                      (
+                        a,
+                        b
+                      ) => a[1] - b[1]
+                    )[0]
+                : base[0]
+
+            const name =
+              gondola.name ||
+              `Gondola ${index + 1}`
+
+            ctx.font =
+              `800 ${Math.max(16, width * 0.017)}px system-ui, sans-serif`
+
+            const textWidth =
+              ctx.measureText(
+                name
+              ).width
+
+            const labelX =
+              Math.min(
+                width - textWidth - 34,
+                Math.max(
+                  18,
+                  labelPoint[0]
+                )
+              )
+
+            const labelY =
+              Math.max(
+                34,
+                labelPoint[1] - 18
+              )
+
+            ctx.fillStyle =
+              'rgba(2, 24, 47, .84)'
+            ctx.fillRect(
+              labelX,
+              labelY - 28,
+              textWidth + 24,
+              34
+            )
+
+            ctx.fillStyle =
+              '#ffffff'
+            ctx.fillText(
+              name,
+              labelX + 12,
+              labelY - 6
+            )
+          }
+        )
+      }
+
+    image.src =
+      src
+
+    return () => {
+      cancelled =
+        true
+    }
+  }, [
+    configuration,
+    src,
+  ])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-hidden="true"
+      className="
+        pointer-events-none
+        absolute
+        left-0
+        right-0
+        top-0
+        z-10
+        aspect-video
+        w-full
+      "
+    />
   )
 }
 

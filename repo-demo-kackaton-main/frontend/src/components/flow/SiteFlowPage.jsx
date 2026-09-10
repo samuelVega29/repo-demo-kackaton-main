@@ -44,11 +44,11 @@ export default function SiteFlowPage({ step, children, hideHeader = false, hideP
       <div className="mx-auto w-full max-w-[1180px] overflow-visible">
 
         <div className={`relative min-h-[calc(100vh-128px)] bg-[radial-gradient(circle_at_92%_88%,rgba(255,91,18,.10),transparent_24%),#fff] ${hideHeader ? 'p-0' : 'p-5 sm:p-7 lg:p-8'}`}>
+          {!hideHeader && <div className="pointer-events-none absolute bottom-0 right-0 h-[min(260px,35vw)] w-[min(260px,35vw)] rounded-br-[10px] border-b-8 border-r-8 border-[#ff5b12]/90" />}
           <div className="relative z-10">
             {!hideHeader && <div className="mb-5 flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
               <div>
-                <span className="inline-flex items-center gap-2 text-sm font-black text-[#ff5b12]"><span className="text-[clamp(44px,6vw,70px)] leading-[.85] opacity-25">{step.number}</span> {step.eyebrow}</span>
-                <h1 className="m-0 text-[clamp(28px,4vw,44px)] font-black leading-[.92] text-[#151323]">{step.title} <span className="text-[#ff5b12]">{step.accent}</span></h1>
+                <h1 className="m-0 text-[clamp(28px,4vw,44px)] font-black leading-[.92] text-[#151323]">{step.title} {step.accent && <span className="text-[#ff5b12]">{step.accent}</span>}</h1>
                 <p className="mt-2 text-sm font-medium text-[#6b7280] max-w-3xl leading-relaxed">{step.desc}</p>
                 <p className="mt-2 text-sm leading-6 text-[#7d8392]">{site.city} - {site.name} - Estado: <b className="text-[#151323]">{calibrationLabel}</b></p>
               </div>
