@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import threading
@@ -34,7 +35,17 @@ router = APIRouter(
     tags=["analyses"],
 )
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+def _data_dir() -> Path:
+    """Directorio de datos. En desktop (.exe) se define con SCAPDER_DATA_DIR."""
+    override = os.environ.get("SCAPDER_DATA_DIR")
+    if override:
+        path = Path(override)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    return Path(__file__).resolve().parents[2] / "data"
+
+
+DATA_DIR = _data_dir()
 UPLOAD_DIR = DATA_DIR / "uploads"
 RESULT_DIR = DATA_DIR / "results"
 MAX_VIDEO_DURATION_SECONDS = 120
@@ -1254,50 +1265,149 @@ def export_insights_docx(
             detail="python-docx no está instalado. Agrega 'python-docx' a requirements.txt y reinicia el servidor.",
         )
 
+    _NAVY = "0F172A"
+    _ACCENT = "FF6B3D"
+    _SLATE = "64748B"
+    _BG_ALT = "F1F5F9"
+    _PALETTE = ["#FF6B3D", "#0EA5E9", "#10B981", "#8B5CF6", "#F59E0B", "#EC4899", "#14B8A6", "#6366F1"]
+
     def _shade(cell, color: str) -> None:
         shading = OxmlElement("w:shd")
         shading.set(qn("w:val"), "clear")
         shading.set(qn("w:fill"), color)
         cell._tc.get_or_add_tcPr().append(shading)
 
-    def _styled_table(headers: list[str], rows_data: list[list]) -> None:
+    def _cell_borders(cell, color: str = "E2E8F0", size: str = "6") -> None:
+        tcPr = cell._tc.get_or_add_tcPr()
+        borders = OxmlElement("w:tcBorders")
+        for edge in ("top", "left", "bottom", "right"):
+            el = OxmlElement(f"w:{edge}")
+            el.set(qn("w:val"), "single")
+            el.set(qn("w:sz"), size)
+            el.set(qn("w:color"), color)
+            borders.append(el)
+        tcPr.append(borders)
+
+    def _set_cell_margins(table, top: int = 60, bottom: int = 60, left: int = 120, right: int = 120) -> None:
+        tblPr = table._tbl.tblPr
+        mar = OxmlElement("w:tblCellMar")
+        for edge, val in (("top", top), ("bottom", bottom), ("left", left), ("right", right)):
+            el = OxmlElement(f"w:{edge}")
+            el.set(qn("w:w"), str(val))
+            el.set(qn("w:type"), "dxa")
+            mar.append(el)
+        tblPr.append(mar)
+
+    def _modern_mpl():
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        plt.rcParams.update({
+            "font.family": "DejaVu Sans",
+            "axes.facecolor": "#FFFFFF",
+            "figure.facecolor": "#FFFFFF",
+            "axes.edgecolor": "#CBD5E1",
+            "axes.grid": True,
+            "grid.color": "#E2E8F0",
+            "grid.linewidth": 0.7,
+            "grid.alpha": 0.9,
+            "axes.axisbelow": True,
+        })
+        return plt
+
+    def _styled_table(headers: list[str], rows_data: list[list], col_widths: list | None = None) -> None:
         table = doc.add_table(rows=1, cols=len(headers))
         table.style = "Table Grid"
+        table.autofit = False
+        _set_cell_margins(table)
+        if col_widths:
+            for idx, w in enumerate(col_widths):
+                for row in table.rows:
+                    row.cells[idx].width = Inches(w)
         for cell, text in zip(table.rows[0].cells, headers):
-            cell.text = str(text)
-            cell.paragraphs[0].runs[0].bold = True
-            cell.paragraphs[0].runs[0].font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-            _shade(cell, "FF6B3D")
-        for row_data in rows_data:
-            for cell, value in zip(table.add_row().cells, row_data):
-                cell.text = str(value)
+            cell.text = ""
+            p = cell.paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(str(text))
+            run.bold = True
+            run.font.size = Pt(9)
+            run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+            run.font.name = "Segoe UI"
+            _shade(cell, _NAVY)
+            _cell_borders(cell)
+        for r_idx, row_data in enumerate(rows_data):
+            row = table.add_row()
+            stripe = _BG_ALT if r_idx % 2 == 1 else "FFFFFF"
+            for cell, value in zip(row.cells, row_data):
+                cell.text = ""
+                p = cell.paragraphs[0]
+                run = p.add_run(str(value))
+                run.font.size = Pt(9)
+                run.font.name = "Segoe UI"
+                run.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+                _shade(cell, stripe)
+                _cell_borders(cell)
         doc.add_paragraph()
 
     def _caption(text: str) -> None:
-        para = doc.add_paragraph(text)
+        para = doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = para.runs[0]
+        run = para.add_run(text)
         run.italic = True
-        run.font.size = Pt(9)
-        run.font.color.rgb = RGBColor(0x7D, 0x83, 0x92)
+        run.font.size = Pt(8.5)
+        run.font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
+        run.font.name = "Segoe UI"
+
+    def _section_heading(number: str, title: str, level: int = 1):
+        h = doc.add_heading(f"{number}  {title}", level=level)
+        for run in h.runs:
+            run.font.color.rgb = RGBColor(0x0F, 0x17, 0x2A)
+        # Línea de acento naranja debajo del título
+        bar = doc.add_table(rows=1, cols=1)
+        bar.autofit = False
+        bar.columns[0].width = Inches(1.1)
+        cell = bar.cell(0, 0)
+        cell.text = ""
+        _shade(cell, _ACCENT)
+        p = cell.paragraphs[0]
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(0)
+        run = p.add_run(" ")
+        run.font.size = Pt(2)
+        doc.add_paragraph()
+        return h
 
     def _zone_chart(labels: list, values: list, title: str, xlabel: str, color: str = "#FF6B3D"):
-        """Genera una gráfica de barras horizontales como PNG en memoria (o None si falla)."""
+        """Barras horizontales modernas: grilla suave, etiquetas de valor, dpi 200."""
         try:
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
+            plt = _modern_mpl()
         except ImportError:
             return None
         try:
-            fig, ax = plt.subplots(figsize=(7, max(2.8, 0.5 * len(labels))))
-            ax.barh(labels, values, color=color)
-            ax.set_xlabel(xlabel)
-            ax.set_title(title, fontweight="bold")
+            import numpy as np
+
+            n = max(len(labels), 1)
+            fig, ax = plt.subplots(figsize=(7.2, max(3.0, 0.62 * n)))
+            y = np.arange(n)
+            bars = ax.barh(y, values, height=0.55, color=color, edgecolor="white", linewidth=1.2, zorder=3)
+            ax.set_yticks(y)
+            ax.set_yticklabels(labels, fontsize=9, color="#334155")
+            ax.set_xlabel(xlabel, fontsize=9, color="#64748B")
+            ax.set_title(title, fontweight="bold", fontsize=12, color="#0F172A", pad=12, loc="left")
             ax.invert_yaxis()
+            ax.tick_params(axis="x", labelsize=8, colors="#64748B")
+            for spine in ("top", "right"):
+                ax.spines[spine].set_visible(False)
+            for spine in ("left", "bottom"):
+                ax.spines[spine].set_color("#CBD5E1")
+            vmax = max(list(values) + [0]) or 1
+            ax.set_xlim(0, vmax * 1.18)
+            ax.bar_label(bars, fmt="%.1f" if any(isinstance(v, float) for v in values) else "%d",
+                         fontsize=8, color="#0F172A", padding=4)
             fig.tight_layout()
             buf = BytesIO()
-            fig.savefig(buf, format="png", dpi=150)
+            fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
             plt.close(fig)
             buf.seek(0)
             return buf
@@ -1305,23 +1415,33 @@ def export_insights_docx(
             return None
 
     def _zone_pie(labels: list, values: list, title: str):
-        """Genera una gráfica de torta con porcentajes como PNG en memoria (o None si falla)."""
+        """Dona moderna con leyenda lateral y paleta de marca."""
         try:
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
+            plt = _modern_mpl()
         except ImportError:
             return None
         try:
-            if not any(values):
+            total = sum(values or [])
+            if not total:
                 return None
-            fig, ax = plt.subplots(figsize=(6, 4))
-            ax.pie(values, labels=labels, autopct="%1.1f%%", startangle=90)
-            ax.set_title(title, fontweight="bold")
+            fig, ax = plt.subplots(figsize=(7.2, 3.8))
+            colors = [_PALETTE[i % len(_PALETTE)] for i in range(len(labels))]
+            wedges, _, autotexts = ax.pie(
+                values, autopct=lambda p: f"{p:.1f}%" if p >= 4 else "",
+                startangle=90, counterclock=False,
+                colors=colors,
+                wedgeprops=dict(width=0.46, edgecolor="white", linewidth=2),
+                pctdistance=0.80, textprops=dict(fontsize=8, color="#0F172A", weight="bold"),
+            )
+            for t in autotexts:
+                t.set_bbox(dict(boxstyle="round,pad=0.25", fc="white", ec="#E2E8F0", alpha=0.95))
+            ax.set_title(title, fontweight="bold", fontsize=12, color="#0F172A", pad=12, loc="left")
             ax.axis("equal")
+            ax.legend(wedges, labels, loc="center left", bbox_to_anchor=(1.0, 0.5),
+                      fontsize=8, frameon=True, facecolor="white", edgecolor="#E2E8F0")
             fig.tight_layout()
             buf = BytesIO()
-            fig.savefig(buf, format="png", dpi=150)
+            fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
             plt.close(fig)
             buf.seek(0)
             return buf
@@ -1342,31 +1462,107 @@ def export_insights_docx(
     doc.core_properties.title = "Recomendaciones de Space Management"
     doc.core_properties.author = "Scapder"
 
+    # Márgenes y tipografía moderna
+    for section in doc.sections:
+        section.top_margin = Inches(0.7)
+        section.bottom_margin = Inches(0.7)
+        section.left_margin = Inches(0.8)
+        section.right_margin = Inches(0.8)
+        # Pie con número de página + privacidad
+        footer = section.footer
+        footer.is_linked_to_previous = False
+        fp = footer.paragraphs[0]
+        fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = fp.add_run()
+        fld1 = OxmlElement("w:fldChar"); fld1.set(qn("w:fldCharType"), "begin")
+        instr = OxmlElement("w:instrText"); instr.set(qn("xml:space"), "preserve"); instr.text = "PAGE"
+        fld_sep = OxmlElement("w:fldChar"); fld_sep.set(qn("w:fldCharType"), "separate")
+        fld2 = OxmlElement("w:fldChar"); fld2.set(qn("w:fldCharType"), "end")
+        run._r.append(fld1); run2 = fp.add_run(); run2._r.append(instr)
+        run_sep = fp.add_run(); run_sep._r.append(fld_sep)
+        run3 = fp.add_run(); run3._r.append(fld2)
+        tail = fp.add_run("  ·  Scapder · Espacio inteligente  ·  Confidencial")
+        tail.font.size = Pt(7.5); tail.font.color.rgb = RGBColor(0x64, 0x74, 0x8B); tail.font.name = "Segoe UI"
+        # Encabezado de marca
+        header = section.header
+        header.is_linked_to_previous = False
+        hp = header.paragraphs[0]
+        hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        hr = hp.add_run("SCAPDER  ·  SPACE INTELLIGENCE")
+        hr.font.size = Pt(7.5); hr.font.color.rgb = RGBColor(0x64, 0x74, 0x8B); hr.bold = True; hr.font.name = "Segoe UI"
+
     # Tipografía del documento
     doc.styles["Normal"].font.name = "Segoe UI"
-    doc.styles["Normal"].font.size = Pt(10.5)
+    doc.styles["Normal"].font.size = Pt(10)
+    doc.styles["Normal"].font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+    doc.styles["Normal"].paragraph_format.space_after = Pt(6)
+    doc.styles["Normal"].paragraph_format.line_spacing = 1.12
     for _level in (1, 2):
         _hs = doc.styles[f"Heading {_level}"]
         _hs.font.name = "Segoe UI"
-        _hs.font.color.rgb = RGBColor(0x15, 0x13, 0x23)
-    doc.styles["Title"].font.name = "Georgia"
-    doc.styles["Title"].font.size = Pt(26)
+        _hs.font.color.rgb = RGBColor(0x0F, 0x17, 0x2A)
+        _hs.font.bold = True
+    doc.styles["Title"].font.name = "Segoe UI"
+    doc.styles["Title"].font.size = Pt(28)
     doc.styles["Title"].font.bold = True
-    doc.styles["Title"].font.color.rgb = RGBColor(0x15, 0x13, 0x23)
+    doc.styles["Title"].font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
 
-    # Título principal (sin nombre de sede)
-    title = doc.add_heading("Recomendaciones de Space Management", level=0)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # ── PORTADA: banner navy + acento ─────────────────────────────
+    cover = doc.add_table(rows=1, cols=1)
+    cover.autofit = False
+    cover.columns[0].width = Inches(6.8)
+    ccell = cover.cell(0, 0)
+    ccell.text = ""
+    _shade(ccell, _NAVY)
+    _set_cell_margins(cover, top=220, bottom=220, left=320, right=320)
+    eyebrow = ccell.paragraphs[0]
+    eyebrow.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    er = eyebrow.add_run("SCAPDER  ·  INTELIGENCIA ESPACIAL EN TIENDA")
+    er.font.size = Pt(8); er.bold = True; er.font.color.rgb = RGBColor(0xFF, 0x6B, 0x3D); er.font.name = "Segoe UI"
+    t2 = ccell.add_paragraph()
+    tr = t2.add_run("Recomendaciones de\nSpace Management")
+    tr.font.size = Pt(28); tr.bold = True; tr.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF); tr.font.name = "Segoe UI"
+    sub = ccell.add_paragraph()
+    sr = sub.add_run(f"{site_name}   ·   {generated_at}   ·   {result.get('analysis_mode', '')}   ·   ID {analysis_id[:8]}")
+    sr.font.size = Pt(9); sr.font.color.rgb = RGBColor(0xC8, 0xD1, 0xE0); sr.font.name = "Segoe UI"
+    doc.add_paragraph()
 
-    subtitle = doc.add_paragraph(f"Generado por Scapder · {generated_at}")
-    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # ── Tarjetas KPI (4 columnas) ─────────────────────────────────
+    def _kpi_cards(cards: list[tuple[str, str]]):
+        tbl = doc.add_table(rows=2, cols=len(cards))
+        tbl.style = "Table Grid"
+        tbl.autofit = False
+        _set_cell_margins(tbl, top=90, bottom=90, left=140, right=140)
+        for j, (label, _v) in enumerate(cards):
+            cell = tbl.cell(0, j)
+            cell.text = ""
+            p = cell.paragraphs[0]; p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            r = p.add_run(label.upper())
+            r.font.size = Pt(7.5); r.bold = True; r.font.color.rgb = RGBColor(0x64, 0x74, 0x8B); r.font.name = "Segoe UI"
+            _shade(cell, "F8FAFC"); _cell_borders(cell)
+        for j, (_l, value) in enumerate(cards):
+            cell = tbl.cell(1, j)
+            cell.text = ""
+            p = cell.paragraphs[0]; p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            r = p.add_run(str(value))
+            r.font.size = Pt(14); r.bold = True; r.font.color.rgb = RGBColor(0x0F, 0x17, 0x2A); r.font.name = "Segoe UI"
+            _shade(cell, "FFFFFF"); _cell_borders(cell)
+        doc.add_paragraph()
+
+    _kpi_cards([
+        ("Personas", metrics.get("people_detected", metrics.get("tracked_presences", "—"))),
+        ("Interacciones", metrics.get("interaction_events", "—")),
+        ("Pickups", metrics.get("pickup_events", "—")),
+        ("Zonas", len(zones_data)),
+    ])
 
     # Ficha del análisis
-    doc.add_heading("Ficha del análisis", level=1)
+    _section_heading("▸", "Ficha del análisis", level=1)
     _styled_table(
         ["Campo", "Valor"],
         [
         ["ID del análisis", analysis_id],
+            ["Sede", site_name],
             ["Modo de análisis", result.get("analysis_mode", "")],
             ["Duración del video (s)", video.get("duration_seconds", "")],
             ["Personas detectadas", metrics.get("people_detected", metrics.get("tracked_presences", ""))],
@@ -1374,18 +1570,29 @@ def export_insights_docx(
             ["Eventos de pickup", metrics.get("pickup_events", "")],
             ["Zonas analizadas", len(zones_data)],
         ],
+        col_widths=[2.2, 4.6],
     )
 
-    # Hallazgo principal
-    doc.add_heading("1. Hallazgo principal", level=1)
-    doc.add_paragraph(insights.get("hallazgo_principal", ""))
+    # Hallazgo principal (callout con fondo claro)
+    _section_heading("01", "Hallazgo principal", level=1)
+    callout = doc.add_table(rows=1, cols=1)
+    callout.autofit = False
+    callout.columns[0].width = Inches(6.8)
+    c0 = callout.cell(0, 0)
+    c0.text = ""
+    _shade(c0, "FFF7F2")
+    _cell_borders(c0, color="FF6B3D", size="9")
+    p = c0.paragraphs[0]
+    r = p.add_run(insights.get("hallazgo_principal", ""))
+    r.font.size = Pt(10.5); r.italic = True; r.font.color.rgb = RGBColor(0x0F, 0x17, 0x2A)
+    doc.add_paragraph()
 
     # Resumen ejecutivo
-    doc.add_heading("2. Resumen ejecutivo", level=1)
+    _section_heading("02", "Resumen ejecutivo", level=1)
     doc.add_paragraph(insights.get("resumen_ejecutivo", ""))
 
     # Recomendaciones
-    doc.add_heading("3. Recomendaciones accionables", level=1)
+    _section_heading("03", "Recomendaciones accionables", level=1)
     for i, rec in enumerate(insights.get("recomendaciones", []), start=1):
         doc.add_heading(f"3.{i} {rec.get('titulo', '')}", level=2)
 
@@ -1418,7 +1625,10 @@ def export_insights_docx(
 
     # ── Tabla de métricas por zona ───────────────────────────────────────────
     if zones_data:
-        doc.add_heading("4. Métricas por zona", level=1)
+        _section_heading("04", "Métricas por zona", level=1)
+        doc.add_paragraph(
+            "Detalle medido por zona. Usa los filtros del Excel para ordenar y comparar."
+        ).runs[0].font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
         _styled_table(
             ["Zona", "Visitas", "Permanencia (s)", "Interacciones", "Heat index", "Clasificación"],
             [
@@ -1439,32 +1649,34 @@ def export_insights_docx(
         zone_names = [z.get("name", z.get("zone_id", "")) for z in zones_data]
         zone_graphics = [
             ([z.get("visits", 0) for z in zones_data], "Visitas por zona", "Visitas", "#FF6B3D"),
-            ([round(float(z.get("dwell_seconds", 0) or 0), 1) for z in zones_data], "Permanencia por zona (s)", "Segundos", "#2D9CDB"),
-            ([z.get("heat_index", 0) for z in zones_data], "Heat index por zona (0-1)", "Heat index", "#27AE60"),
+            ([round(float(z.get("dwell_seconds", 0) or 0), 1) for z in zones_data], "Permanencia por zona (s)", "Segundos", "#0EA5E9"),
+            ([z.get("heat_index", 0) for z in zones_data], "Heat index por zona (0-1)", "Heat index", "#10B981"),
         ]
-        doc.add_heading("5. Gráficas de zonas", level=1)
-        doc.add_paragraph(
-            "Comparativa visual de las zonas a partir de los datos medidos por visión computacional."
+        _section_heading("05", "Gráficas de zonas", level=1)
+        intro = doc.add_paragraph(
+            "Comparativa visual de las zonas a partir de los datos medidos por visión computacional. "
+            "Barras con valores y donas con distribución porcentual."
         )
-        for values, title, xlabel, color in zone_graphics:
+        intro.runs[0].font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
+        for idx, (values, title, xlabel, color) in enumerate(zone_graphics, start=1):
             buf = _zone_chart(zone_names, values, title, xlabel, color)
             if buf is None:
                 continue
-            doc.add_picture(buf, width=Inches(5.5))
+            doc.add_picture(buf, width=Inches(6.0))
             doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-            _caption(title)
+            _caption(f"Figura 5.{idx} — {title}")
             doc.add_paragraph()
         zone_pies = [
             ([z.get("visits", 0) for z in zones_data], "Distribución de visitas por zona (%)"),
             ([round(float(z.get("dwell_seconds", 0) or 0), 1) for z in zones_data], "Distribución de permanencia por zona (%)"),
         ]
-        for values, title in zone_pies:
+        for j, (values, title) in enumerate(zone_pies, start=len(zone_graphics) + 1):
             buf = _zone_pie(zone_names, values, title)
             if buf is None:
                 continue
-            doc.add_picture(buf, width=Inches(5.0))
+            doc.add_picture(buf, width=Inches(6.0))
             doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-            _caption(title)
+            _caption(f"Figura 5.{j} — {title}")
             doc.add_paragraph()
 
     # ── Sección de mapas de calor ────────────────────────────────────────────
@@ -1484,27 +1696,36 @@ def export_insights_docx(
         if hmap_path.exists() and hmap_path.stat().st_size >= 5120:
             real_heatmaps.append((hmap_path, caption))
     if real_heatmaps:
-        doc.add_heading("6. Mapas de calor", level=1)
-        doc.add_paragraph(
-            "Los siguientes mapas de calor son generados automáticamente por el sistema de visión "
-            "computacional (YOLO + ByteTrack). Reflejan datos reales del video analizado."
+        _section_heading("06", "Mapas de calor", level=1)
+        intro_h = doc.add_paragraph(
+            "Mapas generados automáticamente por visión computacional (YOLO + ByteTrack). "
+            "Reflejan datos reales del video analizado; se omiten placeholders sin datos."
         )
+        intro_h.runs[0].font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
         for hmap_path, caption in real_heatmaps:
             try:
-                doc.add_picture(str(hmap_path), width=Inches(5.5))
+                doc.add_picture(str(hmap_path), width=Inches(6.0))
                 doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
                 _caption(caption)
                 doc.add_paragraph()
             except Exception:
                 pass
 
-    # Pie de página de privacidad
+    # Cierre / privacidad
     doc.add_paragraph()
-    footer_para = doc.add_paragraph(
+    box = doc.add_table(rows=1, cols=1)
+    box.autofit = False
+    box.columns[0].width = Inches(6.8)
+    bcell = box.cell(0, 0)
+    bcell.text = ""
+    _shade(bcell, "F8FAFC")
+    _cell_borders(bcell)
+    bp = bcell.paragraphs[0]
+    br = bp.add_run(
         "Privacidad por diseño: sin biometría, sin reconocimiento facial, sin atributos personales. "
-        "Cumple Ley 1581 de 2012 (Colombia). IDs de rastreo son temporales y no se persisten."
+        "Cumple Ley 1581 de 2012 (Colombia). IDs de rastreo temporales, no persistidos."
     )
-    footer_para.runs[0].font.size = Pt(8)
+    br.font.size = Pt(7.5); br.font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
 
     buffer = BytesIO()
     doc.save(buffer)
@@ -1523,22 +1744,68 @@ def export_insights_docx(
 # =========================================================
 
 _ACCENT = "FF6B3D"
-_DARK = "151323"
+_DARK = "0F172A"
+_NAVY = "0F172A"
 _LIGHT_BG = "FFF7F2"
+_ALT_ROW = "F8FAFC"
+_GRID = "E2E8F0"
+_SERIES_COLORS = ["FF6B3D", "0EA5E9", "10B981", "8B5CF6", "F59E0B", "EC4899", "14B8A6", "6366F1"]
 
 
 def _excel_header_style(cell) -> None:
     from openpyxl.styles import Alignment, Font, PatternFill
 
-    cell.fill = PatternFill("solid", fgColor=_ACCENT)
-    cell.font = Font(bold=True, color="FFFFFF", size=11)
+    cell.fill = PatternFill("solid", fgColor=_NAVY)
+    cell.font = Font(bold=True, color="FFFFFF", size=10, name="Calibri")
     cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
 
 def _excel_title_style(cell, size: int = 16) -> None:
     from openpyxl.styles import Font
 
-    cell.font = Font(bold=True, color=_DARK, size=size)
+    cell.font = Font(bold=True, color=_DARK, size=size, name="Calibri")
+
+
+def _excel_band_row(ws, row: int, ncols: int, fill: str) -> None:
+    from openpyxl.styles import PatternFill
+
+    f = PatternFill("solid", fgColor=fill)
+    for c in range(1, ncols + 1):
+        ws.cell(row=row, column=c).fill = f
+
+
+def _excel_chart_series_color(chart, color: str) -> None:
+    try:
+        for s in chart.series:
+            s.graphicalProperties.solidFill = color
+            s.graphicalProperties.line.solidFill = color
+            s.smooth = False
+    except Exception:
+        pass
+
+
+def _excel_multicolor_points(series, n_points: int, palette: list | None = None) -> None:
+    """Colorea cada barra / porción con un color distinto de la paleta.
+
+    openpyxl lo soporta vía series.dPt (DataPoint por índice). Si falla,
+    se deja el color por defecto sin romper la exportación.
+    """
+    try:
+        from openpyxl.chart.marker import DataPoint
+        from openpyxl.chart.shapes import GraphicalProperties
+
+        colors = palette or _SERIES_COLORS
+        series.dPt = []
+        for i in range(max(int(n_points or 0), 0)):
+            pt = DataPoint(idx=i)
+            pt.graphicalProperties = GraphicalProperties(solidFill=colors[i % len(colors)])
+            try:
+                pt.graphicalProperties.line.noFill = True
+            except Exception:
+                pass
+            series.dPt.append(pt)
+    except Exception:
+        pass
 
 
 @router.get("/{analysis_id}/insights/export-excel")
@@ -1584,33 +1851,69 @@ def export_insights_excel(
     frame_dir = RESULT_DIR / analysis_id
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    thin = Side(style="thin", color="E5E7EE")
+    thin = Side(style="thin", color="E2E8F0")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
     wb = Workbook()
+    wb.properties.title = "Recomendaciones de Space Management"
+    wb.properties.creator = "Scapder"
 
     # ── Hoja 1: Resumen ──────────────────────────────────────────────
     ws = wb.active
     ws.title = "Resumen"
     ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws["A1"] = "Recomendaciones de Space Management"
-    _excel_title_style(ws["A1"])
-    ws["A2"] = f"Scapder · Inteligencia espacial  |  Generado: {generated_at}"
-    ws["A2"].font = Font(color="7D8392", size=10)
+    ws.sheet_properties.tabColor = _NAVY
+    ws.oddHeader.center.text = "Scapder · Space Intelligence"
+    # Banner superior navy
+    ws.merge_cells("A1:B1")
+    ws["A1"] = "SCAPDER  ·  INTELIGENCIA ESPACIAL EN TIENDA"
+    ws["A1"].fill = PatternFill("solid", fgColor=_NAVY)
+    ws["A1"].font = Font(bold=True, color="FF6B3D", size=9, name="Calibri")
+    ws["A1"].alignment = Alignment(horizontal="left", vertical="center")
+    ws.row_dimensions[1].height = 20
+    ws.merge_cells("A2:B2")
+    ws["A2"] = "Recomendaciones de Space Management"
+    _excel_title_style(ws["A2"], size=18)
+    ws.row_dimensions[2].height = 26
+    ws.merge_cells("A3:B3")
+    site_label = site.name if site else result.get("site", {}).get("name", "Tienda")
+    ws["A3"] = f"{site_label}  ·  {generated_at}  ·  Modo {result.get('analysis_mode', '')}  ·  ID {analysis_id[:8]}"
+    ws["A3"].font = Font(color="64748B", size=10, italic=True, name="Calibri")
+    ws.row_dimensions[3].height = 16
+
+    def _section_title(row: int, title: str) -> None:
+        ws.merge_cells(f"A{row}:B{row}")
+        c = ws.cell(row=row, column=1, value=title)
+        c.font = Font(bold=True, size=12, color=_NAVY, name="Calibri")
+        # subrayado naranja: borde inferior en la fila
+        for col in (1, 2):
+            ws.cell(row=row, column=col).border = Border(bottom=Side(style="medium", color=_ACCENT))
+        # banda de acento fina debajo
+        ws.row_dimensions[row].height = 20
 
     def _kpi_table(start_row: int, title: str, rows: list) -> int:
-        ws.cell(row=start_row, column=1, value=title).font = Font(bold=True, size=13, color=_DARK)
+        _section_title(start_row, title)
         header_row = start_row + 1
+        ws.row_dimensions[header_row].height = 20
         ws.cell(row=header_row, column=1, value="Indicador")
         ws.cell(row=header_row, column=2, value="Valor")
         _excel_header_style(ws.cell(row=header_row, column=1))
         _excel_header_style(ws.cell(row=header_row, column=2))
+        ws.cell(row=header_row, column=1).border = border
+        ws.cell(row=header_row, column=2).border = border
         for i, (label, value) in enumerate(rows, start=header_row + 1):
             label_cell = ws.cell(row=i, column=1, value=label)
             label_cell.border = border
-            label_cell.font = Font(bold=True, color="29263D")
+            label_cell.font = Font(bold=True, color="0F172A", size=10, name="Calibri")
+            label_cell.alignment = Alignment(vertical="center")
             value_cell = ws.cell(row=i, column=2, value=value)
             value_cell.border = border
+            value_cell.font = Font(size=10, name="Calibri")
+            value_cell.alignment = Alignment(vertical="center", wrap_text=True)
+            if i % 2 == 0:
+                label_cell.fill = PatternFill("solid", fgColor=_ALT_ROW)
+                value_cell.fill = PatternFill("solid", fgColor=_ALT_ROW)
+            ws.row_dimensions[i].height = 18
         return header_row + len(rows) + 2  # siguiente fila libre (+1 de separación)
 
     next_row = _kpi_table(4, "1. Información del análisis", [
@@ -1625,11 +1928,18 @@ def export_insights_excel(
     ws.cell(row=next_row + 1, column=1, value=insights.get("hallazgo_principal", "")).alignment = Alignment(wrap_text=True, vertical="top")
     ws.merge_cells(f"A{next_row + 1}:B{next_row + 1}")
     ws.row_dimensions[next_row + 1].height = 45
+    # resaltar hallazgo con fondo cálido
+    for col in (1, 2):
+        ws.cell(row=next_row + 1, column=col).fill = PatternFill("solid", fgColor=_LIGHT_BG)
+        ws.cell(row=next_row + 1, column=col).border = border
+        ws.cell(row=next_row + 1, column=col).font = Font(italic=True, size=10, color="0F172A", name="Calibri")
 
     ws.cell(row=next_row + 3, column=1, value="3. Resumen ejecutivo").font = Font(bold=True, size=13, color=_DARK)
     ws.cell(row=next_row + 4, column=1, value=insights.get("resumen_ejecutivo", "")).alignment = Alignment(wrap_text=True, vertical="top")
     ws.merge_cells(f"A{next_row + 4}:B{next_row + 4}")
     ws.row_dimensions[next_row + 4].height = 45
+    for col in (1, 2):
+        ws.cell(row=next_row + 4, column=col).border = border
 
     speed_value = metrics.get("average_speed_m_s") or 0.0
     speed_label = "Velocidad prom. (m/s)"
@@ -1653,11 +1963,15 @@ def export_insights_excel(
     # ── Hoja 2: Zonas ────────────────────────────────────────────────
     wz = wb.create_sheet("Zonas")
     wz.sheet_properties.pageSetUpPr.fitToPage = True
+    wz.sheet_properties.tabColor = "0EA5E9"
+    wz.sheet_properties.pageSetUpPr.fitToPage = True
+    wz.print_title_rows = "1:1"
     z_headers = ["Zona", "Visitas", "Densidad (vis/min)", "Permanencia (s)", "Dwell prom. (s)", "Interacciones", "Heat index", "Clasificación"]
     for col, header in enumerate(z_headers, start=1):
         cell = wz.cell(row=1, column=col, value=header)
         _excel_header_style(cell)
         cell.border = border
+    wz.row_dimensions[1].height = 28
     for r, z in enumerate(zones, start=2):
         values = [
             z.get("name", z.get("zone_id", z.get("id", ""))),
@@ -1669,20 +1983,49 @@ def export_insights_excel(
             z.get("heat_index", 0),
             z.get("classification", ""),
         ]
+        is_alt = r % 2 == 1
         for col, value in enumerate(values, start=1):
             cell = wz.cell(row=r, column=col, value=value)
             cell.border = border
+            cell.font = Font(size=10, name="Calibri", bold=(col == 1))
+            if is_alt:
+                cell.fill = PatternFill("solid", fgColor=_ALT_ROW)
             if col > 1:
-                cell.alignment = Alignment(horizontal="center")
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            else:
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+            # formatos numéricos
+            if col in (2, 6):
+                cell.number_format = '#,##0'
+            elif col in (3, 4, 5):
+                cell.number_format = '#,##0.0'
+            elif col == 7:
+                cell.number_format = '0.00'
+        wz.row_dimensions[r].height = 18
     for col, width in enumerate([24, 12, 18, 17, 16, 15, 12, 15], start=1):
         wz.column_dimensions[wz.cell(row=1, column=col).column_letter].width = width
     wz.freeze_panes = "A2"
     if zones:
         wz.auto_filter.ref = f"A1:H{len(zones) + 1}"
+        # Formato condicional moderno: escala de color para Heat index + barras para Visitas
+        try:
+            from openpyxl.formatting.rule import ColorScaleRule, DataBarRule
+
+            wz.conditional_formatting.add(f"G2:G{len(zones) + 1}",
+                ColorScaleRule(start_type="min", start_color="F1F5F9",
+                               mid_type="percentile", mid_value=50, mid_color="FED7AA",
+                               end_type="max", end_color="FF6B3D"))
+            wz.conditional_formatting.add(f"B2:B{len(zones) + 1}",
+                DataBarRule(start_type="num", start_value=0, end_type="max", color="0EA5E9"))
+        except Exception:
+            pass
 
     # ── Hoja 3: Recomendaciones ──────────────────────────────────────
     wr = wb.create_sheet("Recomendaciones")
     wr.sheet_properties.pageSetUpPr.fitToPage = True
+    wr.sheet_properties.tabColor = "FF6B3D"
+    wr.print_title_rows = "1:1"
+    wr.row_dimensions[1].height = 28
     r_headers = ["#", "Título", "Justificación", "Impacto estimado", "Evidencia visual"]
     for col, header in enumerate(r_headers, start=1):
         cell = wr.cell(row=1, column=col, value=header)
@@ -1734,74 +2077,131 @@ def export_insights_excel(
     # ── Hoja 4: Dashboard (gráficas nativas + heatmaps) ──────────────
     wd = wb.create_sheet("Dashboard")
     wd.sheet_properties.pageSetUpPr.fitToPage = True
-    wd["A1"] = "Dashboard"
-    _excel_title_style(wd["A1"])
-    wd["A2"] = "Gráficas nativas de Excel con los datos de la hoja Zonas (se actualizan si editas los valores)."
-    wd["A2"].font = Font(color="7D8392", size=10, italic=True)
+    wd.sheet_properties.tabColor = "10B981"
+    wd.merge_cells("A1:H1")
+    wd["A1"] = "SCAPDER  ·  DASHBOARD DEL ANÁLISIS"
+    wd["A1"].fill = PatternFill("solid", fgColor=_NAVY)
+    wd["A1"].font = Font(bold=True, color="FF6B3D", size=10, name="Calibri")
+    wd["A1"].alignment = Alignment(horizontal="left", vertical="center")
+    wd.row_dimensions[1].height = 22
+    wd.merge_cells("A2:H2")
+    wd["A2"] = "Gráficas nativas de Excel vinculadas a la hoja Zonas — se actualizan si editas los valores."
+    wd["A2"].font = Font(color="64748B", size=10, italic=True, name="Calibri")
+    wd.row_dimensions[2].height = 18
     wd.column_dimensions["A"].width = 30
 
-    def _bar(title: str, y_title: str):
+    def _bar(title: str, y_title: str, color: str = "FF6B3D", multicolor: bool = True):
         chart = BarChart()
         chart.type = "col"
-        chart.style = 10
+        chart.style = 10  # estilo colorido de Excel
         chart.title = title
         chart.y_axis.title = y_title
-        chart.height = 7.5
-        chart.width = 15
+        chart.y_axis.numFmt = '#,##0'
+        chart.height = 10.5
+        chart.width = 17.5
+        chart.gapWidth = 70  # barras gruesas, look dashboard
+        chart.overlap = 0
+        chart.legend = None
+        chart.dataLabels = DataLabelList()
+        chart.dataLabels.showVal = True
+        chart.dataLabels.showCatName = False
+        chart.dataLabels.showSerName = False
+        if not multicolor:
+            _excel_chart_series_color(chart, color)
         return chart
 
-    chart_row = 4  # fila de anclaje; cada gráfica ocupa ~15 filas
+    def _style_chart(chart):
+        try:
+            chart.y_axis.scaling.min = 0
+            chart.y_axis.scaling.max = None
+            chart.y_axis.majorGridlines = None
+            chart.x_axis.tickLblPos = "low"
+        except Exception:
+            pass
+        return chart
+
+    # Altura 10.5cm ≈ 20 filas + 3 de respiro = 23 para que nunca se encimen.
+    _CHART_GAP = 23
+    chart_row = 4  # fila de anclaje
 
     n_zones = len(zones)
     if zones:
         z_last = n_zones + 1
         z_cats = Reference(wz, min_col=1, min_row=2, max_row=z_last)
-        zone_visits = _bar("Visitas por zona", "Visitas")
+        zone_visits = _style_chart(_bar("Visitas por zona", "Visitas", "FF6B3D"))
         zone_visits.add_data(Reference(wz, min_col=2, min_row=1, max_row=z_last), titles_from_data=True)
         zone_visits.set_categories(z_cats)
+        for s in zone_visits.series:
+            _excel_multicolor_points(s, n_zones)
         wd.add_chart(zone_visits, f"A{chart_row}")
-        chart_row += 15
+        chart_row += _CHART_GAP
 
-        zone_dwell = _bar("Permanencia por zona (s)", "Segundos")
+        zone_dwell = _style_chart(_bar("Permanencia por zona (s)", "Segundos", "0EA5E9"))
         zone_dwell.add_data(Reference(wz, min_col=4, min_row=1, max_row=z_last), titles_from_data=True)
         zone_dwell.set_categories(z_cats)
+        for s in zone_dwell.series:
+            _excel_multicolor_points(s, n_zones)
         wd.add_chart(zone_dwell, f"A{chart_row}")
-        chart_row += 15
+        chart_row += _CHART_GAP
 
-        zone_heat = _bar("Heat index por zona (0-1)", "Heat index")
+        zone_heat = _style_chart(_bar("Heat index por zona (0-1)", "Heat index", "10B981"))
+        zone_heat.y_axis.numFmt = '0.00'
         zone_heat.add_data(Reference(wz, min_col=7, min_row=1, max_row=z_last), titles_from_data=True)
         zone_heat.set_categories(z_cats)
+        for s in zone_heat.series:
+            _excel_multicolor_points(s, n_zones)
         wd.add_chart(zone_heat, f"A{chart_row}")
-        chart_row += 15
+        chart_row += _CHART_GAP
 
         def _pie(title: str, value_col: int):
             pie = PieChart()
             pie.title = title
-            pie.style = 10
-            pie.height = 7.5
-            pie.width = 14
+            pie.style = 10  # rebanadas coloridas
+            pie.height = 10.5
+            pie.width = 17.5
+            try:
+                pie.legend.position = "b"  # leyenda abajo: no tapa el título
+            except Exception:
+                pass
             pie.add_data(Reference(wz, min_col=value_col, min_row=1, max_row=z_last), titles_from_data=True)
             pie.set_categories(z_cats)
             pie.dataLabels = DataLabelList()
             pie.dataLabels.showPercent = True
+            pie.dataLabels.showCatName = False
+            pie.dataLabels.showLeaderLines = True
+            pie.dataLabels.showSerName = False
+            for s in pie.series:
+                _excel_multicolor_points(s, n_zones)
             return pie
 
         wd.add_chart(_pie("Distribución de visitas por zona (%)", 2), f"A{chart_row}")
-        chart_row += 15
+        chart_row += _CHART_GAP
         wd.add_chart(_pie("Distribución de permanencia por zona (%)", 4), f"A{chart_row}")
-        chart_row += 15
+        chart_row += _CHART_GAP
 
         doughnut = DoughnutChart()
         doughnut.title = "Interacciones por zona"
         doughnut.style = 10
-        doughnut.height = 7.5
-        doughnut.width = 14
+        doughnut.height = 10.5
+        doughnut.width = 17.5
+        try:
+            doughnut.legend.position = "b"  # leyenda abajo
+        except Exception:
+            pass
+        try:
+            doughnut.holeSize = 48  # dona moderna, agujero amplio
+        except Exception:
+            pass
         doughnut.add_data(Reference(wz, min_col=6, min_row=1, max_row=z_last), titles_from_data=True)
         doughnut.set_categories(z_cats)
         doughnut.dataLabels = DataLabelList()
         doughnut.dataLabels.showPercent = True
+        doughnut.dataLabels.showCatName = False
+        doughnut.dataLabels.showLeaderLines = True
+        for s in doughnut.series:
+            _excel_multicolor_points(s, n_zones)
         wd.add_chart(doughnut, f"A{chart_row}")
-        chart_row += 15
+        chart_row += _CHART_GAP
 
     # Serie temporal (interacciones o pickups, la que tenga datos)
     histogram = result.get("interaction_histogram") or {}
@@ -1822,11 +2222,28 @@ def export_insights_excel(
         line.style = 10
         line.title = f"{hist_label} en el tiempo"
         line.y_axis.title = "Eventos"
+        line.y_axis.numFmt = '#,##0'
         line.add_data(Reference(wd, min_col=11, min_row=3, max_row=3 + len(buckets)), titles_from_data=True)
         line.set_categories(Reference(wd, min_col=10, min_row=4, max_row=3 + len(buckets)))
-        line.height = 7.5
-        line.width = 14
-        wd.add_chart(line, "J4")
+        line.height = 10.5
+        line.width = 17.5
+        _excel_chart_series_color(line, "8B5CF6")
+        try:
+            from openpyxl.chart.marker import DataPointMarker
+
+            for s in line.series:
+                s.marker.symbol = "circle"
+                s.marker.size = 7
+                s.marker.graphicalProperties.solidFill = "8B5CF6"
+                s.marker.graphicalProperties.line.solidFill = "FFFFFF"
+                s.graphicalProperties.line.width = 32000  # línea gruesa moderna
+                s.smooth = True
+        except Exception:
+            pass
+        # Apilado vertical en columna A: antes estaba en J4 y las barras anchas
+        # (que llegan hasta la col J) lo tapaban / se encimaban.
+        wd.add_chart(line, f"A{chart_row}")
+        chart_row += _CHART_GAP
         wd.column_dimensions["J"].width = 18
         wd.column_dimensions["K"].width = 15
 
@@ -1840,7 +2257,11 @@ def export_insights_excel(
         ("pickup", "Mapa de pickups"),
     ]
     img_row = chart_row + 1
-    wd.cell(row=img_row, column=1, value="Mapas de calor (visión computacional)").font = Font(bold=True, size=13, color=_DARK)
+    wd.merge_cells(f"A{img_row}:H{img_row}")
+    wd.cell(row=img_row, column=1, value="MAPAS DE CALOR  ·  VISIÓN COMPUTACIONAL").font = Font(bold=True, size=11, color="FFFFFF", name="Calibri")
+    wd.cell(row=img_row, column=1).fill = PatternFill("solid", fgColor=_NAVY)
+    wd.cell(row=img_row, column=1).alignment = Alignment(horizontal="left", vertical="center")
+    wd.row_dimensions[img_row].height = 20
     img_row += 1
     for key, caption in heatmap_labels:
         fname = heatmaps_meta.get(key)
@@ -1925,31 +2346,66 @@ def export_insights_pdf(
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     ACCENT = colors.HexColor("#FF6B3D")
-    DARK = colors.HexColor("#151323")
-    GRAY = colors.HexColor("#7D8392")
+    NAVY = colors.HexColor("#0F172A")
+    DARK = colors.HexColor("#0F172A")
+    GRAY = colors.HexColor("#64748B")
+    LIGHT = colors.HexColor("#F8FAFC")
+    PALETTE = ["#FF6B3D", "#0EA5E9", "#10B981", "#8B5CF6", "#F59E0B", "#EC4899"]
 
     def _chart_png(kind: str, labels: list, values: list, title: str, xlabel: str = "", color: str = "#FF6B3D"):
         try:
             import matplotlib
             matplotlib.use("Agg")
             import matplotlib.pyplot as plt
+            import numpy as np
+            plt.rcParams.update({
+                "font.family": "DejaVu Sans",
+                "axes.facecolor": "#FFFFFF", "figure.facecolor": "#FFFFFF",
+                "axes.edgecolor": "#CBD5E1", "axes.grid": True,
+                "grid.color": "#E2E8F0", "grid.linewidth": 0.7, "grid.alpha": 0.9,
+                "axes.axisbelow": True,
+            })
         except ImportError:
             return None
         try:
-            if kind == "pie" and not any(values):
+            if kind == "pie" and not any(values or []):
                 return None
-            fig, ax = plt.subplots(figsize=(6.5, 3.8))
             if kind == "bar":
-                ax.barh(labels, values, color=color)
-                ax.set_xlabel(xlabel)
+                n = max(len(labels), 1)
+                fig, ax = plt.subplots(figsize=(6.8, max(3.2, 0.62 * n)))
+                y = np.arange(n)
+                bars = ax.barh(y, values, height=0.55, color=color, edgecolor="white", linewidth=1.2, zorder=3)
+                ax.set_yticks(y); ax.set_yticklabels(labels, fontsize=9, color="#334155")
+                ax.set_xlabel(xlabel, fontsize=9, color="#64748B")
+                ax.set_title(title, fontweight="bold", fontsize=12, color="#0F172A", pad=12, loc="left")
                 ax.invert_yaxis()
+                ax.tick_params(axis="x", labelsize=8, colors="#64748B")
+                for s in ("top", "right"):
+                    ax.spines[s].set_visible(False)
+                vmax = max(list(values) + [0]) or 1
+                ax.set_xlim(0, vmax * 1.18)
+                try:
+                    ax.bar_label(bars, fmt="%.1f" if any(isinstance(v, float) for v in values) else "%d",
+                                 fontsize=8, color="#0F172A", padding=4)
+                except Exception:
+                    pass
             else:
-                ax.pie(values, labels=labels, autopct="%1.1f%%", startangle=90)
+                fig, ax = plt.subplots(figsize=(6.8, 3.8))
+                clrs = [PALETTE[i % len(PALETTE)] for i in range(len(labels))]
+                wedges, _, autotexts = ax.pie(
+                    values, autopct=lambda p: f"{p:.1f}%" if p >= 4 else "",
+                    startangle=90, counterclock=False, colors=clrs,
+                    wedgeprops=dict(width=0.46, edgecolor="white", linewidth=2),
+                    pctdistance=0.80, textprops=dict(fontsize=8, color="#0F172A", weight="bold"))
+                for t in autotexts:
+                    t.set_bbox(dict(boxstyle="round,pad=0.25", fc="white", ec="#E2E8F0", alpha=0.95))
+                ax.set_title(title, fontweight="bold", fontsize=12, color="#0F172A", pad=12, loc="left")
                 ax.axis("equal")
-            ax.set_title(title, fontweight="bold")
+                ax.legend(wedges, labels, loc="center left", bbox_to_anchor=(1.0, 0.5),
+                          fontsize=8, frameon=True, facecolor="white", edgecolor="#E2E8F0")
             fig.tight_layout()
             buf = BytesIO()
-            fig.savefig(buf, format="png", dpi=150)
+            fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
             plt.close(fig)
             buf.seek(0)
             return buf
@@ -1980,53 +2436,131 @@ def export_insights_pdf(
     def _styled_table(headers: list[str], rows_data: list[list], col_widths: list | None = None):
         table = Table([headers] + rows_data, colWidths=col_widths, repeatRows=1)
         table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), ACCENT),
+            ("BACKGROUND", (0, 0), (-1, 0), NAVY),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+            ("LEADING", (0, 0), (-1, -1), 11),
             ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E5E7EE")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#FFF7F2")]),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
         ]))
         return table
+
+    def _section_bar():
+        bar = Table([[" "]], colWidths=[2.2 * cm])
+        bar.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), ACCENT),
+            ("TOPPADDING", (0, 0), (-1, -1), 1),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+        ]))
+        return bar
+
+    def _header_footer(canvas, doc_obj):
+        canvas.saveState()
+        canvas.setStrokeColor(ACCENT); canvas.setLineWidth(2)
+        canvas.line(doc_obj.leftMargin, doc_obj.height + doc_obj.topMargin + 6,
+                    doc_obj.width + doc_obj.leftMargin, doc_obj.height + doc_obj.topMargin + 6)
+        canvas.setFont("Helvetica-Bold", 7); canvas.setFillColor(GRAY)
+        canvas.drawString(doc_obj.leftMargin, doc_obj.height + doc_obj.topMargin + 12, "SCAPDER  ·  SPACE INTELLIGENCE")
+        canvas.setFont("Helvetica", 7)
+        canvas.drawRightString(doc_obj.width + doc_obj.leftMargin, 1.2 * cm, f"Página {doc_obj.page}")
+        canvas.setFont("Helvetica", 6.5)
+        canvas.drawCentredString(doc_obj.width / 2 + doc_obj.leftMargin, 0.8 * cm,
+                                 "Confidencial  ·  Sin biometría  ·  Ley 1581 de 2012 (Colombia)")
+        canvas.restoreState()
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
-        leftMargin=2 * cm, rightMargin=2 * cm, topMargin=2 * cm, bottomMargin=2 * cm,
+        leftMargin=1.8 * cm, rightMargin=1.8 * cm, topMargin=2.2 * cm, bottomMargin=1.8 * cm,
         title="Recomendaciones de Space Management", author="Scapder",
     )
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle("Title2", parent=styles["Title"], fontName="Helvetica-Bold", textColor=DARK, fontSize=22, alignment=1)
-    h1 = ParagraphStyle("H1", parent=styles["Heading1"], fontName="Helvetica-Bold", textColor=DARK, fontSize=14, spaceBefore=14, spaceAfter=6)
-    h2 = ParagraphStyle("H2", parent=styles["Heading2"], fontName="Helvetica-Bold", textColor=DARK, fontSize=12, spaceBefore=10, spaceAfter=4)
-    body = ParagraphStyle("Body2", parent=styles["Normal"], fontSize=10, leading=14)
-    caption_style = ParagraphStyle("Caption2", parent=styles["Normal"], fontSize=8, textColor=GRAY, alignment=1)
-    footer_style = ParagraphStyle("Footer2", parent=styles["Normal"], fontSize=8, textColor=GRAY)
+    eyebrow_style = ParagraphStyle("Eyebrow", parent=styles["Normal"], fontName="Helvetica-Bold",
+                                   fontSize=8, textColor=ACCENT, spaceAfter=2)
+    title_style = ParagraphStyle("Title2", parent=styles["Title"], fontName="Helvetica-Bold", textColor=colors.white, fontSize=24, leading=28, alignment=0)
+    cover_sub = ParagraphStyle("CoverSub", parent=styles["Normal"], fontName="Helvetica", fontSize=9, leading=12, textColor=colors.HexColor("#CBD5E1"))
+    h1 = ParagraphStyle("H1", parent=styles["Heading1"], fontName="Helvetica-Bold", textColor=NAVY, fontSize=13, leading=16, spaceBefore=12, spaceAfter=2)
+    h2 = ParagraphStyle("H2", parent=styles["Heading2"], fontName="Helvetica-Bold", textColor=NAVY, fontSize=11, leading=14, spaceBefore=8, spaceAfter=3)
+    body = ParagraphStyle("Body2", parent=styles["Normal"], fontSize=9.5, leading=13.5, textColor=colors.HexColor("#1E293B"))
+    callout_style = ParagraphStyle("Callout", parent=body, fontName="Helvetica-Oblique", fontSize=10, leading=14, textColor=NAVY)
+    caption_style = ParagraphStyle("Caption2", parent=styles["Normal"], fontSize=7.5, textColor=GRAY, alignment=1, spaceBefore=2, spaceAfter=6)
+    footer_style = ParagraphStyle("Footer2", parent=styles["Normal"], fontSize=7.5, textColor=GRAY)
 
+    site_name_pdf = site.name if site else result.get("site", {}).get("name", "Tienda")
     story = []
-    story.append(Paragraph("Recomendaciones de Space Management", title_style))
-    story.append(Paragraph(f"Generado por Scapder · {generated_at}", caption_style))
+    # Portada navy
+    cover_tbl = Table([
+        [Paragraph("SCAPDER  ·  INTELIGENCIA ESPACIAL EN TIENDA", eyebrow_style)],
+        [Paragraph("Recomendaciones de<br/>Space Management", title_style)],
+        [Paragraph(f"{site_name_pdf} &nbsp;·&nbsp; {generated_at} &nbsp;·&nbsp; Modo {result.get('analysis_mode', '')} &nbsp;·&nbsp; ID {analysis_id[:8]}", cover_sub)],
+    ], colWidths=[17 * cm])
+    cover_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), NAVY),
+        ("LEFTPADDING", (0, 0), (-1, -1), 14),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+        ("TOPPADDING", (0, 0), (-1, 0), 12),
+        ("BOTTOMPADDING", (0, -1), (-1, -1), 12),
+        ("LINEBELOW", (0, -1), (-1, -1), 3, ACCENT),
+    ]))
+    story.append(cover_tbl)
     story.append(Spacer(1, 0.4 * cm))
+    # Mini KPIs en una fila
+    kpi_data = [[
+        Paragraph(f"<b><font size=13 color='#0F172A'>{metrics.get('people_detected', metrics.get('tracked_presences', '—'))}</font></b><br/><font size=7 color='#64748B'>PERSONAS</font>", body),
+        Paragraph(f"<b><font size=13 color='#0F172A'>{metrics.get('interaction_events', '—')}</font></b><br/><font size=7 color='#64748B'>INTERACCIONES</font>", body),
+        Paragraph(f"<b><font size=13 color='#0F172A'>{metrics.get('pickup_events', '—')}</font></b><br/><font size=7 color='#64748B'>PICKUPS</font>", body),
+        Paragraph(f"<b><font size=13 color='#0F172A'>{len(zones)}</font></b><br/><font size=7 color='#64748B'>ZONAS</font>", body),
+    ]]
+    kpi_tbl = Table(kpi_data, colWidths=[4.25 * cm] * 4)
+    kpi_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
+        ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#E2E8F0")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#E2E8F0")),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(kpi_tbl)
+    story.append(Spacer(1, 0.3 * cm))
 
     story.append(Paragraph("Ficha del análisis", h1))
+    story.append(_section_bar())
     story.append(_styled_table(["Campo", "Valor"], [
         ["ID del análisis", analysis_id],
+        ["Sede", site_name_pdf],
         ["Modo de análisis", str(result.get("analysis_mode", ""))],
         ["Duración del video (s)", str(video.get("duration_seconds", ""))],
         ["Personas detectadas", str(metrics.get("people_detected", metrics.get("tracked_presences", "")))],
         ["Eventos de interacción", str(metrics.get("interaction_events", ""))],
         ["Eventos de pickup", str(metrics.get("pickup_events", ""))],
         ["Zonas analizadas", str(len(zones))],
-    ], col_widths=[5 * cm, 10 * cm]))
+    ], col_widths=[5 * cm, 12 * cm]))
 
-    story.append(Paragraph("1. Hallazgo principal", h1))
-    story.append(Paragraph(insights.get("hallazgo_principal", ""), body))
-    story.append(Paragraph("2. Resumen ejecutivo", h1))
+    story.append(Paragraph("01 &nbsp;·&nbsp; Hallazgo principal", h1))
+    story.append(_section_bar())
+    callout_tbl = Table([[Paragraph(insights.get("hallazgo_principal", ""), callout_style)]], colWidths=[17 * cm])
+    callout_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FFF7ED")),
+        ("BOX", (0, 0), (-1, -1), 1, ACCENT),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    story.append(callout_tbl)
+    story.append(Paragraph("02 &nbsp;·&nbsp; Resumen ejecutivo", h1))
+    story.append(_section_bar())
     story.append(Paragraph(insights.get("resumen_ejecutivo", ""), body))
 
-    story.append(Paragraph("3. Recomendaciones accionables", h1))
+    story.append(Paragraph("03 &nbsp;·&nbsp; Recomendaciones accionables", h1))
+    story.append(_section_bar())
     for i, rec in enumerate(recommendations, start=1):
         story.append(Paragraph(f"3.{i} {rec.get('titulo', '')}", h2))
         story.append(Paragraph(f"<b>Justificación:</b> {rec.get('justificacion', '')}", body))
@@ -2044,30 +2578,36 @@ def export_insights_pdf(
             story.append(Paragraph(f"📷 {evidencia}", body))
 
     if zones:
-        story.append(Paragraph("4. Métricas por zona", h1))
+        story.append(Paragraph("04 &nbsp;·&nbsp; Métricas por zona", h1))
+        story.append(_section_bar())
+        story.append(Paragraph("Detalle medido por zona. Las gráficas siguientes comparan estos valores.", body))
         story.append(_styled_table(
             ["Zona", "Visitas", "Permanencia (s)", "Interacc.", "Heat", "Clasif."],
             [[z.get("name", z.get("zone_id", "")), z.get("visits", 0),
               round(float(z.get("dwell_seconds", 0) or 0), 1), z.get("interactions", 0),
               z.get("heat_index", 0), z.get("classification", "")] for z in zones],
         ))
-        story.append(Paragraph("5. Gráficas de zonas", h1))
+        story.append(Paragraph("05 &nbsp;·&nbsp; Gráficas de zonas", h1))
+        story.append(_section_bar())
+        story.append(Paragraph("Barras con valores y donas con distribución porcentual.", body))
         zone_names = [z.get("name", z.get("zone_id", "")) for z in zones]
         graphics = [
             ("bar", [z.get("visits", 0) for z in zones], "Visitas por zona", "Visitas", "#FF6B3D"),
-            ("bar", [round(float(z.get("dwell_seconds", 0) or 0), 1) for z in zones], "Permanencia por zona (s)", "Segundos", "#2D9CDB"),
-            ("bar", [z.get("heat_index", 0) for z in zones], "Heat index por zona (0-1)", "Heat index", "#27AE60"),
+            ("bar", [round(float(z.get("dwell_seconds", 0) or 0), 1) for z in zones], "Permanencia por zona (s)", "Segundos", "#0EA5E9"),
+            ("bar", [z.get("heat_index", 0) for z in zones], "Heat index por zona (0-1)", "Heat index", "#10B981"),
             ("pie", [z.get("visits", 0) for z in zones], "Distribución de visitas por zona (%)", "", "#FF6B3D"),
-            ("pie", [round(float(z.get("dwell_seconds", 0) or 0), 1) for z in zones], "Distribución de permanencia por zona (%)", "", "#2D9CDB"),
+            ("pie", [round(float(z.get("dwell_seconds", 0) or 0), 1) for z in zones], "Distribución de permanencia por zona (%)", "", "#0EA5E9"),
         ]
-        for kind, values, title, xlabel, color in graphics:
+        for idx, (kind, values, title, xlabel, color) in enumerate(graphics, start=1):
             buf = _chart_png(kind, zone_names, values, title, xlabel, color)
             if buf is None:
                 continue
-            img = _scaled_image(buf, 13 * cm)
+            img = _scaled_image(buf, 14 * cm)
             if img is not None:
+                img.hAlign = "CENTER"
+                story.append(Spacer(1, 0.2 * cm))
                 story.append(img)
-                story.append(Paragraph(title, caption_style))
+                story.append(Paragraph(f"Figura 5.{idx} — {title}", caption_style))
 
     heatmap_labels = [
         ("traffic", "Mapa de tráfico"), ("dwell", "Mapa de permanencia"),
@@ -2082,21 +2622,31 @@ def export_insights_pdf(
         if hmap_path.exists() and hmap_path.stat().st_size >= 5120:
             real_heatmaps.append((hmap_path, caption))
     if real_heatmaps:
-        story.append(Paragraph("6. Mapas de calor", h1))
+        story.append(Paragraph("06 &nbsp;·&nbsp; Mapas de calor", h1))
+        story.append(_section_bar())
         story.append(Paragraph(
-            "Mapas generados automáticamente por visión computacional (YOLO + ByteTrack) con datos reales del video.", body))
+            "Mapas generados automáticamente por visión computacional (YOLO + ByteTrack) con datos reales del video. Se omiten placeholders sin datos.", body))
         for hmap_path, caption in real_heatmaps:
-            img = _scaled_image(hmap_path, 13 * cm)
+            img = _scaled_image(hmap_path, 14 * cm)
             if img is not None:
+                img.hAlign = "CENTER"
+                story.append(Spacer(1, 0.2 * cm))
                 story.append(img)
                 story.append(Paragraph(caption, caption_style))
 
     story.append(Spacer(1, 0.5 * cm))
-    story.append(Paragraph(
+    closing = Table([[Paragraph(
         "Privacidad por diseño: sin biometría, sin reconocimiento facial, sin atributos personales. "
-        "Cumple Ley 1581 de 2012 (Colombia). IDs de rastreo son temporales y no se persisten.", footer_style))
+        "Cumple Ley 1581 de 2012 (Colombia). IDs de rastreo temporales, no persistidos.", footer_style)]], colWidths=[17 * cm])
+    closing.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+    ]))
+    story.append(closing)
 
-    doc.build(story)
+    doc.build(story, onFirstPage=_header_footer, onLaterPages=_header_footer)
     buffer.seek(0)
 
     safe_filename = f"recomendaciones_{analysis_id[:8]}.pdf"

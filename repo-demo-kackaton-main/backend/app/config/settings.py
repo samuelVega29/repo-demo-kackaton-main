@@ -51,7 +51,7 @@ GEMINI_FALLBACK_MODELS = [
 ]
 MODELS_ROOT = Path(os.environ.get("SCAPDER_MODELS", REPO_ROOT / "models"))
 EXPORTED_MODELS = MODELS_ROOT / "exported"
-BEHAVIOR_CONFIG = REPO_ROOT / "training" / "configs" / "behavior.yaml"
+BEHAVIOR_CONFIG = Path(os.environ.get("SCAPDER_BEHAVIOR_CONFIG", REPO_ROOT / "training" / "configs" / "behavior.yaml"))
 
 
 def _load_behavior() -> dict:

@@ -34,16 +34,22 @@ SKELETON_CONNECTIONS = [
 
 
 def _find_model(detection_only: bool) -> Path:
-    """Resolve model path: env override, exported, then bundled, then bare name."""
+    """Resolve model path: env override, bundled dir (desktop .exe), exported, then backend dir."""
+    filename = "yolo11n.pt" if detection_only else "yolo11n-pose.pt"
     project_root = Path(__file__).resolve().parents[3]
     override = os.environ.get("SCAPDER_DETECTOR_MODEL")
     if override:
         return Path(override)
+    model_dir = os.environ.get("SCAPDER_MODEL_DIR")
+    if model_dir:
+        candidate = Path(model_dir) / filename
+        if candidate.exists():
+            return candidate
     exported = settings.EXPORTED_MODELS / ("people-yolo11n.pt" if detection_only else "yolo11n-pose.pt")
-    bundled = project_root / "backend" / ("yolo11n.pt" if detection_only else "yolo11n-pose.pt")
+    bundled = project_root / "backend" / filename
     if exported.exists():
         return exported
-    return bundled if bundled.exists() else Path("yolo11n.pt" if detection_only else "yolo11n-pose.pt")
+    return bundled if bundled.exists() else Path(filename)
 
 
 # Shared ultralytics ByteTrack state lives on the model's predictor, so all track()

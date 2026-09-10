@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Images, Expand, ChevronLeft, ChevronRight, Users, Clock3, ChartNoAxesColumnIncreasing } from 'lucide-react'
 import { artifactUrl } from '../services/analyses'
 import robotGuide from '../assets/images/robot-chistoso.png'
+import AnalysisStatistics from './AnalysisStatistics'
 
 const number = (value) => Number(value ?? 0).toLocaleString('es-CO', { maximumFractionDigits: 1 })
 const activity = { hot: ['Alta', 'bg-[#ff7a1a]/10 text-orange-700', '#ff7a1a'], normal: ['Media', 'bg-slate-100 text-slate-600', '#94a3b8'], cold: ['Baja', 'bg-[#1f6feb]/15 text-blue-700', '#1f6feb'] }
@@ -83,6 +84,8 @@ export default function AnalysisInsights({ analysis }) {
       {findings.length > 3 && <details className="mt-4"><summary className="cursor-pointer text-sm font-medium text-[#cf4921]">Ver {findings.length - 3} hallazgos más</summary><div className="mt-3 grid gap-3 md:grid-cols-2">{findings.slice(3).map((finding, index) => <Finding key={index} finding={finding} />)}</div></details>}
       {!findings.length && !recommendations.length && <p className="text-sm text-slate-500">Este análisis no generó hallazgos ni recomendaciones.</p>}
     </section>
+
+    <AnalysisStatistics zones={zones} />
 
     <dialog ref={dialog} onClose={() => setFrame(null)} onClick={(event) => { if (event.target === event.currentTarget) dialog.current.close() }} className="fixed inset-0 m-auto max-h-[90vh] w-[min(1100px,94vw)] rounded-2xl bg-white p-4 backdrop:bg-black/75">
       <div className="mb-3 flex items-center justify-between"><h3 className="font-medium">Captura {(frame ?? 0) + 1}</h3><button autoFocus onClick={() => dialog.current.close()} className="rounded-lg bg-slate-100 px-4 py-2 text-sm">Cerrar ✕</button></div>

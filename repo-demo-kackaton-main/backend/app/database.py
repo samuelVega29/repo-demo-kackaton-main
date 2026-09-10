@@ -1,10 +1,21 @@
+import os
 from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 
-DATABASE_PATH = Path(__file__).resolve().parents[1] / "data" / "scapder.db"
+def _data_dir() -> Path:
+    """Directorio de datos. En desktop (.exe) se define con SCAPDER_DATA_DIR."""
+    override = os.environ.get("SCAPDER_DATA_DIR")
+    if override:
+        path = Path(override)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    return Path(__file__).resolve().parents[1] / "data"
+
+
+DATABASE_PATH = _data_dir() / "scapder.db"
 engine = create_engine(
     f"sqlite:///{DATABASE_PATH}",
     connect_args={"check_same_thread": False},
