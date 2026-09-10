@@ -601,12 +601,11 @@ def analysis_detail(
 # =========================================================
 
 
-@router.post("/{analysis_id}/insights")
-def create_insights(
+def _create_insights_payload(
     analysis_id: str,
     regenerate: bool = False,
-    user: User = Depends(current_user),
-    database: Session = Depends(get_db),
+    user: User | None = None,
+    database: Session | None = None,
 ) -> dict:
     analysis = database.get(Analysis, analysis_id)
     site = database.get(Site, analysis.site_id) if analysis else None
@@ -627,6 +626,26 @@ def create_insights(
     analysis.insights = insights
     database.commit()
     return insights
+
+
+@router.post("/{analysis_id}/insights")
+def create_insights(
+    analysis_id: str,
+    regenerate: bool = False,
+    user: User = Depends(current_user),
+    database: Session = Depends(get_db),
+) -> dict:
+    return _create_insights_payload(analysis_id, regenerate, user, database)
+
+
+@router.post("/{analysis_id}/recomendaciones")
+def create_recommendations_alias(
+    analysis_id: str,
+    regenerate: bool = False,
+    user: User = Depends(current_user),
+    database: Session = Depends(get_db),
+) -> dict:
+    return _create_insights_payload(analysis_id, regenerate, user, database)
 
 
 # =========================================================

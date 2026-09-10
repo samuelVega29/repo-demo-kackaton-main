@@ -241,22 +241,27 @@ export default function Header({ user, logout, retailer, site, job, goHome }) {
           <span className="mt-1 block text-[10px] font-bold text-[#ff7a1a]">{site?.name || retailer?.name || 'SCAPDER'}</span>
         </div>
         {tourHintVisible && (
-          <button
-            className="absolute right-[88px] top-[52px] z-50 hidden w-[430px] animate-[tour-bounce-in_.8s_cubic-bezier(.2,1.45,.4,1)_both] items-center gap-4 rounded-[24px] border-2 border-[#ff7a1a] bg-white p-4 text-left text-[#071d25] shadow-[0_28px_78px_-34px_rgba(255,91,18,.9)] transition hover:-translate-y-1 hover:scale-[1.01] md:flex"
-            onClick={startTour}
-            type="button"
-            aria-label="Iniciar recorrido guiado"
-          >
-            <span className="relative grid h-20 w-20 shrink-0 animate-[tour-avatar-pulse_1.35s_ease-in-out_infinite] place-items-center overflow-hidden rounded-full bg-[#fff1eb] ring-4 ring-[#ff7a1a]">
-              <span className="absolute inset-[-8px] rounded-full border-2 border-[#ff7a1a]/30" />
-              <img src={robotGuide} alt="" className="h-full w-full object-cover object-top" />
-            </span>
-            <span className="min-w-0">
-              <b className="block text-[18px] font-black leading-5">Si eres nuevo, puedo guiarte</b>
-              <span className="mt-2 block text-[13px] font-bold leading-5 text-[#667085]">Haz clic aqui o en el boton naranja para iniciar el recorrido de la app.</span>
-              <span className="mt-3 inline-flex rounded-full bg-[#ff7a1a] px-3 py-1.5 text-[11px] font-black uppercase text-white">Iniciar tour</span>
-            </span>
-          </button>
+          <div className="absolute right-[88px] top-[52px] z-50 hidden w-[430px] animate-[tour-bounce-in_.8s_cubic-bezier(.2,1.45,.4,1)_both] items-center gap-4 rounded-[24px] border-2 border-[#ff7a1a] bg-white p-4 pr-12 text-left text-[#071d25] shadow-[0_28px_78px_-34px_rgba(255,91,18,.9)] transition hover:-translate-y-1 hover:scale-[1.01] md:flex">
+            <button
+              className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border border-[#ffd6c2] bg-[#fff7f2] text-[#ff5b12] transition hover:border-[#ff7a1a] hover:bg-[#ff7a1a] hover:text-white"
+              onClick={() => setTourHintVisible(false)}
+              type="button"
+              aria-label="Cerrar sugerencia de recorrido"
+            >
+              <X size={15} strokeWidth={3} />
+            </button>
+            <button className="flex min-w-0 flex-1 items-center gap-4 text-left" onClick={startTour} type="button" aria-label="Iniciar recorrido guiado">
+              <span className="relative grid h-20 w-20 shrink-0 animate-[tour-avatar-pulse_1.35s_ease-in-out_infinite] place-items-center overflow-hidden rounded-full bg-[#fff1eb] ring-4 ring-[#ff7a1a]">
+                <span className="absolute inset-[-8px] rounded-full border-2 border-[#ff7a1a]/30" />
+                <img src={robotGuide} alt="" className="h-full w-full object-cover object-top" />
+              </span>
+              <span className="min-w-0">
+                <b className="block text-[18px] font-black leading-5">Si eres nuevo, puedo guiarte</b>
+                <span className="mt-2 block text-[13px] font-bold leading-5 text-[#667085]">Haz clic aqui o en el boton naranja para iniciar el recorrido de la app.</span>
+                <span className="mt-3 inline-flex rounded-full bg-[#ff7a1a] px-3 py-1.5 text-[11px] font-black uppercase text-white">Iniciar tour</span>
+              </span>
+            </button>
+          </div>
         )}
         <button className="grid h-10 w-10 place-items-center rounded-full border-2 border-white bg-[#ff5b12] text-white shadow-[0_0_24px_rgba(255,91,18,.35)] transition hover:-translate-y-px hover:bg-[#e94d08]" onClick={() => setInstructionsOpen(true)} type="button" aria-label="Ver instrucciones de esta seccion" title="Instrucciones" data-tour="help">
           <AlertCircle size={19} strokeWidth={2.5} />
