@@ -46,11 +46,23 @@ export default function InsightsPage() {
     setInsightsLoading(true)
     setInsightsError('')
     try {
-      const url = `/api/analyses/${analysisId}/insights${regenerate ? '?regenerate=true' : ''}`
-      const result = await api(url, { method: 'POST' })
+      const suffix = regenerate ? '?regenerate=true' : ''
+      let result
+      try {
+        result = await api(`/api/analyses/${analysisId}/insights${suffix}`, { method: 'POST' })
+      } catch (error) {
+        const message = String(error.message || '').toLowerCase()
+        if (!message.includes('no encontrado') && !message.includes('not found')) throw error
+        result = await api(`/api/analyses/${analysisId}/recomendaciones${suffix}`, { method: 'POST' })
+      }
       setInsights(result)
     } catch (error) {
-      setInsightsError(error.message)
+      const message = String(error.message || '')
+      setInsightsError(
+        message.toLowerCase().includes('not found')
+          ? 'El backend que esta corriendo no tiene cargado el endpoint de recomendaciones. Reinicia el servidor backend y vuelve a intentarlo.'
+          : message
+      )
     } finally {
       setInsightsLoading(false)
     }

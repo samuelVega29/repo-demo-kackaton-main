@@ -2,6 +2,7 @@ import { AlertCircle, LogOut, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
+import introMascot from '../../assets/images/download.gif'
 import logo from '../../assets/images/logo.png'
 import robotGuide from '../../assets/images/robot-chistoso.png'
 
@@ -134,13 +135,13 @@ export default function Header({ user, logout, retailer, site, job, goHome }) {
   const instructions = instructionBySection(pathname, site)
 
   useEffect(() => {
-    const showTimer = window.setTimeout(() => setTourHintVisible(true), 900)
-    const hideTimer = window.setTimeout(() => setTourHintVisible(false), 10900)
+    const showTimer = window.setTimeout(() => setTourHintVisible(true), retailer ? 900 : 12400)
+    const hideTimer = window.setTimeout(() => setTourHintVisible(false), retailer ? 10900 : 22400)
     return () => {
       window.clearTimeout(showTimer)
       window.clearTimeout(hideTimer)
     }
-  }, [])
+  }, [retailer])
 
   const goTo = (target) => {
     if (target === 'site') {
@@ -204,20 +205,35 @@ export default function Header({ user, logout, retailer, site, job, goHome }) {
         <img src={logo} alt="Scapder" className="h-auto w-[112px] object-contain max-[760px]:w-[96px]" />
       </button>
 
-      <nav className="hidden items-center gap-1 rounded-2xl border border-white/10 bg-[#111827] p-1.5 md:flex" data-tour="navigation">
-        {navItems.map(([step, label, target]) => (
-          <button
-            aria-current={active(target) ? 'page' : undefined}
-            className={`flex min-h-[46px] items-center gap-2 rounded-xl px-3 py-2 text-left transition lg:px-4 ${active(target) ? 'bg-[#ff7a1a] text-white shadow-[0_14px_34px_-24px_rgba(255,122,26,.85)]' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}
-            key={label}
-            onClick={() => goTo(target)}
-            type="button"
-          >
-            <span className={`text-[18px] font-black leading-none ${active(target) ? 'text-[#071d25]' : 'text-[#ff7a1a]'}`}>{step}</span>
-            <span className="text-[12px] font-black leading-none">{label}</span>
-          </button>
-        ))}
-      </nav>
+      {retailer && (
+        <nav className="hidden items-center gap-1 rounded-2xl border border-white/10 bg-[#111827] p-1.5 md:flex" data-tour="navigation">
+          {navItems.map(([step, label, target]) => (
+            <button
+              aria-current={active(target) ? 'page' : undefined}
+              className={`flex min-h-[46px] items-center gap-2 rounded-xl px-3 py-2 text-left transition lg:px-4 ${active(target) ? 'bg-[#ff7a1a] text-white shadow-[0_14px_34px_-24px_rgba(255,122,26,.85)]' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}
+              key={label}
+              onClick={() => goTo(target)}
+              type="button"
+            >
+              <span className={`text-[18px] font-black leading-none ${active(target) ? 'text-[#071d25]' : 'text-[#ff7a1a]'}`}>{step}</span>
+              <span className="text-[12px] font-black leading-none">{label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
+
+      {!retailer && (
+        <div className="pointer-events-none absolute left-[118px] top-1/2 z-20 hidden -translate-y-1/2 md:block" aria-hidden="true">
+          <div className="relative h-[92px] w-[118px] overflow-visible">
+            <span className="header-intro-glow absolute left-1/2 top-1/2 h-20 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#ff7a1a]/20 blur-2xl" />
+            <img
+              src={introMascot}
+              alt=""
+              className="header-intro-mascot relative h-[92px] w-auto object-contain drop-shadow-[0_14px_24px_rgba(0,0,0,.35)]"
+            />
+          </div>
+        </div>
+      )}
 
       <div className="relative flex items-center gap-3">
         <div className="hidden text-right sm:block" data-tour="workspace">
@@ -225,22 +241,27 @@ export default function Header({ user, logout, retailer, site, job, goHome }) {
           <span className="mt-1 block text-[10px] font-bold text-[#ff7a1a]">{site?.name || retailer?.name || 'SCAPDER'}</span>
         </div>
         {tourHintVisible && (
-          <button
-            className="absolute right-[88px] top-[52px] z-50 hidden w-[430px] animate-[tour-bounce-in_.8s_cubic-bezier(.2,1.45,.4,1)_both] items-center gap-4 rounded-[24px] border-2 border-[#ff7a1a] bg-white p-4 text-left text-[#071d25] shadow-[0_28px_78px_-34px_rgba(255,91,18,.9)] transition hover:-translate-y-1 hover:scale-[1.01] md:flex"
-            onClick={startTour}
-            type="button"
-            aria-label="Iniciar recorrido guiado"
-          >
-            <span className="relative grid h-20 w-20 shrink-0 animate-[tour-avatar-pulse_1.35s_ease-in-out_infinite] place-items-center overflow-hidden rounded-full bg-[#fff1eb] ring-4 ring-[#ff7a1a]">
-              <span className="absolute inset-[-8px] rounded-full border-2 border-[#ff7a1a]/30" />
-              <img src={robotGuide} alt="" className="h-full w-full object-cover object-top" />
-            </span>
-            <span className="min-w-0">
-              <b className="block text-[18px] font-black leading-5">Si eres nuevo, puedo guiarte</b>
-              <span className="mt-2 block text-[13px] font-bold leading-5 text-[#667085]">Haz clic aqui o en el boton naranja para iniciar el recorrido de la app.</span>
-              <span className="mt-3 inline-flex rounded-full bg-[#ff7a1a] px-3 py-1.5 text-[11px] font-black uppercase text-white">Iniciar tour</span>
-            </span>
-          </button>
+          <div className="absolute right-[88px] top-[52px] z-50 hidden w-[430px] animate-[tour-bounce-in_.8s_cubic-bezier(.2,1.45,.4,1)_both] items-center gap-4 rounded-[24px] border-2 border-[#ff7a1a] bg-white p-4 pr-12 text-left text-[#071d25] shadow-[0_28px_78px_-34px_rgba(255,91,18,.9)] transition hover:-translate-y-1 hover:scale-[1.01] md:flex">
+            <button
+              className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border border-[#ffd6c2] bg-[#fff7f2] text-[#ff5b12] transition hover:border-[#ff7a1a] hover:bg-[#ff7a1a] hover:text-white"
+              onClick={() => setTourHintVisible(false)}
+              type="button"
+              aria-label="Cerrar sugerencia de recorrido"
+            >
+              <X size={15} strokeWidth={3} />
+            </button>
+            <button className="flex min-w-0 flex-1 items-center gap-4 text-left" onClick={startTour} type="button" aria-label="Iniciar recorrido guiado">
+              <span className="relative grid h-20 w-20 shrink-0 animate-[tour-avatar-pulse_1.35s_ease-in-out_infinite] place-items-center overflow-hidden rounded-full bg-[#fff1eb] ring-4 ring-[#ff7a1a]">
+                <span className="absolute inset-[-8px] rounded-full border-2 border-[#ff7a1a]/30" />
+                <img src={robotGuide} alt="" className="h-full w-full object-cover object-top" />
+              </span>
+              <span className="min-w-0">
+                <b className="block text-[18px] font-black leading-5">Si eres nuevo, puedo guiarte</b>
+                <span className="mt-2 block text-[13px] font-bold leading-5 text-[#667085]">Haz clic aqui o en el boton naranja para iniciar el recorrido de la app.</span>
+                <span className="mt-3 inline-flex rounded-full bg-[#ff7a1a] px-3 py-1.5 text-[11px] font-black uppercase text-white">Iniciar tour</span>
+              </span>
+            </button>
+          </div>
         )}
         <button className="grid h-10 w-10 place-items-center rounded-full border-2 border-white bg-[#ff5b12] text-white shadow-[0_0_24px_rgba(255,91,18,.35)] transition hover:-translate-y-px hover:bg-[#e94d08]" onClick={() => setInstructionsOpen(true)} type="button" aria-label="Ver instrucciones de esta seccion" title="Instrucciones" data-tour="help">
           <AlertCircle size={19} strokeWidth={2.5} />
