@@ -1,4 +1,3 @@
-
 # 🚀 Scapder Vision Lab
 
 ### Plataforma de análisis inteligente de espacios comerciales
@@ -15,6 +14,11 @@ El sistema permite configurar las áreas de análisis, ubicar góndolas, procesa
 - Juan Pablo Barrera Correa
 - Sebastian David Ruiz Rinta
 
+## 👥 Integrante Calidad de Software
+
+- Samuel Felipe Vega Mesa
+
+---
 
 ## 📸 Evidencias del funcionamiento del proyecto
 
@@ -36,7 +40,6 @@ La interfaz incluye herramientas para ajustar las posiciones de las góndolas, d
 
 <img width="100%" alt="Configuración de góndolas y áreas de análisis" src="https://github.com/user-attachments/assets/4c54955c-f160-48b6-bd84-a8e2e1a703f6" />
 
-
 ### 3. Procesamiento del video mediante inteligencia artificial
 
 Una vez configurado el espacio, el sistema inicia el procesamiento del video mediante técnicas de inteligencia artificial y visión por computadora.
@@ -44,7 +47,6 @@ Una vez configurado el espacio, el sistema inicia el procesamiento del video med
 Durante esta etapa, la plataforma muestra el progreso del análisis y sus diferentes procesos, como la detección de personas, el análisis de trayectorias, el cálculo de permanencia y la generación del mapa de calor.
 
 <img width="100%" alt="Procesamiento del video mediante inteligencia artificial" src="https://github.com/user-attachments/assets/d051a2b2-633d-498b-b5cf-5999d226ebd0" />
-
 
 ### 4. Visualización de resultados y mapas de calor
 
