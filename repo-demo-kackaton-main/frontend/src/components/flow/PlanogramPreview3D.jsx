@@ -2,9 +2,15 @@ import { useMemo, useState } from 'react'
 import * as THREE from 'three'
 import { Canvas } from '@react-three/fiber'
 import { Grid, Line, OrbitControls, Text } from '@react-three/drei'
+import { ROWS as productRows, COLUMNS as productColumns } from '../../utils/constants'
 
-const productRows = ['Superior', 'Media', 'Inferior']
-const productColumns = ['Izquierda', 'Centro', 'Derecha']
+const CATEGORY_PALETTE = ['#d4ff70', '#61dec0', '#ff6b3d', '#7ea8ff', '#ff8bd1', '#ffd166', '#a78bfa', '#4dd0ff']
+
+export function categoryColor(id) {
+  let hash = 0
+  for (let index = 0; index < String(id).length; index += 1) hash = (hash * 31 + String(id).charCodeAt(index)) >>> 0
+  return CATEGORY_PALETTE[hash % CATEGORY_PALETTE.length]
+}
 
 function buildFacadeTexture(products, flip) {
   const W = 600
@@ -50,16 +56,18 @@ function PreviewShelf({ item, floor, selected, onSelect }) {
   const x = item.x + item.width / 2 - floor.width / 2
   const z = item.z + item.depth / 2 - floor.depth / 2
   const accent = selected ? '#d9ff6b' : '#3c665c'
+  const category = categoryColor(item.name || item.id)
+  const rotationY = -THREE.MathUtils.degToRad(item.rotation || 0)
   const facade = useMemo(() => {
     if (!selected) return null
     const products = item.products || [[]]
     return { front: buildFacadeTexture(products), back: buildFacadeTexture(products, true) }
   }, [selected, item.products, item.id])
   return (
-    <group position={[x, 0, z]} onClick={(event) => { event.stopPropagation(); onSelect(item.id) }}>
+    <group position={[x, 0, z]} rotation={[0, rotationY, 0]} onClick={(event) => { event.stopPropagation(); onSelect(item.id) }}>
       <mesh position={[0, 0.76, 0]} castShadow>
         <boxGeometry args={[item.width, 1.45, item.depth]} />
-        <meshStandardMaterial color="#18312b" emissive={accent} emissiveIntensity={selected ? 0.35 : 0.15} />
+        <meshStandardMaterial color={category} emissive={accent} emissiveIntensity={selected ? 0.35 : 0.15} />
       </mesh>
       {[0.25, 0.73, 1.2].map((height) => <mesh position={[0, height, 0]} key={height}><boxGeometry args={[item.width + 0.08, 0.05, item.depth + 0.1]} /><meshStandardMaterial color={accent} /></mesh>)}
       <Text position={[0, 1.62, 0]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.16} color="#e1ece7">{item.name}</Text>
@@ -100,7 +108,7 @@ export default function PlanogramPreview3D({ configuration, onSelect }) {
   const geometry = configuration.gondolas || []
   const isEmpty = geometry.length === 0
   return (
-    <div className="relative h-[560px] min-h-[360px] overflow-hidden bg-[#07100e]">
+    <div className="relative h-[400px] w-full [&_canvas]:touch-none max-[980px]:h-[320px]">
       <Canvas shadows camera={{ position: [floor.width * 0.7, 9, floor.depth * 0.8], fov: 43 }} dpr={[1, 1.5]}>
         <PreviewStore
           configuration={configuration}
@@ -108,9 +116,8 @@ export default function PlanogramPreview3D({ configuration, onSelect }) {
           onSelect={(id) => { setSelectedId(id); if (onSelect) onSelect(id) }}
         />
       </Canvas>
-      {isEmpty && <div className="absolute inset-0 grid place-items-center p-8 text-center text-sm text-slate-500">Aún no hay góndolas. Dibuja tu planograma para verlo en 3D.</div>}
-      <span className="absolute bottom-4 left-4 z-10 font-mono text-[10px] uppercase tracking-widest text-slate-400">VISTA 3D DEL PLANO · ARRASTRA · SELECCIONA UNA GÓNDOLA</span>
+      {isEmpty && <div className="absolute inset-0 grid place-items-center p-[30px] text-center text-[11px] text-[#6c837a]">Aún no hay góndolas. Dibuja tu planograma para verlo en 3D.</div>}
+      <span className="pointer-events-none absolute bottom-5 left-[22px] text-[8px] font-medium font-[ui-monospace,monospace] tracking-[.1em] text-[#6c837a] max-[760px]:bottom-[14px] max-[760px]:left-[14px]">VISTA 3D DEL PLANO · ARRASTRA · SELECCIONA UNA GÓNDOLA</span>
     </div>
   )
 }
-

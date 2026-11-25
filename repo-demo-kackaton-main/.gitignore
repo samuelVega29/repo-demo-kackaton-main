@@ -1,11 +1,12 @@
 .DS_Store
-.env
+.venv
 training/dataset/*
 !training/dataset/.gitkeep
 training/annotations/*
 !training/annotations/.gitkeep
 models/exported/*.pt
 models/exported/*.onnx
+<<<<<<< HEAD
 
 # Logs
 *.log
@@ -23,3 +24,18 @@ backend/data/uploads/*
 !backend/data/uploads/.gitkeep
 *.db
 *.sqlite
+=======
+*.log
+*.log.err
+backend_out.log
+backend_err.log
+frontend_out.log
+frontend_err.log
+backend/build/
+backend/dist/
+frontend/release/
+desktop-release*/
+>>>>>>> 58e175e19031c1edf138d288f0f7510c4f57fc88
+
+backend/.env
+**/.env

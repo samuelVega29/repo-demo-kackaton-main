@@ -69,7 +69,7 @@ def user_from_query_token(
     scapder_session: str | None = Cookie(None),
     database: Session = Depends(get_db),
 ) -> User:
-    credential = scapder_session or token
+    credential = token or scapder_session
     if not credential:
         raise HTTPException(status_code=401, detail="Se requiere una sesión para acceder al artefacto")
     payload = decode_token(credential)
@@ -83,3 +83,5 @@ def require_admin(user: User = Depends(current_user)) -> User:
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Se requiere rol administrador")
     return user
+
+

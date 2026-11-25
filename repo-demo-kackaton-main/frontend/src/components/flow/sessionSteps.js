@@ -1,0 +1,48 @@
+export const sessionSteps = [
+  {
+    id: 'video',
+    number: '01',
+    label: 'Video',
+    path: (siteId) => `/sites/${siteId}/video`,
+    done: (app) => Boolean(app.file),
+    eyebrow: 'Nuevo analisis',
+    title: 'Sube tu',
+    accent: 'video.',
+    desc: 'Carga un video MP4 de la camara fija. De este video se toma el frame para configurar la sede.',
+  },
+  {
+    id: 'captura',
+    number: '02',
+    label: 'Frame',
+    path: (siteId) => `/sites/${siteId}/captura`,
+    done: (app) => Boolean(app.frameCapture),
+    eyebrow: 'Frame base',
+    title: 'Selecciona un',
+    accent: 'frame.',
+    desc: 'Pausa el video en una imagen clara y captura el frame que servira como referencia.',
+  },
+  {
+    id: 'planograma',
+    number: '03',
+    label: 'Gondolas',
+    path: (siteId) => `/sites/${siteId}/planograma`,
+    done: (app) => Boolean(app.site && app.site.configuration.gondolas.length > 0),
+    eyebrow: 'Plano de tienda',
+    title: 'Dibuja las',
+    accent: 'gondolas.',
+    desc: 'Dibuja y guarda las gondolas. Esta informacion se reutilizara en futuros videos de la misma sede.',
+  },
+  {
+    id: 'analizar',
+    number: '04',
+    label: 'Analisis',
+    path: (siteId) => `/sedes/${siteId}/analisis/nuevo`,
+    done: (app) => Boolean(app.job?.result),
+    eyebrow: 'Nuevo analisis',
+    title: 'Analiza el',
+    accent: 'video.',
+    desc: 'Ejecuta el analisis usando el video actual y la configuracion guardada de esta sede.',
+  },
+]
+
+export const sessionStepIndex = (id) => sessionSteps.findIndex((step) => step.id === id)

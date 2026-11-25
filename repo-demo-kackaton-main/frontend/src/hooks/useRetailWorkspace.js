@@ -46,7 +46,6 @@ export default function useRetailWorkspace(user, logout) {
       setJob({ status: 'failed', stage: 'upload', progress: 0, message: 'Selecciona un archivo MP4' })
       return
     }
-    if (preview) URL.revokeObjectURL(preview)
     setFile(candidate)
     setPreview(URL.createObjectURL(candidate))
     setJob(null)
@@ -94,7 +93,7 @@ export default function useRetailWorkspace(user, logout) {
 
   const suggestGondolas = async (capture) => {
     if (!capture?.dataUrl || !capture.width || !capture.height) {
-      throw new Error('Captura primero un frame en Calibrar camara')
+      throw new Error('Captura primero un frame antes de dibujar gondolas')
     }
     const response = await retailApi.suggestGondolas(siteRef.current.id, {
       configuration: siteRef.current.configuration,

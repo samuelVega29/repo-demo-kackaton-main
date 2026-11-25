@@ -1,187 +1,204 @@
-import { useEffect, useRef, useState } from 'react'
-import { forwardHomography, inverseHomography, projectFloor } from '../../lib/homography'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import LiveAlignment from './LiveAlignment'
+import { ROWS as rows, COLUMNS as columns, emptyProducts } from '../../utils/constants'
+import { pointInPolygon, nearestPointInPolygon, drawFloorOutline } from '../../utils/floorOutline'
+import { gondolaCorners, inverseHomography, projectFloor } from '../../utils/homography'
+import { hexToRgba } from '../../utils/format'
 
-const rows = ['Superior', 'Media', 'Inferior']
-const columns = ['Izquierda', 'Centro', 'Derecha']
-const emptyProducts = () => Array.from({ length: 3 }, () => ['', '', ''])
-const PALETTE = ['#61dec0', '#d4ff70', '#ff9ecb', '#7fb2ff', '#ffb26f', '#c88bff']
-const nextColor = (count) => PALETTE[count % PALETTE.length]
-const hexToRgba = (hex, alpha) => {
-  const normalized = hex.replace('#', '')
-  const full = normalized.length === 3 ? normalized.split('').map((c) => c + c).join('') : normalized
-  const num = parseInt(full, 16)
-  if (Number.isNaN(num)) return `rgba(97, 222, 192, ${alpha})`
-  return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`
+const GRID_SNAP = 0.25
+
+const ZONE_STATUS = {
+  none: { label: 'sin zona definida', dot: '', color: '#8aa39a' },
+  in: { label: 'dentro de zona', dot: '✅', color: '#d4ff70' },
+  partial: { label: 'parcialmente fuera de zona', dot: '⚠️', color: '#ffb454' },
+  out: { label: 'fuera de zona', dot: '⚠️', color: '#ff6b3d' },
 }
 
-let drawId = 0
+function snapToGrid(value, gridSize = GRID_SNAP) {
+  return Math.round(value / gridSize) * gridSize
+}
 
-function DrawOnVideo({ frameCapture, configuration, onCandidate }) {
-  const canvasRef = useRef(null)
-  const forward = forwardHomography(configuration.camera)
-  const inverse = inverseHomography(configuration.camera)
-  const [corners, setCorners] = useState([])
-  const width = frameCapture.width
-  const height = frameCapture.height
+// Mini-preview live del video para mobile/tablet: dibuja el frame con las góndolas
+// proyectadas a baja resolución, así redibujar en cada drag es barato y el usuario ve
+// el resultado en tiempo real mientras edita el plano.
+function PlanPreview({ frameCapture, configuration, selectedId, zone, onPreviewClick }) {
+  const ref = useRef(null)
   const floor = configuration.floor || {}
+  const camera = configuration.camera || {}
+  const inverse = inverseHomography(camera) || null
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || !frameCapture) return
+    const canvas = ref.current
+    if (!canvas || !frameCapture || !inverse) return
+    const W = 340
+    const H = Math.round(W * (frameCapture.height / frameCapture.width))
+    canvas.width = W
+    canvas.height = H
     const ctx = canvas.getContext('2d')
-    canvas.width = width
-    canvas.height = height
     const image = new Image()
     image.onload = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
-      ctx.fillStyle = 'rgba(4, 10, 8, .30)'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.clearRect(0, 0, W, H)
+      ctx.drawImage(image, 0, 0, W, H)
+      ctx.fillStyle = 'rgba(4, 10, 8, .3)'
+      ctx.fillRect(0, 0, W, H)
       const toPx = (x, z) => {
         const normalized = projectFloor(inverse, x, z)
-        if (!normalized) return null
-        return [normalized[0] * canvas.width, normalized[1] * canvas.height]
+        return normalized ? [normalized[0] * W, normalized[1] * H] : null
       }
+      if (zone && zone.length > 1) {
+        ctx.beginPath()
+        ctx.moveTo(zone[0][0] * W, zone[0][1] * H)
+        zone.slice(1).forEach(([x, y]) => ctx.lineTo(x * W, y * H))
+        if (zone.length >= 3) {
+          ctx.closePath()
+          ctx.fillStyle = 'rgba(255, 91, 18, .14)'
+          ctx.fill()
+        }
+        ctx.strokeStyle = 'rgba(255, 91, 18, .95)'
+        ctx.lineWidth = 2
+        ctx.stroke()
+      }
+      const outline = floor.outline
+      if (outline && outline.length > 1) drawFloorOutline(ctx, outline, toPx, 'ZONA')
       ;(configuration.gondolas || []).forEach((gondola) => {
         const color = gondola.color || '#61dec0'
-        const gondolaCorners = [[gondola.x, gondola.z], [gondola.x + gondola.width, gondola.z], [gondola.x + gondola.width, gondola.z + gondola.depth], [gondola.x, gondola.z + gondola.depth]]
-        const pixels = gondolaCorners.map(([x, z]) => toPx(x, z)).filter(Boolean)
+        const pixels = gondolaCorners(gondola).map(([x, z]) => toPx(x, z)).filter(Boolean)
         if (pixels.length < 4) return
         ctx.beginPath()
         ctx.moveTo(...pixels[0])
         pixels.slice(1).forEach((point) => ctx.lineTo(...point))
         ctx.closePath()
-        ctx.fillStyle = hexToRgba(color, .10)
+        ctx.fillStyle = hexToRgba(color, .18)
         ctx.fill()
-        ctx.strokeStyle = color
-        ctx.lineWidth = 3
+        ctx.strokeStyle = selectedId === gondola.id ? '#ff876a' : color
+        ctx.lineWidth = selectedId === gondola.id ? 3 : 1.2
         ctx.stroke()
       })
-      if (forward) {
-        corners.forEach((point, index) => {
-          ctx.beginPath()
-          ctx.arc(point[0], point[1], 9, 0, 2 * Math.PI)
-          ctx.fillStyle = '#0c1714'
-          ctx.fill()
-          ctx.strokeStyle = '#d4ff70'
-          ctx.lineWidth = 2.5
-          ctx.stroke()
-          ctx.fillStyle = '#d4ff70'
-          ctx.font = 'bold 13px ui-monospace, monospace'
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'middle'
-          ctx.fillText(String(index + 1), point[0], point[1])
-        })
-        if (corners.length === 4) {
-          const xs = corners.map((p) => p[0])
-          const ys = corners.map((p) => p[1])
-          const minX = Math.min(...xs)
-          const maxX = Math.max(...xs)
-          const minY = Math.min(...ys)
-          const maxY = Math.max(...ys)
-          ctx.strokeStyle = 'rgba(212, 255, 112, .95)'
-          ctx.lineWidth = 3
-          ctx.setLineDash([8, 6])
-          ctx.strokeRect(minX, minY, maxX - minX, maxY - minY)
-          ctx.setLineDash([])
-          ctx.fillStyle = 'rgba(212, 255, 112, .12)'
-          ctx.fillRect(minX, minY, maxX - minX, maxY - minY)
-          const m1 = projectFloor(forward, minX / width, minY / height)
-          const m2 = projectFloor(forward, maxX / width, maxY / height)
-          if (m1 && m2) {
-            const w = Math.abs(m2[0] - m1[0])
-            const d = Math.abs(m2[1] - m1[1])
-            ctx.fillStyle = '#d4ff70'
-            ctx.font = '12px ui-monospace, monospace'
-            ctx.fillText(`${w.toFixed(2)} × ${d.toFixed(2)} m`, (minX + maxX) / 2, minY - 12)
-          }
-        }
-      }
-      if (!forward) {
-        ctx.fillStyle = '#ffd9c9'
-        ctx.font = '12px ui-monospace, monospace'
-        ctx.textAlign = 'center'
-        ctx.fillText('Calibra la cámara (4 puntos) para proyectar en metros', width / 2, 22)
-      }
     }
     image.src = frameCapture.dataUrl
-  }, [frameCapture, width, height, corners, configuration.gondolas, inverse, forward, floor])
+  }, [frameCapture, configuration, inverse, floor.outline, selectedId, zone])
 
-  const toPoint = (event) => {
-    const rect = canvasRef.current.getBoundingClientRect()
-    return [Math.max(0, Math.min(width, (event.clientX - rect.left) / rect.width * width)), Math.max(0, Math.min(height, (event.clientY - rect.top) / rect.height * height))]
-  }
-
-  const addCorner = (event) => {
-    if (!forward) return
-    const point = toPoint(event)
-    setCorners((current) => {
-      const next = [...current, point]
-      if (next.length === 4) {
-        const xs = next.map((p) => p[0])
-        const ys = next.map((p) => p[1])
-        const minX = Math.min(...xs)
-        const maxX = Math.max(...xs)
-        const minY = Math.min(...ys)
-        const maxY = Math.max(...ys)
-        const a = projectFloor(forward, minX / width, minY / height)
-        const b = projectFloor(forward, maxX / width, maxY / height)
-        if (a && b) {
-          const x = Math.min(a[0], b[0])
-          const z = Math.min(a[1], b[1])
-          const candidateWidth = Math.abs(b[0] - a[0])
-          const candidateDepth = Math.abs(b[1] - a[1])
-          if (!(candidateWidth < 0.5 || candidateDepth < 0.4 || x < -0.5 || z < -0.5 || x + candidateWidth > floor.width + 0.5 || z + candidateDepth > floor.depth + 0.5)) {
-            onCandidate({ id: `d-${Date.now()}-${drawId++}`, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, width: Math.round(candidateWidth * 100) / 100, depth: Math.round(candidateDepth * 100) / 100, confidence: 1 })
-          }
-        }
-        return []
-      }
-      return next
-    })
+  if (!frameCapture) {
+    return <div className="grid place-items-center border border-dashed border-[#49675c] bg-[rgba(9,21,18,.8)] px-3 py-4 text-center text-[9px] leading-[1.6] text-[#b9d7f1]">Captura un frame en “Calibrar cámara” para ver el preview del video.</div>
   }
 
   return (
-    <div className="mx-auto my-4 max-w-2xl">
-      <canvas
-        ref={canvasRef}
-        onPointerDown={addCorner}
-      />
-      <div className="my-2 flex items-center gap-3 [&_button]:border [&_button]:border-teal-900 [&_button]:px-3 [&_button]:py-2 [&_button]:text-xs [&_button]:text-slate-300">
-        <span className="font-mono text-xs font-semibold text-lime-300">{corners.length} / 4 esquinas</span>
-        {corners.length > 0 && <button type="button" onClick={() => setCorners((current) => current.slice(0, -1))}>Deshacer último</button>}
-      </div>
-      <p>Haz 4 clics sobre las <b>esquinas</b> del piso de la góndola en el frame (en cualquier orden). Al marcar la 4ª, se proyecta a metros con tu calibración y aparece como candidato. Si no se dibujan bien los contornos, revisa la calibración de la cámara.</p>
-    </div>
+    <button
+      type="button"
+      onClick={onPreviewClick}
+      className="block w-full cursor-pointer border border-[#2f80ff]/35 bg-[#08120f] p-1 text-left active:opacity-90"
+      title="Tocar para ver el video en grande"
+    >
+      <canvas ref={ref} className="block h-auto w-full" style={{ aspectRatio: `${frameCapture.width}/${frameCapture.height}` }} />
+      <span className="block px-2 py-1 text-[9px] font-semibold font-[ui-monospace,monospace] uppercase tracking-[.12em] text-[#ff9a3d]">Video en vivo · tocar para ver en grande</span>
+    </button>
   )
 }
 
-export default function PlanogramEditor({ configuration, onChange, onSave, frameCapture, onSuggest }) {
+function PlanogramEditor({ configuration, onChange, onSave, frameCapture, zone }) {
   const [selectedId, setSelectedId] = useState(configuration.gondolas[0]?.id || null)
   const [saving, setSaving] = useState(false)
   const [saveState, setSaveState] = useState('')
-  const [suggestions, setSuggestions] = useState([])
-  const [detecting, setDetecting] = useState(false)
-  const [drawMode, setDrawMode] = useState(false)
-  const [showLive, setShowLive] = useState(false)
-  const [suggestError, setSuggestError] = useState('')
+  const [snapEnabled, setSnapEnabled] = useState(true)
+  const [floorDrawMode, setFloorDrawMode] = useState(false)
+  const [addMode, setAddMode] = useState(false)
+  const [handOutline, setHandOutline] = useState(null)
+  const [dragInfo, setDragInfo] = useState(null)
+  const [tab, setTab] = useState('video')
   const canvasRef = useRef(null)
   const pointer = useRef(null)
   const floor = configuration.floor
+  const polygon = floor.outline?.length >= 3 && floor.outline.every(([x, z]) => Number.isFinite(x) && Number.isFinite(z)) ? floor.outline : null
+  // El bosquejo de pasillos/acceso se dibuja grande sobre el mapa (la ZONA) para dar
+  // perspectiva: se transforma del espacio físico del piso al área que ocupa la zona.
+  const sketchZones = useMemo(() => {
+    const base = configuration.zones || []
+    if (!polygon) return base
+    const xs = polygon.map(([x]) => x)
+    const zs = polygon.map(([, z]) => z)
+    const minX = Math.min(...xs), maxX = Math.max(...xs)
+    const minZ = Math.min(...zs), maxZ = Math.max(...zs)
+    const zw = Math.max(0.01, maxX - minX)
+    const zd = Math.max(0.01, maxZ - minZ)
+    return base.map((zone) => ({
+      ...zone,
+      polygon: (zone.polygon || []).map(([x, z]) => [
+        Math.round((minX + (x / floor.width) * zw) * 100) / 100,
+        Math.round((minZ + (z / floor.depth) * zd) * 100) / 100,
+      ]),
+    }))
+  }, [polygon, configuration.zones, floor.width, floor.depth])
   const selected = configuration.gondolas.find((item) => item.id === selectedId)
+
+  const view = useMemo(() => {
+    const xs = polygon ? polygon.map(([x]) => x) : []
+    const zs = polygon ? polygon.map(([, z]) => z) : []
+    const allXs = xs.length ? xs.concat(0, floor.width) : [0, floor.width]
+    const allZs = zs.length ? zs.concat(0, floor.depth) : [0, floor.depth]
+    let minX = Math.min(...allXs) - 0.6
+    let maxX = Math.max(...allXs) + 0.6
+    let minZ = Math.min(...allZs) - 0.6
+    let maxZ = Math.max(...allZs) + 0.6
+    // Fuerza la proporción real de la sede (anchoSede/fondoSede): expande el eje
+    // sobrante para que ventana de dibujo y contenedor compartan el mismo aspect y
+    // las góndolas no se deformen (1m en X = 1m en Z).
+    const vw = maxX - minX
+    const vd = maxZ - minZ
+    const floorRatio = Math.max(0.01, floor.width) / Math.max(0.01, floor.depth)
+    if (vw / vd < floorRatio) {
+      const newVw = vd * floorRatio
+      const cx = (minX + maxX) / 2
+      minX = cx - newVw / 2
+      maxX = cx + newVw / 2
+    } else {
+      const newVd = vw / floorRatio
+      const cz = (minZ + maxZ) / 2
+      minZ = cz - newVd / 2
+      maxZ = cz + newVd / 2
+    }
+    return { minX, maxX, minZ, maxZ, width: maxX - minX, depth: maxZ - minZ }
+  }, [polygon, floor.width, floor.depth])
+
+  const nearestInside = (x, z, w, d) => {
+    if (!polygon) return { x, z }
+    const nearest = nearestPointInPolygon(x + w / 2, z + d / 2, polygon)
+    return { x: nearest.x - w / 2, z: nearest.z - d / 2 }
+  }
 
   const replaceGondolas = (gondolas) => onChange({ ...configuration, gondolas })
   const updateGondola = (id, values) => replaceGondolas(configuration.gondolas.map((item) => item.id === id ? { ...item, ...values } : item))
-  const addGondola = () => {
-    const id = `g-${Date.now()}`
+  const addGondolaAt = (x, z) => {
+    const width = Math.min(3, view.width - 0.5)
+    const depth = 0.7
+    const placed = nearestInside(
+      Math.round(Math.min(view.maxX - width, Math.max(view.minX, x)) * 100) / 100,
+      Math.round(Math.min(view.maxZ - depth, Math.max(view.minZ, z)) * 100) / 100,
+      width, depth,
+    )
     const item = {
-      id, name: `Góndola ${configuration.gondolas.length + 1}`,
-      x: 0.5, z: 0.5, width: Math.min(3, floor.width - 0.5), depth: 0.7,
-      color: nextColor(configuration.gondolas.length),
+      id: `g-${Date.now()}`,
+      name: `Góndola ${configuration.gondolas.length + 1}`,
+      x: Math.round(placed.x * 100) / 100,
+      z: Math.round(placed.z * 100) / 100,
+      width, depth, rotation: 0,
       segments: { rows, columns }, products: emptyProducts(),
     }
-    replaceGondolas([...configuration.gondolas, item]); setSelectedId(id)
+    replaceGondolas([...configuration.gondolas, item]); setSelectedId(item.id); setAddMode(false)
+  }
+  const addGondola = () => {
+    const width = Math.min(3, view.width - 0.5)
+    const depth = 0.7
+    // Cascada en fila para que cada góndola nueva no nazca exactamente encima de la
+    // anterior — antes todas arrancaban en el mismo (0.5, 0.5) y quedaban apiladas
+    // hasta que alguien las arrastraba a mano.
+    const stepX = width + 0.4
+    const stepZ = depth + 0.4
+    const perRow = Math.max(1, Math.floor((view.width - 0.5) / stepX))
+    const index = configuration.gondolas.length
+    addGondolaAt(
+      Math.min(Math.max(view.minX, view.maxX - width), view.minX + 0.5 + (index % perRow) * stepX),
+      Math.min(Math.max(view.minZ, view.maxZ - depth), view.minZ + 0.5 + Math.floor(index / perRow) * stepZ),
+    )
   }
   const removeGondola = () => {
     replaceGondolas(configuration.gondolas.filter((item) => item.id !== selectedId))
@@ -199,24 +216,53 @@ export default function PlanogramEditor({ configuration, onChange, onSave, frame
   const startPointer = (event, item, mode) => {
     event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId)
     setSelectedId(item.id)
-    pointer.current = { mode, startX: event.clientX, startY: event.clientY, item: { ...item } }
+    pointer.current = { mode, startX: event.clientX, startY: event.clientY, item: { ...item }, valid: { x: item.x, z: item.z } }
   }
   const movePointer = (event) => {
     if (!pointer.current || !canvasRef.current) return
     const rect = canvasRef.current.getBoundingClientRect()
-    const dx = (event.clientX - pointer.current.startX) / rect.width * floor.width
-    const dz = (event.clientY - pointer.current.startY) / rect.height * floor.depth
     const original = pointer.current.item
+    if (pointer.current.mode === 'rotate') {
+      // Angle from the gondola's own center to the pointer. The container's aspect-ratio
+      // matches the view window's width/depth ratio, so pixel-space angles equal meter ones.
+      const centerPx = [
+        rect.left + (original.x + original.width / 2 - view.minX) / view.width * rect.width,
+        rect.top + (original.z + original.depth / 2 - view.minZ) / view.depth * rect.height,
+      ]
+      const angle = Math.atan2(event.clientY - centerPx[1], event.clientX - centerPx[0]) * 180 / Math.PI + 90
+      updateGondola(original.id, { rotation: Math.round(((angle % 360) + 360) % 360) })
+      return
+    }
+    const dx = (event.clientX - pointer.current.startX) / rect.width * view.width
+    const dz = (event.clientY - pointer.current.startY) / rect.height * view.depth
     if (pointer.current.mode === 'move') {
-      updateGondola(original.id, {
-        x: Math.round(Math.min(floor.width - original.width, Math.max(0, original.x + dx)) * 100) / 100,
-        z: Math.round(Math.min(floor.depth - original.depth, Math.max(0, original.z + dz)) * 100) / 100,
-      })
+      let newX = original.x + dx
+      let newZ = original.z + dz
+      if (snapEnabled) {
+        newX = snapToGrid(newX)
+        newZ = snapToGrid(newZ)
+      }
+      newX = Math.round(Math.min(view.maxX - original.width, Math.max(view.minX, newX)) * 100) / 100
+      newZ = Math.round(Math.min(view.maxZ - original.depth, Math.max(view.minZ, newZ)) * 100) / 100
+      if (polygon && !pointInPolygon(newX + original.width / 2, newZ + original.depth / 2, polygon)) {
+        const nearest = nearestPointInPolygon(newX + original.width / 2, newZ + original.depth / 2, polygon)
+        newX = nearest.x - original.width / 2
+        newZ = nearest.z - original.depth / 2
+      }
+      pointer.current.valid = { x: newX, z: newZ }
+      updateGondola(original.id, { x: newX, z: newZ })
+      setDragInfo({ mode: 'move', x: newX, z: newZ, w: original.width, d: original.depth })
     } else {
-      updateGondola(original.id, {
-        width: Math.round(Math.min(floor.width - original.x, Math.max(0.5, original.width + dx)) * 100) / 100,
-        depth: Math.round(Math.min(floor.depth - original.z, Math.max(0.4, original.depth + dz)) * 100) / 100,
-      })
+      let newW = original.width + dx
+      let newD = original.depth + dz
+      if (snapEnabled) {
+        newW = snapToGrid(newW)
+        newD = snapToGrid(newD)
+      }
+      newW = Math.round(Math.min(view.maxX - original.x, Math.max(0.5, newW)) * 100) / 100
+      newD = Math.round(Math.min(view.maxZ - original.z, Math.max(0.4, newD)) * 100) / 100
+      updateGondola(original.id, { width: newW, depth: newD })
+      setDragInfo({ mode: 'resize', x: original.x, z: original.z, w: newW, d: newD })
     }
   }
   const updateProduct = (row, column, value) => {
@@ -224,6 +270,58 @@ export default function PlanogramEditor({ configuration, onChange, onSave, frame
     products[row][column] = value
     updateGondola(selected.id, { products })
   }
+  // Inputs numéricos de la góndola seleccionada. `rotation` se maneja en grados en todo
+  // el stack (drag, CSS y backend), SIN conversión a radianes aquí; la conversión deg→rad
+  // solo ocurre al proyectar (`gondolaCorners`). No se aplica snap al escribir a mano.
+  const commitNumeric = (field, rawValue) => {
+    if (rawValue === '') return
+    const num = Number(rawValue)
+    if (!Number.isFinite(num)) return
+    let value = Math.round(num * 100) / 100
+    if (field === 'rotation') {
+      value = ((value % 360) + 360) % 360
+      updateGondola(selected.id, { rotation: value })
+      return
+    }
+    if (field === 'width') {
+      value = Math.min(view.maxX - selected.x, Math.max(0.5, value))
+    } else if (field === 'depth') {
+      value = Math.min(view.maxZ - selected.z, Math.max(0.4, value))
+    } else if (field === 'x') {
+      value = Math.min(view.maxX - selected.width, Math.max(view.minX, value))
+    } else if (field === 'z') {
+      value = Math.min(view.maxZ - selected.depth, Math.max(view.minZ, value))
+    }
+    updateGondola(selected.id, { [field]: Math.round(value * 100) / 100 })
+  }
+  // Estado de la góndola respecto a la zona: muestrea centro + 4 esquinas + 4 puntos
+  // medios del footprint rotado. Umbral de tolerancia para no marcar ⚠️ por un borde
+  // que apenas asoma; si el centro está fuera sí es "fuera de zona".
+  const gondolaZoneStatus = (item) => {
+    if (!polygon) return { level: 'none' }
+    const corners = gondolaCorners(item)
+    const mids = corners.map((corner, index) => [
+      (corner[0] + corners[(index + 1) % 4][0]) / 2,
+      (corner[1] + corners[(index + 1) % 4][1]) / 2,
+    ])
+    const center = [item.x + item.width / 2, item.z + item.depth / 2]
+    const samples = [center, ...corners, ...mids].map(([x, z]) => [Math.round(x * 100) / 100, Math.round(z * 100) / 100])
+    const inside = samples.filter(([x, z]) => pointInPolygon(x, z, polygon)).length
+    const fraction = inside / samples.length
+    if (!pointInPolygon(center[0], center[1], polygon)) return { level: 'out', fraction }
+    if (fraction >= 0.95) return { level: 'in', fraction }
+    return { level: 'partial', fraction }
+  }
+  const selectedStatus = selected ? gondolaZoneStatus(selected) : null
+
+  const commitOutline = (pointsMeters) => {
+    setHandOutline(pointsMeters)
+    setFloorDrawMode(false)
+  }
+  const clearOutline = () => {
+    setHandOutline(null)
+  }
+
   const save = async () => {
     setSaving(true); setSaveState('')
     try {
@@ -236,74 +334,147 @@ export default function PlanogramEditor({ configuration, onChange, onSave, frame
     }
   }
 
-  const detect = async () => {
-    if (!frameCapture) { setSuggestError('Primero captura un frame en “Calibrar cámara”'); return }
-    if (!onSuggest) { setSuggestError('Detección no disponible'); return }
-    setDetecting(true); setSuggestError('')
-    try {
-      const candidates = await onSuggest(frameCapture)
-      setSuggestions(candidates || [])
-    } catch (requestError) { setSuggestError(requestError.message) } finally { setDetecting(false) }
-  }
-  const acceptSuggestions = () => {
-    const timestamp = Date.now()
-    const items = suggestions.map((candidate, index) => ({
-      id: `d-${timestamp}-${index}`,
-      name: `Góndola detectada ${index + 1}`,
-      x: candidate.x, z: candidate.z,
-      width: candidate.width, depth: candidate.depth,
-      color: nextColor(configuration.gondolas.length + index),
-      segments: { rows, columns }, products: emptyProducts(),
-    }))
-    replaceGondolas([...configuration.gondolas, ...items])
-    setSuggestions([])
-    setSelectedId(items[0]?.id || null)
-  }
-
-  const addDrawnCandidate = (candidate) => setSuggestions((current) => [...current, candidate])
-
   return (
-    <section className="my-7 border border-white/10 bg-[#0c1714]">
-      <div className="grid min-h-32 items-center gap-6 border-b border-white/10 p-5 lg:grid-cols-[1fr_auto_auto] [&_h2]:mt-2 [&_h2]:text-3xl [&_h2]:font-semibold [&_p]:mt-1 [&_p]:text-xs [&_p]:text-slate-400">
-        <div><span className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-teal-300">CONFIGURACIÓN FÍSICA DE LA SEDE</span><h2>Dibuja tu planograma</h2><p>Añade, arrastra y cambia el tamaño de cada góndola. Esta geometría se reutiliza en futuros videos.</p></div>
-        <div className="grid grid-cols-2 gap-2 [&_input]:w-20 [&_input]:border [&_input]:border-white/10 [&_input]:bg-[#101e1a] [&_input]:p-2 [&_input]:pr-6 [&_input]:text-white [&_label]:relative [&_label]:grid [&_label]:gap-1 [&_label]:text-[10px] [&_label]:uppercase [&_label]:text-slate-500 [&_small]:absolute [&_small]:bottom-2 [&_small]:right-2 [&_small]:text-teal-300"><label>Ancho<input type="number" min="2" step="0.5" value={floor.width} onChange={(event) => changeFloor('width', event.target.value)} /><small>m</small></label><label>Fondo<input type="number" min="2" step="0.5" value={floor.depth} onChange={(event) => changeFloor('depth', event.target.value)} /><small>m</small></label></div>
-        <div className="flex flex-wrap gap-2 [&_button]:border [&_button]:border-teal-900 [&_button]:px-3 [&_button]:py-2 [&_button]:text-xs [&_button]:text-slate-300 disabled:[&_button]:opacity-40"><button onClick={detect} disabled={detecting}>{detecting ? 'Detectando…' : '◎ Detectar góndolas'}</button><button className={drawMode ? 'border-lime-300 bg-lime-300 text-[#07100e]' : ''} onClick={() => setDrawMode((value) => !value)}>✎ Dibujar en el frame</button><button className={showLive ? 'border-lime-300 bg-lime-300 text-[#07100e]' : ''} onClick={() => setShowLive((value) => !value)} disabled={!frameCapture}>⌖ Ver plano 2D en vivo</button><button onClick={addGondola}>＋ Añadir góndola</button><button className="!border-lime-300 !text-lime-300" onClick={save} disabled={saving}>{saving ? 'Guardando…' : 'Guardar plano'}</button></div>
-      </div>
-      {drawMode && (frameCapture
-        ? <DrawOnVideo frameCapture={frameCapture} configuration={configuration} onCandidate={addDrawnCandidate} />
-        : <div className="mt-3 text-xs text-orange-300">Captura primero un frame en “Calibrar cámara” para poder dibujar sobre él.</div>)}
-      {suggestError && <div className="mt-3 text-xs text-orange-300">{suggestError}</div>}
-      {saveState && <div className="mt-3 text-xs text-lime-300">{saveState}</div>}
-      {suggestions.length > 0 && <div className="flex flex-wrap items-center gap-2 border border-teal-300/30 bg-teal-300/5 p-4 text-xs text-slate-400 [&_b]:text-lime-300 [&_button]:border [&_button]:border-teal-900 [&_button]:px-3 [&_button]:py-2 [&_button]:text-xs [&_button]:text-slate-300">Encontré <b>{suggestions.length}</b> góndola{suggestions.length === 1 ? '' : 's'} candidata{suggestions.length === 1 ? '' : 's'} en el frame. Revisa los contornos punteados y decídete.<button onClick={acceptSuggestions}>＋ Aceptar todas</button><button className="text-slate-400" onClick={() => setSuggestions([])}>Descartar</button></div>}
-      <div className={`grid items-stretch gap-5 p-5 ${showLive ? 'lg:grid-cols-[minmax(0,.72fr)_minmax(0,1.28fr)]' : 'grid-cols-1'}`}>
-        {showLive && <div className="flex min-w-0 flex-col gap-2"><span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-lime-300">PLANO 2D EN VIVO · ARRASTRA SOBRE EL FRAME</span>{frameCapture ? <LiveAlignment frameCapture={frameCapture} configuration={configuration} interactive onMoveGondola={updateGondola} selectedId={selectedId} onSelect={setSelectedId} /> : <div className="p-12 text-center text-xs text-slate-500">Captura primero un frame en “Calibrar cámara”.</div>}<span className="font-mono text-[10px] text-slate-500">Arrastra una góndola en el frame o en el mapa para cuadrarla.</span></div>}
-      <div className="grid min-h-[640px] grid-cols-1 lg:grid-cols-[minmax(0,1.45fr)_minmax(310px,.55fr)]">
-        <div
-          className="relative mx-auto my-7 w-[calc(100%-30px)] max-h-[760px] touch-none select-none overflow-hidden border border-teal-900 bg-[#091512]"
-          ref={canvasRef}
-          style={{ aspectRatio: `${floor.width}/${floor.depth}` }}
-          onPointerMove={movePointer}
-          onPointerUp={() => { pointer.current = null }}
-          onPointerCancel={() => { pointer.current = null }}
-        >
-          {configuration.zones?.map((zone) => {
-            const xs = zone.polygon.map(([x]) => x); const zs = zone.polygon.map(([, z]) => z)
-            return <div className="pointer-events-none absolute border border-dashed border-teal-300/20 bg-teal-300/5 [&_span]:absolute [&_span]:left-2 [&_span]:top-1 [&_span]:font-mono [&_span]:text-[7px] [&_span]:uppercase [&_span]:text-teal-300/40" key={zone.id} style={{ left: `${Math.min(...xs) / floor.width * 100}%`, top: `${Math.min(...zs) / floor.depth * 100}%`, width: `${(Math.max(...xs) - Math.min(...xs)) / floor.width * 100}%`, height: `${(Math.max(...zs) - Math.min(...zs)) / floor.depth * 100}%` }}><span>{zone.name}</span></div>
-          })}
-          {suggestions.map((candidate, index) => <div className="pointer-events-none absolute border border-dashed border-orange-400 bg-orange-400/10 [&_span]:absolute [&_span]:-top-5 [&_span]:left-0 [&_span]:whitespace-nowrap [&_span]:font-mono [&_span]:text-[8px] [&_span]:font-semibold [&_span]:text-orange-400" key={`${candidate.x}-${candidate.z}-${index}`} style={{ left: `${candidate.x / floor.width * 100}%`, top: `${candidate.z / floor.depth * 100}%`, width: `${candidate.width / floor.width * 100}%`, height: `${candidate.depth / floor.depth * 100}%` }}><span>D{index + 1} · {Math.round(candidate.confidence * 100)}%</span></div>)}
-          {configuration.gondolas.map((item) => <button
-            className={`absolute grid min-h-5 min-w-6 touch-none place-items-center border p-0 text-slate-100 shadow-lg ${selectedId === item.id ? 'z-10 border-lime-300 bg-teal-900' : 'border-teal-700 bg-teal-950'} [&_span]:pointer-events-none [&_span]:max-w-[90%] [&_span]:overflow-hidden [&_span]:text-ellipsis [&_span]:whitespace-nowrap [&_span]:font-mono [&_span]:text-[8px] [&_span]:font-semibold [&_i]:absolute [&_i]:bottom-0 [&_i]:right-0 [&_i]:h-4 [&_i]:w-4 [&_i]:cursor-nwse-resize [&_i]:touch-none [&_i]:bg-lime-300/60`}
-            key={item.id}
-            style={{ left: `${item.x / floor.width * 100}%`, top: `${item.z / floor.depth * 100}%`, width: `${item.width / floor.width * 100}%`, height: `${item.depth / floor.depth * 100}%`, '--gcolor': item.color || '#61dec0' }}
-            onPointerDown={(event) => startPointer(event, item, 'move')}
-          ><span>{item.name}</span><i onPointerDown={(event) => startPointer(event, item, 'resize')} /></button>)}
-          {!configuration.gondolas.length && !suggestions.length && <button className="absolute inset-[35%] border border-dashed border-teal-800 bg-[#091512]/80 text-xs text-lime-300" onClick={addGondola}>＋ Dibuja tu primera góndola</button>}
+    <section className="m-0 w-full min-w-0 overflow-hidden rounded-xl border border-[#2f80ff]/35 bg-[radial-gradient(circle_at_88%_8%,rgba(255,107,29,.18),transparent_28%),radial-gradient(circle_at_16%_86%,rgba(34,147,255,.20),transparent_30%),linear-gradient(135deg,#071323,#0b2138_58%,#06111f)] p-0 shadow-[0_24px_70px_rgba(7,19,35,.28)]">
+      <div className="grid min-h-0 grid-cols-[1fr_auto] items-start gap-[30px] border-b border-white/10 p-[18px] px-[22px] max-[980px]:grid-cols-[1fr] max-[760px]:flex max-[760px]:flex-col max-[760px]:items-stretch max-[760px]:gap-[18px] max-[760px]:p-[18px]">
+        <div><span className="inline-flex rounded-full border border-[#ff7a1a]/35 bg-[#ff6b1a]/15 px-3 py-1 text-[10px] font-extrabold font-[ui-monospace,monospace] tracking-[.12em] text-[#ff9a3d]">CONFIGURACION FISICA DE LA SEDE</span><h2 className="mt-[10px] mb-[6px] text-[30px] tracking-[-.04em] text-white">Dibuja tu planograma</h2><p className="m-0 max-w-[520px] text-[11px] leading-[1.6] text-[#b9d7f1]">Anade, arrastra y cambia el tamano de cada gondola. Esta geometria se reutiliza en futuros videos.</p></div>
+        <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-white/[.06] p-2"><label className="relative grid gap-[5px] uppercase text-[8px] font-bold text-[#8fb3d9]">Ancho<input className="min-w-0 w-full rounded-lg border border-[#2f80ff]/25 bg-[#071323] p-[10px] pr-[24px] text-white outline-none focus:border-[#ff7a1a] max-[760px]:w-full" type="number" min="2" step="0.5" value={floor.width} onChange={(event) => changeFloor('width', event.target.value)} /><small className="absolute right-2 bottom-[11px] text-[#6bd5ff]">m</small></label><label className="relative grid gap-[5px] uppercase text-[8px] font-bold text-[#8fb3d9]">Fondo<input className="min-w-0 w-full rounded-lg border border-[#2f80ff]/25 bg-[#071323] p-[10px] pr-[24px] text-white outline-none focus:border-[#ff7a1a] max-[760px]:w-full" type="number" min="2" step="0.5" value={floor.depth} onChange={(event) => changeFloor('depth', event.target.value)} /><small className="absolute right-2 bottom-[11px] text-[#6bd5ff]">m</small></label></div>
+        <div className="col-span-full flex flex-wrap justify-start gap-[7px]">
+          <button className={`cursor-pointer rounded-lg border border-[#2f80ff]/35 bg-white/[.06] p-[11px] px-[14px] text-[9px] font-bold whitespace-nowrap text-[#d9ecff] shadow-[0_10px_24px_rgba(0,0,0,.12)] max-[760px]:flex-1 max-[760px]:p-[12px] max-[760px]:px-[7px] ${snapEnabled ? 'border-[#6bd5ff] bg-[#1683ff] text-white shadow-[0_12px_24px_rgba(22,131,255,.28)]' : 'hover:border-[#6bd5ff] hover:text-white'}`} onClick={() => setSnapEnabled((value) => !value)} title="Snap a cuadricula de 0.25m">Snap</button>
+          <button className={`cursor-pointer rounded-lg border border-[#2f80ff]/35 bg-white/[.06] p-[11px] px-[14px] text-[9px] font-bold whitespace-nowrap text-[#d9ecff] shadow-[0_10px_24px_rgba(0,0,0,.12)] max-[760px]:flex-1 max-[760px]:p-[12px] max-[760px]:px-[7px] ${addMode ? 'border-[#ffb36d] bg-[#ff5b12] text-white shadow-[0_14px_28px_rgba(255,91,18,.32)]' : 'hover:border-[#ff9a3d] hover:text-[#ffb36d]'}`} onClick={() => { setFloorDrawMode(false); setAddMode((value) => !value) }} title="Haz clic sobre el plano o el video para colocarla">+ Anadir gondola</button>
+          <button className={`cursor-pointer rounded-lg border border-[#2f80ff]/35 bg-white/[.06] p-[11px] px-[14px] text-[9px] font-bold whitespace-nowrap text-[#d9ecff] shadow-[0_10px_24px_rgba(0,0,0,.12)] max-[760px]:flex-1 max-[760px]:p-[12px] max-[760px]:px-[7px] ${floorDrawMode ? 'border-[#6bd5ff] bg-[rgba(47,128,255,.24)] text-white' : 'hover:border-[#6bd5ff] hover:text-[#6bd5ff]'}`} onClick={() => { setAddMode(false); setFloorDrawMode((value) => !value) }} title="Traza el contorno del piso a mano">Dibujar piso</button>
+          <button className="cursor-pointer rounded-lg border border-[#ffb36d] bg-[#ff5b12] p-[11px] px-[15px] text-[9px] font-extrabold whitespace-nowrap text-white shadow-[0_14px_30px_rgba(255,91,18,.28)] max-[760px]:flex-1 max-[760px]:p-[12px] max-[760px]:px-[7px] disabled:cursor-not-allowed disabled:opacity-40" onClick={save} disabled={saving}>{saving ? 'Guardando...' : 'Guardar plano'}</button>
         </div>
-        <aside className="min-w-0 border-t border-white/10 bg-[#0a1512] p-5 lg:border-l lg:border-t-0 [&_label]:grid [&_label]:gap-1 [&_label]:text-[10px] [&_label]:uppercase [&_label]:text-slate-500 [&_input]:min-w-0 [&_input]:border [&_input]:border-white/10 [&_input]:bg-[#101e1a] [&_input]:p-2 [&_input]:text-white">
-          {selected ? <><div className="mb-5 flex items-center justify-between gap-3 [&_button]:border [&_button]:border-orange-400/30 [&_button]:px-3 [&_button]:py-2 [&_button]:text-xs [&_button]:text-orange-300"><span className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-teal-300">GÓNDOLA SELECCIONADA</span><button onClick={removeGondola}>Eliminar</button></div><label>Nombre<input value={selected.name} onChange={(event) => updateGondola(selected.id, { name: event.target.value })} /></label><label className="[&_span]:flex [&_span]:items-center [&_span]:gap-3 [&_input]:h-9 [&_input]:w-12 [&_input]:p-1 [&_em]:font-mono [&_em]:text-xs [&_em]:not-italic [&_em]:text-slate-300">Color<span><input type="color" value={selected.color || '#61dec0'} onChange={(event) => updateGondola(selected.id, { color: event.target.value })} /><em>{selected.color || '#61dec0'}</em></span></label><div className="my-4 grid grid-cols-4 gap-2"><label>X<input type="number" step="0.1" value={selected.x} onChange={(event) => updateGondola(selected.id, { x: Number(event.target.value) })} /></label><label>Z<input type="number" step="0.1" value={selected.z} onChange={(event) => updateGondola(selected.id, { z: Number(event.target.value) })} /></label><label>Ancho<input type="number" step="0.1" value={selected.width} onChange={(event) => updateGondola(selected.id, { width: Number(event.target.value) })} /></label><label>Fondo<input type="number" step="0.1" value={selected.depth} onChange={(event) => updateGondola(selected.id, { depth: Number(event.target.value) })} /></label></div><span className="mb-3 block font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-teal-300">PRODUCTOS POR SEGMENTO</span><div className="mt-3 grid grid-cols-3 gap-1 [&_label]:border [&_label]:border-white/10 [&_label]:bg-[#0d1a16] [&_label]:p-2 [&_small]:h-5 [&_small]:text-[7px] [&_small]:leading-tight [&_small]:text-slate-500 [&_input]:p-2 [&_input]:text-[9px] [&_input]:normal-case">{rows.map((row, rowIndex) => columns.map((column, columnIndex) => <label key={`${row}-${column}`}><small>{row} · {column}</small><input value={selected.products?.[rowIndex]?.[columnIndex] || ''} placeholder="Producto" onChange={(event) => updateProduct(rowIndex, columnIndex, event.target.value)} /></label>))}</div></> : <div className="grid h-full place-items-center text-center text-sm leading-7 text-slate-500">Selecciona una góndola para configurar sus segmentos y productos.</div>}
-        </aside>
       </div>
+      {addMode && <div className="mx-[18px] mb-3 rounded-lg border border-[#ff9a3d]/35 bg-[#ff6b1a]/15 p-3 px-[12px] text-[10px] font-bold text-[#ffb36d]">Modo añadir: hacé clic en el video o en el plano para colocar una góndola. Pulsa el botón de nuevo para salir.</div>}
+      {floorDrawMode && !frameCapture && <div className="mx-[18px] mb-3 rounded-lg border border-[#6bd5ff]/35 bg-[#1683ff]/15 p-3 px-[12px] text-[10px] font-bold text-[#b9d7f1]">Captura un frame en el paso 03 para poder trazar el contorno sobre el video.</div>}
+      {saveState && <div className="mx-[18px] mt-3 mb-3 rounded-lg border border-emerald-300/30 bg-emerald-400/10 p-3 text-[10px] font-bold text-emerald-200">{saveState}</div>}
+
+      <div className="mx-[18px] mb-4 mt-4 flex items-center gap-[7px] rounded-xl border border-white/10 bg-white/[.06] p-1 xl:hidden">
+        <button type="button" onClick={() => setTab('video')} className={`cursor-pointer border px-[16px] py-[9px] text-[9px] font-semibold font-[ui-monospace,monospace] uppercase tracking-[.12em] ${tab === 'video' ? 'border-[#ff9a3d] bg-[#ff5b12] text-white' : 'border-[#2f80ff]/30 bg-[#071323] text-[#b9d7f1]'}`}>Video</button>
+        <button type="button" onClick={() => setTab('plano')} className={`cursor-pointer border px-[16px] py-[9px] text-[9px] font-semibold font-[ui-monospace,monospace] uppercase tracking-[.12em] ${tab === 'plano' ? 'border-[#ff9a3d] bg-[#ff5b12] text-white' : 'border-[#2f80ff]/30 bg-[#071323] text-[#b9d7f1]'}`}>Plano</button>
       </div>
+
+      <div className="grid min-h-0 grid-cols-1 xl:grid-cols-[minmax(0,55fr)_minmax(0,45fr)] xl:items-stretch xl:gap-[24px] xl:px-[18px] xl:pt-4 xl:pb-4">
+        <div className={tab === 'video' ? 'block' : 'hidden xl:block'}>
+          <div className="mb-5 flex w-full flex-col gap-2 xl:mb-0 xl:min-h-0 xl:justify-center">
+            <span className="text-[9px] font-semibold font-[ui-monospace,monospace] uppercase tracking-[.08em] text-[#ff9a3d]">Sobre el frame · plano en vivo — arrastrá y colocá góndolas sobre el video</span>
+            <LiveAlignment frameCapture={frameCapture} configuration={configuration} drawMode={floorDrawMode && Boolean(frameCapture)} onDrawCommit={commitOutline} onDrawCancel={() => setFloorDrawMode(false)} interactive onMoveGondola={(id, values) => updateGondola(id, values)} selectedId={selectedId} onSelect={setSelectedId} addMode={addMode} onAddAt={(x, z) => addGondolaAt(x, z)} zone={zone} handOutline={handOutline} />
+            <p className="m-0 text-[10px] leading-[1.6] text-[#b9d7f1]">Calibrá las góndolas arrastrándolas sobre el video proyectado o colocá una nueva haciendo clic en «＋ Añadir góndola». Con «▱ Dibujar el piso» trazás el contorno directo sobre este video (no se guarda).</p>
+          </div>
+        </div>
+        <div className={tab === 'plano' ? 'block' : 'hidden xl:block'}>
+          <div className="sticky top-2 z-20 mb-3 xl:hidden">
+            <PlanPreview frameCapture={frameCapture} configuration={configuration} selectedId={selectedId} zone={zone} onPreviewClick={() => setTab('video')} />
+          </div>
+          <div className="grid min-h-0 grid-cols-1">
+            <div
+              className={`relative h-auto w-[calc(100%-20px)] max-w-full overflow-hidden self-center touch-none select-none max-[760px]:my-3 max-[760px]:mx-auto max-[760px]:w-[calc(100%-24px)]${polygon ? '' : ' border border-[#2f80ff]/35'}`}
+              ref={canvasRef}
+              style={{ aspectRatio: `${floor.width}/${floor.depth}` }}
+              onPointerDown={(event) => {
+                if (!addMode) return
+                const rect = canvasRef.current.getBoundingClientRect()
+                addGondolaAt(view.minX + (event.clientX - rect.left) / rect.width * view.width, view.minZ + (event.clientY - rect.top) / rect.height * view.depth)
+              }}
+              onPointerMove={movePointer}
+              onPointerUp={() => { pointer.current = null; setDragInfo(null) }}
+              onPointerCancel={() => { pointer.current = null; setDragInfo(null) }}
+            >
+              <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`${view.minX} ${view.minZ} ${view.width} ${view.depth}`} preserveAspectRatio="none">
+                <rect x={view.minX} y={view.minZ} width={view.width} height={view.depth} fill="#071323" />
+                {(() => {
+                  const target = view.width / 14
+                  const step = target > 5 ? 5 : target > 2 ? 2 : target > 1 ? 1 : target > 0.5 ? 0.5 : 0.25
+                  const lines = []
+                  for (let x = Math.ceil(view.minX / step) * step; x <= view.maxX + 1e-6; x += step) {
+                    lines.push(<line key={`v${x}`} x1={x} y1={view.minZ} x2={x} y2={view.maxZ} stroke="rgba(107,213,255,.10)" strokeWidth="0.05" />)
+                  }
+                  for (let z = Math.ceil(view.minZ / step) * step; z <= view.maxZ + 1e-6; z += step) {
+                    lines.push(<line key={`h${z}`} x1={view.minX} y1={z} x2={view.maxX} y2={z} stroke="rgba(107,213,255,.10)" strokeWidth="0.05" />)
+                  }
+                  return lines
+                })()}
+                {snapEnabled && (() => {
+                  const lines = []
+                  for (let x = Math.ceil(view.minX / GRID_SNAP) * GRID_SNAP; x <= view.maxX + 1e-6; x += GRID_SNAP) {
+                    lines.push(<line key={`s${x}`} x1={x} y1={view.minZ} x2={x} y2={view.maxZ} stroke="rgba(255,154,61,.10)" strokeWidth="0.04" />)
+                  }
+                  for (let z = Math.ceil(view.minZ / GRID_SNAP) * GRID_SNAP; z <= view.maxZ + 1e-6; z += GRID_SNAP) {
+                    lines.push(<line key={`s${z}`} x1={view.minX} y1={z} x2={view.maxX} y2={z} stroke="rgba(255,154,61,.10)" strokeWidth="0.04" />)
+                  }
+                  return lines
+                })()}
+                {polygon && (
+                  <g>
+                    <polygon points={polygon.map(([x, z]) => `${x},${z}`).join(' ')} fill="rgba(91,157,255,.08)" stroke="#5b9dff" strokeWidth={Math.max(0.05, view.width / 150)} strokeDasharray="0.26 0.14" strokeLinejoin="round" />
+                    <text x={polygon[0][0]} y={polygon[0][1] - 0.5} fill="#5b9dff" fontSize={Math.max(0.32, view.width / 42)} fontFamily="ui-monospace, monospace" fontWeight="bold">ZONA</text>
+                  </g>
+                )}
+                {handOutline?.length >= 3 && (
+                  <g>
+                    <polygon points={handOutline.map(([x, z]) => `${x},${z}`).join(' ')} fill="none" stroke="rgba(196,225,255,.85)" strokeWidth="0.05" strokeDasharray="0.14 0.1" strokeLinejoin="round" />
+                    <text x={handOutline[0][0]} y={handOutline[0][1] + 0.8} fill="rgba(196,225,255,.85)" fontSize={Math.max(0.28, view.width / 48)} fontFamily="ui-monospace, monospace">PISO</text>
+                  </g>
+                )}
+                {sketchZones.map((zone) => {
+                  const points = (zone.polygon || []).map(([x, z]) => `${x},${z}`).join(' ')
+                  if ((zone.polygon || []).length < 3) return null
+                  const first = zone.polygon[0]
+                  return (
+                    <g key={zone.id}>
+                      <polygon points={points} fill="rgba(97,222,192,.04)" stroke="rgba(160,213,197,.6)" strokeWidth={Math.max(0.045, view.width / 210)} strokeDasharray="0.22 0.12" strokeLinejoin="round" />
+                      <text x={first[0]} y={first[1] + 1} fill="rgba(205,235,227,.95)" fontSize={Math.max(0.34, view.width / 40)} fontFamily="ui-monospace, monospace" fontWeight="bold">{zone.name}</text>
+                    </g>
+                  )
+                })}
+              </svg>
+              {configuration.gondolas.map((item) => {
+                const isSelected = selectedId === item.id
+                const isDragging = dragInfo && pointer.current?.item?.id === item.id
+                const zoneLevel = gondolaZoneStatus(item).level
+                const outOfZone = zoneLevel === 'out' || zoneLevel === 'partial'
+                return (
+                  <div
+                    className={`absolute grid min-w-[25px] min-h-[20px] touch-none place-items-center border bg-[#0d3150] p-0 text-white shadow-[0_4px_15px_rgba(0,0,0,.25)] transition-shadow duration-150 hover:z-[2] hover:border-[#ff9a3d] hover:bg-[#123f67] hover:shadow-[0_4px_20px_rgba(255,91,18,.18)] ${isSelected ? 'z-[2] border-[#ff9a3d] bg-[#163f5f] shadow-[0_4px_22px_rgba(255,91,18,.35)]' : outOfZone ? 'border-[#ff876a]' : 'border-[#2f80ff]/55'}`}
+                    key={item.id}
+                    style={{
+                      left: `${(item.x - view.minX) / view.width * 100}%`,
+                      top: `${(item.z - view.minZ) / view.depth * 100}%`,
+                      width: `${item.width / view.width * 100}%`,
+                      height: `${item.depth / view.depth * 100}%`,
+                      transform: `rotate(${item.rotation || 0}deg)`,
+                    }}
+                    onPointerDown={(event) => startPointer(event, item, 'move')}
+                  >
+                    <span className="pointer-events-none max-w-[92%] overflow-hidden text-ellipsis whitespace-nowrap text-[9px] font-semibold font-[ui-monospace,monospace]">{item.name}</span>
+                    <span className="pointer-events-none absolute bottom-[-18px] left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-[#2f80ff]/25 bg-[#071323]/90 px-1 py-[1px] text-[8px] font-medium font-[ui-monospace,monospace] text-[#b9d7f1]">{item.width.toFixed(1)}×{item.depth.toFixed(1)}m</span>
+                    <i className="after:absolute after:top-full after:left-1/2 after:h-[13px] after:w-px after:-translate-x-1/2 after:bg-[#ff9a3d] after:content-[''] absolute right-auto bottom-auto top-[-24px] left-1/2 h-3 w-3 -translate-x-1/2 cursor-grab touch-none rounded-full border border-[#ff9a3d] bg-[#071323] active:cursor-grabbing" onPointerDown={(event) => startPointer(event, item, 'rotate')} title="Rotar" />
+                    <i className="absolute -right-px -bottom-px h-4 w-4 touch-none bg-[linear-gradient(135deg,transparent_45%,#ff9a3d_46%_55%,transparent_56%)] cursor-nwse-resize" onPointerDown={(event) => startPointer(event, item, 'resize')} />
+                  </div>
+                )
+              })}
+              {!configuration.gondolas.length && <button className="absolute inset-[35%] grid cursor-pointer place-items-center border rounded-xl border-dashed border-[#ff9a3d]/60 bg-[#071323]/85 text-[10px] font-bold text-[#ffb36d]" onClick={addGondola}>＋ Dibuja tu primera góndola</button>}
+            </div>
+            <aside className="min-w-0 border-t border-[#2f80ff]/25 bg-[#071323]/80 p-[25px] max-[760px]:p-[20px] max-[760px]:px-[14px] max-[760px]:py-[20px]">
+              {selected ? <><div className="mb-5 flex items-center justify-between gap-[10px]"><span className="text-[10px] font-semibold font-[ui-monospace,monospace] tracking-[.17em] text-[#ff9a3d]">GÓNDOLA SELECCIONADA</span><button className="cursor-pointer rounded-lg border border-[#ff9a3d]/40 bg-[#ff5b12]/10 p-2 px-[10px] text-[9px] font-bold whitespace-nowrap text-[#ffb36d] hover:border-[#ff9a3d] hover:bg-[#ff5b12] hover:text-white" onClick={removeGondola}>Eliminar</button></div><label className="relative grid gap-[5px] uppercase text-[8px] font-bold text-[#8fb3d9]">Nombre<input className="min-w-0 w-full rounded-lg border border-[#2f80ff]/25 bg-[#0b2138] p-[10px] text-white outline-none" value={selected.name} onChange={(event) => updateGondola(selected.id, { name: event.target.value })} /></label>
+              <div className="mt-[14px] grid grid-cols-2 gap-[7px]">
+                <label className="relative grid gap-[5px] uppercase text-[8px] font-bold text-[#8fb3d9]">X (m)<input className="min-w-0 w-full rounded-lg border border-[#2f80ff]/25 bg-[#0b2138] p-[9px] text-white outline-none" type="number" step="0.01" value={selected.x} onChange={(event) => commitNumeric('x', event.target.value)} /></label>
+                <label className="relative grid gap-[5px] uppercase text-[8px] font-bold text-[#8fb3d9]">Y (m)<input className="min-w-0 w-full rounded-lg border border-[#2f80ff]/25 bg-[#0b2138] p-[9px] text-white outline-none" type="number" step="0.01" value={selected.z} onChange={(event) => commitNumeric('z', event.target.value)} /></label>
+                <label className="relative grid gap-[5px] uppercase text-[8px] font-bold text-[#8fb3d9]">Ancho (m)<input className="min-w-0 w-full rounded-lg border border-[#2f80ff]/25 bg-[#0b2138] p-[9px] text-white outline-none" type="number" min="0.5" step="0.1" value={selected.width} onChange={(event) => commitNumeric('width', event.target.value)} /></label>
+                <label className="relative grid gap-[5px] uppercase text-[8px] font-bold text-[#8fb3d9]">Fondo (m)<input className="min-w-0 w-full rounded-lg border border-[#2f80ff]/25 bg-[#0b2138] p-[9px] text-white outline-none" type="number" min="0.4" step="0.1" value={selected.depth} onChange={(event) => commitNumeric('depth', event.target.value)} /></label>
+                <label className="relative grid gap-[5px] uppercase text-[8px] font-bold text-[#8fb3d9]">Rotación (°)<input className="min-w-0 w-full rounded-lg border border-[#2f80ff]/25 bg-[#0b2138] p-[9px] text-white outline-none" type="number" min="0" max="360" step="1" value={selected.rotation} onChange={(event) => commitNumeric('rotation', event.target.value)} /></label>
+              </div>
+              <span className="mt-3 mb-4 block text-[10px] font-semibold font-[ui-monospace,monospace]" style={{ color: ZONE_STATUS[selectedStatus.level].color }}>{selected.width.toFixed(2)}×{selected.depth.toFixed(2)}m · {ZONE_STATUS[selectedStatus.level].label} {ZONE_STATUS[selectedStatus.level].dot}</span>
+              <span className="mb-3 block text-[10px] font-semibold font-[ui-monospace,monospace] tracking-[.17em] text-[#ff9a3d]">PRODUCTOS POR SEGMENTO</span><div className="mt-[10px] grid max-w-[520px] grid-cols-3 gap-[5px]">{rows.map((row, rowIndex) => columns.map((column, columnIndex) => <label className="relative grid max-[760px]:p-[5px] gap-[5px] rounded-lg border border-[#2f80ff]/25 bg-[#0b2138] p-[7px] uppercase text-[8px] font-bold text-[#8fb3d9]" key={`${row}-${column}`}><small className="h-[18px] text-[6px] leading-[1.35] text-[#8fb3d9]">{row} · {column}</small><input className="min-w-0 w-full rounded-lg border border-[#2f80ff]/25 bg-[#0b2138] p-[7px] px-[5px] text-[8px] normal-case text-white outline-none max-[760px]:text-[7px]" value={selected.products?.[rowIndex]?.[columnIndex] || ''} placeholder="Producto" onChange={(event) => updateProduct(rowIndex, columnIndex, event.target.value)} /></label>))}</div></> : <div className="grid h-full place-items-center text-center text-[11px] leading-[1.7] text-[#b9d7f1]">Selecciona una góndola para configurar sus segmentos y productos.</div>}
+            </aside>
+          </div>
+        </div>
+      </div>
+
+      {(handOutline?.length >= 3 || floor.outline?.length >= 3) && <div className="mx-[18px] mb-3 mt-3 flex items-center gap-3 rounded-xl border border-[#2f80ff]/35 bg-[#1683ff]/12 p-3 px-[12px] text-[9px] text-[#b9d7f1]"><b className="text-[#6bd5ff]">{handOutline?.length >= 3 ? `Contorno del piso trazado (${handOutline.length} puntos)` : 'Zona del plano guardada'}</b><span className="flex-1">{handOutline?.length >= 3 ? 'solo referencia visual, no se guarda — al cerrar o salir de la sede desaparece.' : 'define la forma del mapa; el movimiento de las góndolas queda dentro de la zona.'}</span>{handOutline?.length >= 3 && <button className="cursor-pointer border border-[rgba(91,157,255,.4)] bg-transparent p-2 px-[10px] text-[9px] text-[#b9d7f1] hover:border-[#5b9dff] hover:text-[#6bd5ff]" onClick={clearOutline}>Borrar contorno</button>}</div>}
     </section>
   )
 }
+
+export default PlanogramEditor
