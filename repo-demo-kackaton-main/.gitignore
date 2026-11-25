@@ -6,3 +6,20 @@ training/annotations/*
 !training/annotations/.gitkeep
 models/exported/*.pt
 models/exported/*.onnx
+
+# Logs
+*.log
+
+# Dependencies / builds
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Datos locales
+backend/data/uploads/*
+!backend/data/uploads/.gitkeep
+*.db
+*.sqlite
